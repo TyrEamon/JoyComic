@@ -16,8 +16,8 @@ library vertical_list;
 import 'package:flutter/material.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
-import '../../../foundation/reader_config.dart';
-import '../../providers/reader_provider.dart';
+import '../../../../foundation/reader_config.dart';
+import '../../providers/reader_provider.dart' hide ReaderImage;
 import '../../providers/list_state_provider.dart';
 import '../../utils/image_preload_controller.dart';
 import '../../utils/reader_utils.dart';

@@ -4,7 +4,7 @@ library next_chapter;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../providers/reader_provider.dart';
+import '../providers/reader_provider.dart' hide ReaderImage;
 import '../utils/reader_utils.dart';
 
 /// 当前页接近最后一页时显示"下一章" FAB。

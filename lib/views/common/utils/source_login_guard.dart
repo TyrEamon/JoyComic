@@ -6,9 +6,8 @@ library source_login_guard;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../comic_source/comic_source.dart';
 import '../../../theme/app_colors.dart';
-import '../../comic_source/comic_source.dart';
-import '../../theme/app_colors.dart';
 
 /// 检查 [sourceKey] 对应的源是否已登录；若未登录则弹提示并返回 false。
 /// 用户可选择跳转到登录页。
