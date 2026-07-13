@@ -403,7 +403,7 @@ class _SearchHomeState extends State<_SearchHome> {
           spacing: 8,
           runSpacing: 8,
           children: _history
-              .map((k) => _Chip(label: k, onTap: () => onHistoryTap(k)))
+              .map((k) => _Chip(label: k, onTap: () => widget.onHistoryTap(k)))
               .toList(),
         ),
         const SizedBox(height: AppSpacing.xl),
@@ -429,7 +429,7 @@ class _SearchHomeState extends State<_SearchHome> {
                 .map((k) => _Chip(
                       label: k,
                       hot: true,
-                      onTap: () => onHotTap(k),
+                      onTap: () => widget.onHotTap(k),
                     ))
                 .toList(),
         ),

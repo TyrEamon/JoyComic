@@ -129,7 +129,7 @@ class DetailViewModel extends ChangeNotifier {
       if (info == null) {
         _state = DetailLoadState.error;
         _error = '数据为空';
-        Log.w('Detail empty', '$comicId returned null info');
+        Log.w('Detail empty', error: '$comicId returned null info');
         notifyListeners();
         return;
       }

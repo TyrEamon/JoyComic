@@ -215,7 +215,7 @@ class ReaderProvider extends ChangeNotifier {
     if (urls == null || urls.isEmpty) {
       _loadingState = ReaderLoadState.error;
       _loadingErrorMessage = '该章节暂无图片';
-      Log.w('Reader load empty', 'chapter ${_chapter.id} has no images');
+      Log.w('Reader load empty', error: 'chapter ${_chapter.id} has no images');
       notifyListeners();
       return;
     }
@@ -437,7 +437,10 @@ class ReaderProvider extends ChangeNotifier {
         duration: const Duration(milliseconds: 200),
       );
     } else {
-      scrollOffsetController.scrollTo(offset);
+      scrollOffsetController.animateScroll(
+        offset: offset,
+        duration: Duration.zero,
+      );
     }
   }
 
@@ -590,7 +593,10 @@ class ReaderProvider extends ChangeNotifier {
         }
         return;
       }
-      scrollOffsetController.scrollTo(_scrollSpeed);
+      scrollOffsetController.animateScroll(
+        offset: _scrollSpeed,
+        duration: Duration.zero,
+      );
     });
     _smoothTicker!.start();
     isPageTurning = true;
