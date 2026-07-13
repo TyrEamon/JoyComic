@@ -32,25 +32,25 @@ class _MainScaffoldState extends State<MainScaffold> {
       label: '首页',
       icon: Icons.home_outlined,
       activeIcon: Icons.home_rounded,
-      page: const HomePage(),
+      page: HomePage(),
     ),
     _Tab(
       label: '分类',
       icon: Icons.grid_view_outlined,
       activeIcon: Icons.grid_view_rounded,
-      page: const CategoryPage(),
+      page: CategoryPage(),
     ),
     _Tab(
       label: '收藏',
       icon: Icons.favorite_border_rounded,
       activeIcon: Icons.favorite_rounded,
-      page: const FavoritesPage(),
+      page: FavoritesPage(),
     ),
     _Tab(
       label: '我的',
       icon: Icons.person_outline_rounded,
       activeIcon: Icons.person_rounded,
-      page: const MinePage(),
+      page: MinePage(),
     ),
   ];
 

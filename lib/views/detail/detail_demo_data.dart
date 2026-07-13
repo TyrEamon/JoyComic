@@ -6,6 +6,7 @@
 library detail_demo_data;
 
 import '../../comic_source/comic_source.dart';
+import '../../network/base_comic.dart';
 
 ComicInfoData buildDemoComicInfo() {
   const cover = 'https://picsum.photos/seed/joycomic-cover/600/800';
