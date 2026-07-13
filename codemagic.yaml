@@ -1,0 +1,63 @@
+# JoyComic Codemagic CI/CD
+# 在 codemagic.io 连接此仓库后自动触发。
+#
+# 首次运行时会在 macOS CI 上自动补全 ios/ 目录
+# （flutter create . --platforms=ios）并生成应用图标。
+workflows:
+  build-ipa:
+    name: Build IPA
+    instance_type: mac_mini_m2
+    max_build_duration: 30
+    environment:
+      flutter: stable
+      xcode: latest
+      vars:
+        # 应用显示名（可在此修改，默认从 pubspec.yaml 读取）
+        APP_NAME: "JoyComic"
+      groups:
+        # 代码签名凭据（如需发布到 App Store）：
+        # - APP_STORE_CONNECT_ISSUER_ID
+        # - APP_STORE_CONNECT_KEY_IDENTIFIER
+        # - APP_STORE_CONNECT_PRIVATE_KEY
+        # - CERTIFICATE_PRIVATE_KEY
+        # 在 codemagic.io > Teams > Environment variables 中设置
+        # - app_store_credentials
+    triggering:
+      events:
+        - push
+        - tag
+      branch_patterns:
+        - pattern: main
+          include: true
+    scripts:
+      - name: Generate iOS project files
+        script: |
+          # ios/ 目录不存在时生成（首次运行或 git 未跟踪时）
+          if [ ! -d "ios" ]; then
+            flutter create . --platforms=ios
+          fi
+      - name: Generate app icons
+        script: |
+          flutter pub get
+          dart run flutter_launcher_icons
+      - name: Install dependencies
+        script: flutter pub get
+      - name: Build unsigned IPA
+        script: |
+          flutter build ios --release --no-codesign \
+            --build-name=$(grep 'version:' pubspec.yaml | head -1 | awk '{print $2}') \
+            --build-number=$(($(git rev-list --count HEAD)))
+      - name: Package IPA
+        script: |
+          APP_PATH=$(find build/ios/iphoneos -name "*.app" -type d | head -1)
+          mkdir -p Payload
+          cp -r "$APP_PATH" Payload/
+          IPA_NAME="joycomic-$(git describe --tags --always 2>/dev/null || echo unsigned).ipa"
+          zip -r "$IPA_NAME" Payload/
+          echo "IPA_NAME=$IPA_NAME" >> $CM_ENV
+    artifacts:
+      - joycomic-*.ipa
+    publishing:
+      email:
+        recipients:
+          - builder@example.com

@@ -1,0 +1,16 @@
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    public_member_api_docs: false
+    prefer_const_constructors: true
+    prefer_const_literals_to_create_immutables: true
+    avoid_print: false
+
+analyzer:
+  errors:
+    # 阶段1骨架期允许部分未使用符号（占位实现会在后续阶段填充）
+    unused_element: warning
+    unused_local_variable: warning
+  exclude:
+    - "clone/**"
