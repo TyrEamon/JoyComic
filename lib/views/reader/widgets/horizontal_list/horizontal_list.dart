@@ -13,8 +13,8 @@ import 'package:flutter/services.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:photo_view/photo_view_gallery.dart';
 
-import '../../../foundation/reader_config.dart';
-import '../../providers/reader_provider.dart';
+import '../../../../foundation/reader_config.dart';
+import '../../providers/reader_provider.dart' hide ReaderImage;
 import '../../state/read_mode.dart';
 import '../../utils/reader_utils.dart';
 import '../retry_for_image.dart';

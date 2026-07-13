@@ -4,9 +4,9 @@ library bottom;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../providers/reader_provider.dart';
-import '../../state/list_state_provider.dart';
-import '../../state/read_mode.dart';
+import '../providers/reader_provider.dart' hide ReaderImage;
+import '../providers/list_state_provider.dart';
+import '../state/read_mode.dart';
 import '../utils/reader_utils.dart';
 
 /// 阅读器底部工具栏：页码滑块、阅读模式切换、设置入口、自动翻页开关。

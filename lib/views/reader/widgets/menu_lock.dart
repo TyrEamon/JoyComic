@@ -3,7 +3,7 @@ library menu_lock;
 
 import 'package:flutter/material.dart';
 
-import '../../providers/reader_provider.dart';
+import '../providers/reader_provider.dart' hide ReaderImage;
 import '../utils/reader_utils.dart';
 
 /// 工具栏显示时出现的浮动锁按钮。

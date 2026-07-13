@@ -4,7 +4,7 @@ library app_bar;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../providers/reader_provider.dart';
+import '../providers/reader_provider.dart' hide ReaderImage;
 import '../utils/reader_utils.dart';
 
 /// 阅读器顶部工具栏：返回按钮 + 漫画标题 + 章节名。
