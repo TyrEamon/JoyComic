@@ -19,7 +19,7 @@ import '../../providers/reader_provider.dart';
 import '../../state/read_mode.dart';
 import '../../utils/reader_utils.dart';
 import '../retry_for_image.dart';
-import '../reader_image.dart';
+import '../reader_image.dart' as img_widget;
 
 /// 横向翻页模式。
 class HorizontalList extends StatefulWidget {
@@ -249,7 +249,7 @@ class _HorizontalListState extends State<HorizontalList> {
         final item = entry.value;
         final count = correctImages.length;
         return Expanded(
-          child: ReaderImage(
+          child: img_widget.ReaderImage(
             key: ValueKey(item.cacheKey),
             url: item.url,
             cacheKey: item.cacheKey,
