@@ -10,7 +10,6 @@ import 'foundation/app_data.dart';
 import 'foundation/log.dart';
 import 'theme/app_theme.dart';
 import 'views/auth/login_page.dart';
-import 'views/detail/detail_demo_data.dart';
 import 'views/detail/detail_page.dart';
 import 'views/download/download_page.dart';
 import 'views/image_search/image_search_page.dart';
@@ -105,15 +104,6 @@ final _router = GoRouter(
       builder: (context, state) {
         final sourceKey = state.pathParameters['sourceKey']!;
         final comicId = state.pathParameters['comicId']!;
-        // demo-comic-id 走演示数据旁路，展示阶段3 完整设计。
-        final demo = comicId == 'demo-comic-id' ? buildDemoComicInfo() : null;
-        if (demo != null) {
-          return DetailPage(
-            sourceKey: sourceKey,
-            comicId: comicId,
-            demoData: demo,
-          );
-        }
         return DetailPage(sourceKey: sourceKey, comicId: comicId);
       },
     ),
