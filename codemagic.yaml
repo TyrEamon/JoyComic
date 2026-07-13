@@ -35,13 +35,13 @@ workflows:
         script: flutter pub get
       - name: Build unsigned IPA
         script: |
-          # Patch Xcode project to disable code signing
-          cd ios
-          sed -i '' 's/CODE_SIGNING_REQUIRED = YES/CODE_SIGNING_REQUIRED = NO/g' Runner.xcodeproj/project.pbxproj 2>/dev/null || true
-          sed -i '' 's/CODE_SIGNING_ALLOWED = YES/CODE_SIGNING_ALLOWED = NO/g' Runner.xcodeproj/project.pbxproj 2>/dev/null || true
-          cd ..
+          # 在 xcconfig 中写入 dummy Development Team（Flutter 3.32+ 要求）
+          echo "" >> ios/Flutter/Release.xcconfig
+          echo "DEVELOPMENT_TEAM=0000000000" >> ios/Flutter/Release.xcconfig
+          echo "CODE_SIGN_STYLE=Manual" >> ios/Flutter/Release.xcconfig
+          echo "CODE_SIGNING_ALLOWED=NO" >> ios/Flutter/Release.xcconfig
+          echo "CODE_SIGNING_REQUIRED=NO" >> ios/Flutter/Release.xcconfig
 
-          # Build with Flutter (no codesign)
           flutter build ios --release --no-codesign \
             --build-name=$(grep 'version:' pubspec.yaml | head -1 | awk '{print $2}') \
             --build-number=$(($(git rev-list --count HEAD)))
