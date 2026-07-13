@@ -35,10 +35,13 @@ workflows:
         script: flutter pub get
       - name: Build unsigned IPA
         script: |
-          export CODE_SIGN_STYLE=Manual
-          export CODE_SIGNING_REQUIRED=NO
-          export CODE_SIGNING_ALLOWED=NO
-          export DEVELOPMENT_TEAM=""
+          # Patch Xcode project to disable code signing
+          cd ios
+          sed -i '' 's/CODE_SIGNING_REQUIRED = YES/CODE_SIGNING_REQUIRED = NO/g' Runner.xcodeproj/project.pbxproj 2>/dev/null || true
+          sed -i '' 's/CODE_SIGNING_ALLOWED = YES/CODE_SIGNING_ALLOWED = NO/g' Runner.xcodeproj/project.pbxproj 2>/dev/null || true
+          cd ..
+
+          # Build with Flutter (no codesign)
           flutter build ios --release --no-codesign \
             --build-name=$(grep 'version:' pubspec.yaml | head -1 | awk '{print $2}') \
             --build-number=$(($(git rev-list --count HEAD)))
