@@ -10,6 +10,7 @@ import 'dart:convert' as convert;
 import 'package:dio/dio.dart';
 
 import '../res.dart';
+import '../base_comic.dart';
 import '../../foundation/log.dart';
 import 'picacg_headers.dart';
 import 'picacg_models.dart';
@@ -61,9 +62,9 @@ class PicacgNetwork {
     dio.options.validateStatus = (i) => i == 200 || i == 400 || i == 401;
     try {
       final res = await dio.get<String>(url);
-      final result = _handle(res);
+      final result = await _handle(res);
       if (result.error) {
-        Log.w('Pica GET fail', '$url → ${result.errorMessage}');
+        Log.w('Pica GET fail', error: '$url → ${result.errorMessage}');
       } else {
         Log.d('Pica GET', url);
       }
@@ -89,9 +90,10 @@ class PicacgNetwork {
     dio.options.validateStatus = (i) => i == 200 || i == 400 || i == 401;
     try {
       final res = await dio.post<String>(url, data: data);
-      final result = _handle(res);
+      final result = await _handle(res);
       if (result.error) {
-        Log.w('Pica POST fail', '$url → ${result.errorMessage}');
+        Log.w('Pica POST fail', error: '$url → ${result.errorMessage}');
+      } else {
       } else {
         Log.d('Pica POST', url);
       }
@@ -388,14 +390,11 @@ class PicacgNetwork {
       if (doc['tags'] is List) tags.addAll(List<String>.from(doc['tags']));
       if (doc['categories'] is List) tags.addAll(List<String>.from(doc['categories']));
       comics.add(ComicItemBrief(
-        doc['title'] ?? 'Unknown',
-        doc['_id'] ?? '',
-        doc['author'] ?? '',
-        doc['thumb']?.toString() ?? doc['cover']?.toString() ?? '',
-        tags,
-        '',
-        doc['totalViews'] ?? 0,
-        doc['totalLikes'] ?? 0,
+        title: doc['title'] ?? 'Unknown',
+        id: doc['_id'] ?? '',
+        author: doc['author'] ?? '',
+        coverPath: doc['thumb']?.toString() ?? doc['cover']?.toString() ?? '',
+        tags: tags,
       ));
     }
     final maxPage = res.dataOrNull?['data']?['comics']?['pages'] ?? 1;

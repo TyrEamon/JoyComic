@@ -91,7 +91,7 @@ class ReaderImage extends StatelessWidget {
           child: CircularProgressIndicator(
             value: progress,
             strokeWidth: 3,
-            constraints: const BoxConstraints.tight(Size(28, 28)),
+            constraints: const BoxConstraints(maxWidth: 28, maxHeight: 28),
             strokeCap: StrokeCap.round,
           ),
         );
