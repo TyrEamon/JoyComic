@@ -12,16 +12,7 @@ workflows:
       flutter: stable
       xcode: latest
       vars:
-        # 应用显示名（可在此修改，默认从 pubspec.yaml 读取）
         APP_NAME: "JoyComic"
-      groups:
-        # 代码签名凭据（如需发布到 App Store）：
-        # - APP_STORE_CONNECT_ISSUER_ID
-        # - APP_STORE_CONNECT_KEY_IDENTIFIER
-        # - APP_STORE_CONNECT_PRIVATE_KEY
-        # - CERTIFICATE_PRIVATE_KEY
-        # 在 codemagic.io > Teams > Environment variables 中设置
-        # - app_store_credentials
     triggering:
       events:
         - push
