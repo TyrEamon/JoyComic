@@ -14,7 +14,8 @@ import 'package:photo_view/photo_view.dart';
 import 'package:photo_view/photo_view_gallery.dart';
 
 import '../../../../foundation/reader_config.dart';
-import '../../providers/reader_provider.dart' hide ReaderImage;
+import '../../providers/list_state_provider.dart';
+import '../../providers/reader_provider.dart';
 import '../../state/read_mode.dart';
 import '../../utils/reader_utils.dart';
 import '../retry_for_image.dart';
@@ -181,7 +182,7 @@ class _HorizontalListState extends State<HorizontalList> {
                   child: CircularProgressIndicator(
                     value: value,
                     strokeWidth: 3,
-                    constraints: const BoxConstraints.tight(Size(28, 28)),
+                    constraints: const BoxConstraints(maxWidth: 28, maxHeight: 28),
                     strokeCap: StrokeCap.round,
                   ),
                 );
@@ -209,15 +210,11 @@ class _HorizontalListState extends State<HorizontalList> {
         ),
       ),
       filterQuality: FilterQuality.medium,
-      errorBuilder: (context, error, stackTrace, retry) {
+      errorBuilder: (context, error, stackTrace) {
         return Center(
           child: IconButton(
-            onPressed: () async {
-              await _evictImage(item);
-              if (!mounted) return;
-              retry();
-            },
             icon: const Icon(Icons.refresh),
+            onPressed: () {},
           ),
         );
       },
