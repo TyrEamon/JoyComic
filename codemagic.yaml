@@ -35,6 +35,10 @@ workflows:
         script: flutter pub get
       - name: Build unsigned IPA
         script: |
+          export CODE_SIGN_STYLE=Manual
+          export CODE_SIGNING_REQUIRED=NO
+          export CODE_SIGNING_ALLOWED=NO
+          export DEVELOPMENT_TEAM=""
           flutter build ios --release --no-codesign \
             --build-name=$(grep 'version:' pubspec.yaml | head -1 | awk '{print $2}') \
             --build-number=$(($(git rev-list --count HEAD)))
