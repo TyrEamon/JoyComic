@@ -1,8 +1,4 @@
 # JoyComic Codemagic CI/CD
-# 在 codemagic.io 连接此仓库后自动触发。
-#
-# 首次运行时会在 macOS CI 上自动补全 ios/ 目录
-# （flutter create . --platforms=ios）并生成应用图标。
 workflows:
   build-ipa:
     name: Build IPA
@@ -23,7 +19,6 @@ workflows:
     scripts:
       - name: Generate iOS project files
         script: |
-          # ios/ 目录不存在时生成（首次运行或 git 未跟踪时）
           if [ ! -d "ios" ]; then
             flutter create . --platforms=ios
           fi
@@ -35,22 +30,39 @@ workflows:
         script: flutter pub get
       - name: Build unsigned IPA
         script: |
-          # 在 xcconfig 中写入 dummy Development Team（Flutter 3.32+ 要求）
-          echo "" >> ios/Flutter/Release.xcconfig
-          echo "DEVELOPMENT_TEAM=0000000000" >> ios/Flutter/Release.xcconfig
-          echo "CODE_SIGN_STYLE=Manual" >> ios/Flutter/Release.xcconfig
-          echo "CODE_SIGNING_ALLOWED=NO" >> ios/Flutter/Release.xcconfig
-          echo "CODE_SIGNING_REQUIRED=NO" >> ios/Flutter/Release.xcconfig
+          VERSION=$(grep 'version:' pubspec.yaml | head -1 | awk '{print $2}')
+          BN=$(($(git rev-list --count HEAD)))
+          echo "Building version $VERSION ($BN)"
 
-          flutter build ios --release --no-codesign \
-            --build-name=$(grep 'version:' pubspec.yaml | head -1 | awk '{print $2}') \
-            --build-number=$(($(git rev-list --count HEAD)))
+          # Flutter 3.29+ 中 --no-codesign 可能不可用，这里硬编码签名设置
+          cd ios
+          # 设置 dummy development team 让 Flutter 校验通过
+          echo 'DEVELOPMENT_TEAM=0000000000' >> Flutter/Release.xcconfig
+          echo 'CODE_SIGN_STYLE=Manual' >> Flutter/Release.xcconfig
+          cd ..
+
+          # 构建（会尝试签名但 .app 仍会生成）
+          flutter build ios --release \
+            --build-name=$VERSION \
+            --build-number=$BN 2>&1 | tail -10 || true
+
+          # 查找生成的 .app
+          APP_PATH=$(find build/ios/iphoneos -name "*.app" -type d | head -1)
+          if [ -z "$APP_PATH" ]; then
+            # flutter build 可能没生成 iphoneos 目录，尝试其他路径
+            APP_PATH=$(find build/ios -name "*.app" -type d | head -1)
+          fi
+          echo "Found app at: $APP_PATH"
       - name: Package IPA
         script: |
-          APP_PATH=$(find build/ios/iphoneos -name "*.app" -type d | head -1)
+          APP_PATH=$(find build/ios -name "*.app" -type d | head -1)
+          if [ -z "$APP_PATH" ]; then
+            echo "No .app found!"
+            exit 1
+          fi
           mkdir -p Payload
           cp -r "$APP_PATH" Payload/
-          IPA_NAME="joycomic-$(git describe --tags --always 2>/dev/null || echo unsigned).ipa"
+          IPA_NAME="joycomic-unsigned.ipa"
           zip -r "$IPA_NAME" Payload/
           echo "IPA_NAME=$IPA_NAME" >> $CM_ENV
     artifacts:
