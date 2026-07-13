@@ -160,9 +160,8 @@ class JmCategory {
   final String slug;
   final List<JmSubCategory> subCategories;
 
-  JmCategory(this.name, this.slug, this.subCategories) {
-    if (slug.isEmpty) slug = '0';
-  }
+  JmCategory(this.name, this.slug, this.subCategories);
+  // 注意：slug 为空时外层调用方应自行转 '0'，此处不移除 final 以保持不可变性
 }
 
 @immutable

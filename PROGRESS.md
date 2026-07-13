@@ -33,7 +33,7 @@
 | 3 | UI 页面 + 功能集成 + 日志系统 | ✅ 完成 | 全部 16 页面 UI 落地；8 组功能集成（登录/搜索/排行/收藏/首页/影视/分类/评论）；18+ 文件真实数据对接；7 个新增 API 端点；卡片源徽标（JM/Pica）；搜索/收藏源筛选 Tab（全部/禁漫/哔咔）；登录检测弹窗；SauceNAO 以图搜图；Shimmer 骨架屏动画；logger 日志系统 + 查看器（复制/筛选/导出TXT）；image_picker 依赖 |
 | 4 | 本地 DB + 下载 + 状态 | ✅ 全部完成 | sqlite3 双库+搜索历史+阅读记录+收藏同步+下载管理器(Dio并发限流)+WebDAV同步(archive zip+上传/恢复) |
 | 5 | 质量审计 + TODO 清理 + 亮色主题 + 字体 | ✅ 全部完成 | 审计 + TODO 清零 + 亮色主题 + LXGW WenKai 字体框架（assets/fonts/ + app_typography 字体常量 + pubspec 注释配置） |
-| 6 | 云端 iOS CI | ✅ 完成 | `codemagic.yaml` Flutter 工作流（build IPA） + `flutter_launcher_icons` 应用图标（app.jpg→iOS 所有尺寸）+ CI 首次自动 `flutter create . --platforms=ios` |
+| 6 | 云端 iOS CI | ✅ 完成 | `codemagic.yaml` Flutter 工作流 + `flutter_launcher_icons` 应用图标 + CI 首次自动 `flutter create . --platforms=ios`；修复 `url_launcher` 版本兼容性 |
 
 ## 阶段 1 交付清单（已落地，可编译）
 

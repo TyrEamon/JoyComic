@@ -13,7 +13,7 @@ import 'package:vector_math/vector_math_64.dart';
 import '../../providers/reader_provider.dart';
 import '../../providers/list_state_provider.dart';
 import '../../utils/reader_utils.dart';
-import '../../../foundation/reader_config.dart';
+import '../../../../foundation/reader_config.dart';
 
 /// 手势包装器。
 ///

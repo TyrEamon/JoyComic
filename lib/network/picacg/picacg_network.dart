@@ -27,7 +27,7 @@ const picacgApiHosts = <String, String>{
 };
 
 /// 默认接入域名（go2778 中转）。未登录前或 state 未注入时使用。
-const defaultPicacgApiUrl = picacgApiHosts['go2778']!;
+final defaultPicacgApiUrl = picacgApiHosts['go2778']!;
 
 const defaultAvatarUrl = 'DEFAULT_AVATAR_URL';
 

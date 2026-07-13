@@ -6,7 +6,7 @@ library shimmer;
 
 import 'package:flutter/material.dart';
 
-import '../../theme/app_colors.dart';
+import '../../../theme/app_colors.dart';
 
 /// 带 shimmer 微光扫动效果的骨架块。
 ///

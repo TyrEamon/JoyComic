@@ -40,6 +40,7 @@ class ComicCard extends StatelessWidget {
     this.width = _kHorzWidth,
     this.headers,
     this.onTap,
+    this.sourceKey,
   })  : _layout = _Layout.horizontal,
         badge = null;
 
@@ -54,6 +55,7 @@ class ComicCard extends StatelessWidget {
     this.width = _kPosterWidth,
     this.headers,
     this.onTap,
+    this.sourceKey,
   })  : _layout = _Layout.grid,
         tags = null;
 
