@@ -615,11 +615,14 @@ class ReaderProvider extends ChangeNotifier {
 
   // ============================ 预加载控制器引用 ============================
 
-  /// 图片预加载控制器（由 [ImagePreloadController] 实现在任务10 填写）。
+  /// 图片预加载控制器引用（由 [ImagePreloadController] 实现在任务10 填写）。
   ///
   /// ReaderProvider 持有引用但不管理其生命周期——由 [VerticalList] /
   /// [HorizontalList] 在 initState 时初始化并调用 [initPreloadController]。
   ImagePreloadControllerRef? _preloadController;
+
+  /// 预加载控制器（公开读取，供 HorizontalList 等使用）。
+  ImagePreloadControllerRef? get preloadController => _preloadController;
 
   /// 初始化预加载控制器引用。
   ///

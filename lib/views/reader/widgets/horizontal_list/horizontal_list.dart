@@ -145,30 +145,31 @@ class _HorizontalListState extends State<HorizontalList> {
               layoutWidth: constraints.maxWidth / 2,
               devicePixelRatio: dpr,
             );
-            context.reader.updatePreloadCacheWidth(
-              readMode.isDoublePage ? doubleCacheWidth : singleCacheWidth,
-            );
+            final cacheWidth = readMode.isDoublePage ? doubleCacheWidth : singleCacheWidth;
+            context.reader.updatePreloadCacheWidth(cacheWidth);
 
-            return PhotoViewGallery.builder(
+            // 构建 PhotoViewGallery 页面选项列表
+            final pageOptions = List.generate(pageCount, (index) {
+              if (!readMode.isDoublePage) {
+                return _buildSinglePageOptions(images[index], singleCacheWidth);
+              }
+              return _buildDoublePageOptions(
+                multiPageImages[index],
+                readMode,
+                doubleCacheWidth,
+                constraints,
+              );
+            });
+
+            return PhotoViewGallery(
               backgroundDecoration: BoxDecoration(
                 color: context.colorScheme.surfaceContainerLowest,
               ),
               scrollPhysics: const BouncingScrollPhysics(),
-              itemCount: pageCount,
               pageController: context.reader.pageController,
               onPageChanged: _onPageChanged,
               reverse: readMode.isReverse,
-              builder: (context, index) {
-                if (!readMode.isDoublePage) {
-                  return _buildSinglePageItem(images[index], singleCacheWidth);
-                }
-                return _buildDoublePageItem(
-                  multiPageImages[index],
-                  readMode,
-                  doubleCacheWidth,
-                  constraints,
-                );
-              },
+              pageOptions: pageOptions,
               loadingBuilder: (context, event) {
                 final bytes = event?.cumulativeBytesLoaded ?? 0;
                 double? value;
@@ -192,9 +193,9 @@ class _HorizontalListState extends State<HorizontalList> {
     );
   }
 
-  // ============================ 单页项 ============================
+  // ============================ 单页选项 ============================
 
-  Widget _buildSinglePageItem(ReaderImage item, int cacheWidth) {
+  PhotoViewGalleryPageOptions _buildSinglePageOptions(ReaderImage item, int cacheWidth) {
     return PhotoViewGalleryPageOptions(
       minScale: PhotoViewComputedScale.contained * 1.0,
       maxScale: PhotoViewComputedScale.covered * 4.0,
@@ -223,9 +224,9 @@ class _HorizontalListState extends State<HorizontalList> {
     );
   }
 
-  // ============================ 双页项 ============================
+  // ============================ 双页选项 ============================
 
-  Widget _buildDoublePageItem(
+  PhotoViewGalleryPageOptions _buildDoublePageOptions(
     List<ReaderImage> items,
     ReadMode readMode,
     int cacheWidth,
@@ -270,7 +271,9 @@ class _HorizontalListState extends State<HorizontalList> {
   // ============================ 缓存清理 ============================
 
   Future<void> _evictImage(ReaderImage item) async {
-    await cacheManager.removeFile(item.cacheKey);
+    if (item.cacheKey != null) {
+      await cacheManager.removeFile(item.cacheKey!);
+    }
     await CachedNetworkImageProvider(
       item.url,
       cacheManager: cacheManager,
