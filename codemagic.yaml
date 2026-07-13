@@ -32,27 +32,21 @@ workflows:
         script: |
           VERSION=$(grep 'version:' pubspec.yaml | head -1 | awk '{print $2}')
           BN=$(($(git rev-list --count HEAD)))
-          echo "Building version $VERSION ($BN)"
+          echo "Building v$VERSION ($BN)"
 
-          # Flutter 3.29+ 中 --no-codesign 可能不可用，这里硬编码签名设置
-          cd ios
-          # 设置 dummy development team 让 Flutter 校验通过
-          echo 'DEVELOPMENT_TEAM=0000000000' >> Flutter/Release.xcconfig
-          echo 'CODE_SIGN_STYLE=Manual' >> Flutter/Release.xcconfig
-          cd ..
+          # 在 xcconfig 中写入 dummy team（Flutter 3.32+ 校验需要）
+          # 同时关闭 lib 签名，让 xcodebuild 用 dummy team 时不会报错
+          tee -a ios/Flutter/Release.xcconfig << END
 
-          # 构建（会尝试签名但 .app 仍会生成）
+          DEVELOPMENT_TEAM=0000000000
+          CODE_SIGN_STYLE=Manual
+          CODE_SIGNING_ALLOWED=NO
+          CODE_SIGNING_REQUIRED=NO
+          END
+
           flutter build ios --release \
             --build-name=$VERSION \
-            --build-number=$BN 2>&1 | tail -10 || true
-
-          # 查找生成的 .app
-          APP_PATH=$(find build/ios/iphoneos -name "*.app" -type d | head -1)
-          if [ -z "$APP_PATH" ]; then
-            # flutter build 可能没生成 iphoneos 目录，尝试其他路径
-            APP_PATH=$(find build/ios -name "*.app" -type d | head -1)
-          fi
-          echo "Found app at: $APP_PATH"
+            --build-number=$BN 2>&1
       - name: Package IPA
         script: |
           APP_PATH=$(find build/ios -name "*.app" -type d | head -1)
