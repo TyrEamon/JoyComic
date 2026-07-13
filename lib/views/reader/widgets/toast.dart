@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 
-import 'reader_utils.dart';
+import '../utils/reader_utils.dart';
 
 /// 应用级 navigator key 持有者。
 ///

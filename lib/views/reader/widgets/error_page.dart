@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import 'reader_utils.dart';
+import '../utils/reader_utils.dart';
 
 /// 通用错误+重试页（阅读器章节加载失败、网络异常等场景）。
 class ErrorPage extends StatefulWidget {

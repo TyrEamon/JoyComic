@@ -62,7 +62,7 @@ class _ReaderBottomState extends State<ReaderBottom> {
                   child: Slider(
                     value: pageNo.toDouble(),
                     min: 0,
-                    max: (pageCount - 1).clamp(0, double.infinity),
+                    max: (pageCount - 1).clamp(0, double.infinity).toDouble(),
                     divisions: pageCount > 1 ? pageCount - 1 : null,
                     activeColor: Colors.white,
                     inactiveColor: Colors.white30,
