@@ -194,7 +194,7 @@ class JmNetwork {
         Log.d('JM OK', '$url (domain: $d)');
         return res;
       }
-      Log.w('JM failover', 'domain: $d → $url');
+      Log.w('JM failover: $url', error: 'domain: $d');
       last = res ?? last;
     }
     return last!;
@@ -264,7 +264,7 @@ class JmNetwork {
       if (mainWeb.isNotEmpty) {
         state?.setApiBaseUrl('https://$mainWeb');
       }
-      return Res(json);
+      return Res(json as Map<String, dynamic>);
     } catch (e) {
       return Res(null, errorMessage: e.toString());
     }

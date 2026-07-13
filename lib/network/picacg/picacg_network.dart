@@ -94,7 +94,6 @@ class PicacgNetwork {
       if (result.error) {
         Log.w('Pica POST fail', error: '$url → ${result.errorMessage}');
       } else {
-      } else {
         Log.d('Pica POST', url);
       }
       return result;
@@ -379,11 +378,11 @@ class PicacgNetwork {
   /// 获取收藏列表。
   ///
   /// [newToOld] = true 时按最新排序，false 按最早。
-  Future<Res<List<ComicItemBrief>>> getFavorites(int page, bool newToOld) async {
+  Future<Res<List<BaseComic>>> getFavorites(int page, bool newToOld) async {
     final sort = newToOld ? 'dd' : 'da';
     final res = await get('${apiUrl}/users/favourite?s=$sort&page=$page');
     if (res.error) return Res(null, errorMessage: res.errorMessage);
-    final comics = <ComicItemBrief>[];
+    final comics = <BaseComic>[];
     final docs = res.dataOrNull?['data']?['comics']?['docs'] ?? [];
     for (final doc in docs) {
       final tags = <String>[];
@@ -395,10 +394,11 @@ class PicacgNetwork {
         author: doc['author'] ?? '',
         coverPath: doc['thumb']?.toString() ?? doc['cover']?.toString() ?? '',
         tags: tags,
+        likes: doc['totalLikes'] ?? 0,
       ));
     }
     final maxPage = res.dataOrNull?['data']?['comics']?['pages'] ?? 1;
-    return Res<List<BaseComic>>(comics.cast<BaseComic>(), subData: maxPage);
+    return Res<List<BaseComic>>(comics, subData: maxPage);
   }
 
   /// 收藏 / 取消收藏。
