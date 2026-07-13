@@ -65,7 +65,7 @@ dependencies:
   sqlite3_flutter_libs: ^0.5.28
 
   # 工具
-  url_launcher: ^7.0.0
+  url_launcher: ^6.3.2
   path: ^1.9.0
   collection: ^1.18.0
   archive: ^4.0.0          # 纯 Dart 的 zip 归档能力（离线打包下载章节）
