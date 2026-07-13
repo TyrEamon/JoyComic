@@ -3,7 +3,7 @@ library page_no_tag;
 
 import 'package:flutter/material.dart';
 
-import '../../utils/reader_utils.dart';
+import '../utils/reader_utils.dart';
 import '../providers/reader_provider.dart' hide ReaderImage;
 
 /// 显示在左上角的页码标签。
