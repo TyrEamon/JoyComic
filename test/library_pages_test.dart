@@ -156,6 +156,136 @@ void main() {
       expect(find.text('Offline favorite'), findsOneWidget);
       expect(find.textContaining('本地'), findsWidgets);
     });
+
+    testWidgets(
+      'remote load failure still uses remote-first removal and preserves local on failure',
+      (tester) async {
+        final database = sqlite3.openInMemory();
+        addTearDown(database.dispose);
+        JoyDatabase.migrateCore(database);
+        final helper = FavoritesHelper(database);
+        helper.upsert(
+          const FavoriteRecord(
+            source: 'remote-capable',
+            comic: 'comic-1',
+            title: 'Cached favorite',
+            cover: '',
+            author: '',
+            favoritedAt: 10,
+          ),
+        );
+        FavoriteNotifier.instance.loadFromDb(database);
+        FavoriteNotifier.instance.consumeDirty();
+
+        var remoteCalls = 0;
+        final source = ComicSource.named(
+          name: 'Remote capable',
+          key: 'remote-capable',
+          filePath: '',
+          favoriteData: FavoriteData.named(
+            load: (page, [folder]) async =>
+                const Res.error('favorite load failed'),
+            addOrDelFavorite: (comicId, folderId, isAdding) async {
+              remoteCalls++;
+              return const Res.error('remove failed');
+            },
+          ),
+        )..data['account'] = <String>['user', 'token'];
+        final previousSources = List<ComicSource>.of(ComicSource.sources);
+        addTearDown(() {
+          ComicSource.sources
+            ..clear()
+            ..addAll(previousSources);
+        });
+        ComicSource.sources
+          ..clear()
+          ..add(source);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: FavoritesPage(
+              favoritesHelper: helper,
+              sourcesProvider: () => <ComicSource>[source],
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('取消收藏'));
+        await tester.pumpAndSettle();
+
+        expect(remoteCalls, 1);
+        expect(helper.get('remote-capable', 'comic-1'), isNotNull);
+        expect(
+          FavoriteNotifier.instance.isFavorited('remote-capable', 'comic-1'),
+          isTrue,
+        );
+      },
+    );
+
+    testWidgets(
+      'remote load failure still uses remote-first removal and deletes local on success',
+      (tester) async {
+        final database = sqlite3.openInMemory();
+        addTearDown(database.dispose);
+        JoyDatabase.migrateCore(database);
+        final helper = FavoritesHelper(database);
+        helper.upsert(
+          const FavoriteRecord(
+            source: 'remote-capable',
+            comic: 'comic-1',
+            title: 'Cached favorite',
+            cover: '',
+            author: '',
+            favoritedAt: 10,
+          ),
+        );
+        FavoriteNotifier.instance.loadFromDb(database);
+        FavoriteNotifier.instance.consumeDirty();
+
+        var remoteCalls = 0;
+        final source = ComicSource.named(
+          name: 'Remote capable',
+          key: 'remote-capable',
+          filePath: '',
+          favoriteData: FavoriteData.named(
+            load: (page, [folder]) async =>
+                const Res.error('favorite load failed'),
+            addOrDelFavorite: (comicId, folderId, isAdding) async {
+              remoteCalls++;
+              return const Res(true);
+            },
+          ),
+        )..data['account'] = <String>['user', 'token'];
+        final previousSources = List<ComicSource>.of(ComicSource.sources);
+        addTearDown(() {
+          ComicSource.sources
+            ..clear()
+            ..addAll(previousSources);
+        });
+        ComicSource.sources
+          ..clear()
+          ..add(source);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: FavoritesPage(
+              favoritesHelper: helper,
+              sourcesProvider: () => <ComicSource>[source],
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('取消收藏'));
+        await tester.pumpAndSettle();
+
+        expect(remoteCalls, 1);
+        expect(helper.get('remote-capable', 'comic-1'), isNull);
+        expect(
+          FavoriteNotifier.instance.isFavorited('remote-capable', 'comic-1'),
+          isFalse,
+        );
+      },
+    );
   });
 
   group('reading history', () {

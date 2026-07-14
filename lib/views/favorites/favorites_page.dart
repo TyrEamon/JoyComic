@@ -277,10 +277,11 @@ class _FavoritesPageState extends State<FavoritesPage> {
       return;
     }
 
+    final shouldRemoveRemotely =
+        source?.isLogin == true &&
+        source?.favoriteData?.addOrDelFavorite != null;
     try {
-      if (item.isRemote &&
-          source?.favoriteData?.addOrDelFavorite != null &&
-          source!.isLogin) {
+      if (shouldRemoveRemotely) {
         await _helper.toggleFavorite(
           sourceKey: item.sourceKey,
           comicId: item.comicId,
