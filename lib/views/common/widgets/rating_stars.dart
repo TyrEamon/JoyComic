@@ -8,7 +8,7 @@ import 'dart:math' show pi, cos, sin;
 
 import 'package:flutter/material.dart';
 
-import '../../theme/app_colors.dart';
+import '../../../theme/app_colors.dart';
 
 class RatingStars extends StatelessWidget {
   const RatingStars({

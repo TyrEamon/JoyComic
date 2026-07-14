@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../comic_source/built_in/registrar.dart';
 import '../comic_source/comic_source.dart';
 import 'reader_config.dart';
 

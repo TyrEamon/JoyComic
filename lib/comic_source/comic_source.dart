@@ -428,6 +428,7 @@ class CategoryData {
 
 /// 分类块基类。
 abstract class BaseCategoryPart {
+  const BaseCategoryPart();
   String get title;
 }
 
