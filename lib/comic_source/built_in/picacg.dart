@@ -2,17 +2,16 @@
 ///
 /// 把 [PicacgNetwork] 与 [ComicSource] 契约连接起来：构造一个状态门面
 /// [PicacgStateImpl] 桥接源运行期 `data`，注入到网络层；并声明账号登录流。
-/// 分类/搜索/探索页/收藏等较高层字段在阶段2/3 逐步补全，此处仅保留可登录
-/// 的最小骨架，确保整条鉴权链路可运行。
+/// 分类、分页和首页分区通过源中立契约暴露，网络请求仍复用源内鉴权状态。
 library built_in_picacg;
-
-import 'dart:collection';
 
 import '../../comic_source/comic_source.dart';
 import '../../network/base_comic.dart';
+import '../../network/json_value.dart';
 import '../../network/picacg/picacg_network.dart';
 import '../../network/res.dart';
 import '../../network/source_state.dart';
+import '../../views/common/source_content_models.dart';
 
 /// 哔咔源状态门面实现：从 [ComicSource.data] 读写 token / channel / 图片质量 / 接入域名。
 class PicacgStateImpl implements PicacgState {
@@ -20,17 +19,21 @@ class PicacgStateImpl implements PicacgState {
   PicacgStateImpl(this.source);
 
   @override
-  String get token => source.data['token'] ?? '';
+  String get token => jsonString(source.data['token']);
 
   @override
-  String get channel => source.data['appChannel'] ?? '3';
+  String get channel =>
+      jsonString(source.data['appChannel'], fallback: '3');
 
   @override
-  String get imageQuality => source.data['imageQuality'] ?? 'original';
+  String get imageQuality =>
+      jsonString(source.data['imageQuality'], fallback: 'original');
 
   @override
-  String get apiBaseUrl =>
-      source.data['apiBaseUrl'] ?? defaultPicacgApiUrl;
+  String get apiBaseUrl => jsonString(
+        source.data['apiBaseUrl'],
+        fallback: defaultPicacgApiUrl,
+      );
 
   @override
   void setApiBaseUrl(String url) {
@@ -39,7 +42,7 @@ class PicacgStateImpl implements PicacgState {
   }
 
   @override
-  List<String>? getAccount() => source.data['account'] as List<String>?;
+  List<String>? getAccount() => _storedAccount(source.data['account']);
 
   @override
   Future<bool> reLogin() => source.reLogin();
@@ -79,12 +82,56 @@ ComicSource buildPicacgSource() {
       },
       loginWebsite: 'https://picacomic.com',
     ),
+    loadSourceCategories: () async {
+      final res = await PicacgNetwork().getCategories();
+      if (res.error) return Res(null, errorMessage: res.errorMessage);
+      return Res(normalizeCategories([
+        for (final category in res.data)
+          SourceCategory(
+            key: category.key,
+            title: category.title,
+            param: category.param,
+            cover: category.cover,
+            sortOptions: _picacgSortOptions,
+          ),
+      ]));
+    },
+    loadSourceContent: (query) async {
+      final res = await PicacgNetwork().getCategoryComics(
+        query.param ?? query.categoryKey,
+        query.page,
+        _picacgSort(query.sort),
+      );
+      if (res.error) return Res(null, errorMessage: res.errorMessage);
+      return Res(SourceContentPage(
+        query: query,
+        comics: <BaseComic>[...res.data],
+        maxPage: jsonInt(res.subData, fallback: query.page),
+      ));
+    },
+    loadHomeSections: () async {
+      const query = SourceContentQuery(
+        categoryKey: '',
+        page: 1,
+        sort: 'dd',
+      );
+      final res = await PicacgNetwork().getCategoryComics('', 1, 'dd');
+      if (res.error) return Res(null, errorMessage: res.errorMessage);
+      return Res([
+        SourceContentSection(
+          key: 'latest',
+          title: '最新漫画',
+          comics: <BaseComic>[...res.data],
+          moreQuery: query,
+        ),
+      ]);
+    },
     // 哔咔搜索：高级搜索，sort='ua' 默认排序。
     searchPageData: SearchPageData.named(
       loadPage: (keyword, page, options) async {
         final res = await PicacgNetwork().search(keyword, 'ua', page);
         if (res.error) return Res(null, errorMessage: res.errorMessage);
-        return Res<List<BaseComic>>(res.data.cast<BaseComic>(),
+        return Res<List<BaseComic>>(<BaseComic>[...res.data],
             subData: res.subData);
       },
       enableTagsSuggestions: true,
@@ -106,38 +153,12 @@ ComicSource buildPicacgSource() {
     // 哔咔图片（封面/内文）无额外鉴权头，走默认 dio 即可。
     getImageLoadingConfig: null,
     getThumbnailLoadingConfig: null,
-    // 分类。
-    categoryData: CategoryData.named(
-      title: '哔咔分类',
-      key: 'picacg',
-      categories: [
-        FixedCategoryPart('全部', [
-          '恋爱', '校园', '科幻', '奇幻', '悬疑', '搞笑',
-          '百合', '伪娘', '同人', '单本', '短篇', '完结',
-        ], 'category'),
-      ],
-      enableRankingPage: true,
-    ),
-    categoryComicsData: CategoryComicsData.named(
-      options: [
-        CategoryComicsOptions.named(
-          options: LinkedHashMap.from({'category': '类别'}),
-        ),
-      ],
-      load: (category, param, options, page) async {
-        // 哔咔分类搜索
-        final res = await PicacgNetwork().search(category, 'ua', page);
-        if (res.error) return Res(null, errorMessage: res.errorMessage);
-        return Res<List<BaseComic>>(res.data.cast<BaseComic>(),
-            subData: res.subData);
-      },
-    ),
     // 收藏。
     favoriteData: FavoriteData.named(
       load: (page, [folder]) async {
         final res = await PicacgNetwork().getFavorites(page, true);
         if (res.error) return Res(null, errorMessage: res.errorMessage);
-        return Res<List<BaseComic>>(res.data.cast<BaseComic>(),
+        return Res<List<BaseComic>>(<BaseComic>[...res.data],
             subData: res.subData);
       },
       addOrDelFavorite: (comicId, folderId, isAdding) async {
@@ -151,13 +172,13 @@ ComicSource buildPicacgSource() {
     commentsLoader: (id, subId, page, replyTo) async {
       final res = await PicacgNetwork().getComments(id, page: page);
       if (res.error) return Res(null, errorMessage: res.errorMessage);
-      final comments = res.data.map((m) => Comment(
-        m['userName'] as String? ?? '',
-        m['avatar'] as String?,
-        m['content'] as String? ?? '',
-        m['time'] as String?,
-        m['replyCount'] as int? ?? 0,
-        m['id'] as String?,
+      final comments = res.data.map((comment) => Comment(
+        jsonString(comment['userName']),
+        _optionalString(comment['avatar']),
+        jsonString(comment['content']),
+        _optionalString(comment['time']),
+        jsonInt(comment['replyCount']),
+        _optionalString(comment['id']),
       )).toList();
       return Res(comments);
     },
@@ -172,6 +193,33 @@ ComicSource buildPicacgSource() {
   // 注入状态门面并注册到内置表。
   PicacgNetwork()..state = PicacgStateImpl(source);
   return source;
+}
+
+const _picacgSortKeys = <String>{'ua', 'dd', 'da', 'ld'};
+
+const _picacgSortOptions = <SourceSortOption>[
+  SourceSortOption(key: 'ua', title: '默认'),
+  SourceSortOption(key: 'dd', title: '新到旧'),
+  SourceSortOption(key: 'da', title: '旧到新'),
+  SourceSortOption(key: 'ld', title: '最多喜欢'),
+];
+
+String _picacgSort(String? sort) {
+  if (sort == null || !_picacgSortKeys.contains(sort)) {
+    return 'ua';
+  }
+  return sort;
+}
+
+List<String>? _storedAccount(Object? value) {
+  final account = jsonStringList(value);
+  return account.length >= 2 ? account : null;
+}
+
+String? _optionalString(Object? value) {
+  if (value == null) return null;
+  final text = jsonString(value);
+  return text.isEmpty ? null : text;
 }
 
 Map<String, dynamic> _profileToMap(Profile p) => {
@@ -208,7 +256,7 @@ ComicInfoData _picacgItemToComicInfoData(ComicItem info) {
     },
     chapters: chapters,
     thumbnails: null,
-    suggestions: info.recommendation.cast<BaseComic>(),
+    suggestions: <BaseComic>[...info.recommendation],
     sourceKey: 'picacg',
     comicId: info.id,
     isFavorite: info.isFavourite,

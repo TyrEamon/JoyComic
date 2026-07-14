@@ -34,6 +34,20 @@ final defaultPicacgApiUrl = picacgApiHosts['go2778']!;
 
 const defaultAvatarUrl = 'DEFAULT_AVATAR_URL';
 
+class PicacgCategory {
+  final String key;
+  final String title;
+  final String param;
+  final String? cover;
+
+  const PicacgCategory({
+    required this.key,
+    required this.title,
+    required this.param,
+    this.cover,
+  });
+}
+
 /// 哔咔网络请求类。
 class PicacgNetwork {
   PicacgNetwork._create();
@@ -211,21 +225,63 @@ class PicacgNetwork {
     return Res(jsonStringList(data['keywords']));
   }
 
-  /// 获取首页分类。跳过 web 专属分类。
-  Future<Res<List<CategoryItem>>> getCategories() async {
+  /// 获取分类。分类筛选参数使用服务端 title，稳定 key 优先使用 id。
+  Future<Res<List<PicacgCategory>>> getCategories() async {
     final response = await get('${apiUrl}/categories');
     if (response.error) return Res(null, errorMessage: response.errorMessage);
-    final items = <CategoryItem>[];
+    final items = <PicacgCategory>[];
     final data = jsonMap(response.data['data']);
+    if (data['categories'] is! List) {
+      return const Res(null, errorMessage: '分类解析失败');
+    }
     for (final rawCategory in jsonList(data['categories'])) {
       if (rawCategory is! Map) continue;
       final category = jsonMap(rawCategory);
       if (jsonBool(category['isWeb'])) continue;
-      final title = jsonString(category['title']);
-      if (title.isEmpty) continue;
-      items.add(CategoryItem(title, _mediaUrl(category['thumb'])));
+      final title = jsonString(category['title']).trim();
+      final key = jsonString(
+        category['_id'] ?? category['id'] ?? category['title'],
+      ).trim();
+      if (key.isEmpty || title.isEmpty) continue;
+      final cover = _mediaUrl(category['thumb']);
+      items.add(PicacgCategory(
+        key: key,
+        title: title,
+        param: title,
+        cover: cover.isEmpty ? null : cover,
+      ));
     }
     return Res(items);
+  }
+
+  /// 获取分类漫画；category 为空时返回全站漫画，可用于首页分区。
+  Future<Res<List<ComicItemBrief>>> getCategoryComics(
+    String category,
+    int page,
+    String sort,
+  ) async {
+    final uri = Uri.parse('${apiUrl}/comics').replace(queryParameters: {
+      'page': page.toString(),
+      if (category.trim().isNotEmpty) 'c': category.trim(),
+      's': sort,
+    });
+    final response = await get(uri.toString());
+    if (response.error) return Res(null, errorMessage: response.errorMessage);
+    final comicsData = jsonMap(jsonMap(response.data['data'])['comics']);
+    if (comicsData.isEmpty) {
+      return const Res(null, errorMessage: '分类漫画解析失败');
+    }
+    final comics = <ComicItemBrief>[];
+    for (final rawComic in jsonList(comicsData['docs'])) {
+      if (rawComic is! Map) continue;
+      final comic = ComicItemBrief.fromJson(jsonMap(rawComic));
+      if (comic.id.isEmpty) continue;
+      comics.add(comic);
+    }
+    return Res(
+      comics,
+      subData: jsonInt(comicsData['pages'], fallback: 1),
+    );
   }
 
   /// 高级搜索。[passed] subData 承载 maxPage。

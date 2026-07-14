@@ -15,6 +15,7 @@ import 'package:flutter/widgets.dart';
 
 import '../network/base_comic.dart';
 import '../network/res.dart';
+import '../views/common/source_content_models.dart';
 import 'history.dart';
 
 // ============================ typedefs：源契约函数签名 ============================
@@ -90,6 +91,10 @@ class ComicSource {
   final CategoryData? categoryData;
 
   final CategoryComicsData? categoryComicsData;
+
+  final LoadSourceCategories? loadSourceCategories;
+  final LoadSourceContent? loadSourceContent;
+  final LoadHomeSections? loadHomeSections;
 
   final FavoriteData? favoriteData;
 
@@ -171,6 +176,9 @@ class ComicSource {
     this.account,
     this.categoryData,
     this.categoryComicsData,
+    this.loadSourceCategories,
+    this.loadSourceContent,
+    this.loadHomeSections,
     this.favoriteData,
     this.explorePages = const [],
     this.searchPageData,

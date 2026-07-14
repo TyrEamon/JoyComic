@@ -62,6 +62,20 @@ const jmExpressShuntKey = 0;
 /// 服务端的图片分段阈值对所有作品一致，故此处作为统一常量参与分段数推算。
 const jmScrambleId = '220980';
 
+class JmHomeSection {
+  final String key;
+  final String title;
+  final String? categoryParam;
+  final List<JmComicBrief> comics;
+
+  const JmHomeSection({
+    required this.key,
+    required this.title,
+    required this.comics,
+    this.categoryParam,
+  });
+}
+
 /// 禁漫网络请求类。
 class JmNetwork {
   JmNetwork._create();
@@ -411,6 +425,126 @@ class JmNetwork {
       comics.add(comic);
     }
     return Res(comics);
+  }
+
+  /// 获取一级分类及其子分类。
+  Future<Res<List<JmCategory>>> getCategories() async {
+    final res = await get('$baseUrl/categories');
+    if (res.error) return Res(null, errorMessage: res.errorMessage);
+    if (res.data is! Map) {
+      return const Res(null, errorMessage: '分类解析失败');
+    }
+    final data = jsonMap(res.data);
+    if (data['categories'] is! List) {
+      return const Res(null, errorMessage: '分类解析失败');
+    }
+    final categories = <JmCategory>[];
+    for (final rawCategory in jsonList(data['categories'])) {
+      if (rawCategory is! Map) continue;
+      final category = jsonMap(rawCategory);
+      final name = jsonString(category['name'] ?? category['title']).trim();
+      var slug = jsonString(category['slug'] ?? category['id']).trim();
+      if (name.isEmpty) continue;
+      if (slug.isEmpty) slug = '0';
+
+      final subCategories = <JmSubCategory>[];
+      for (final rawSubCategory in jsonList(category['sub_categories'])) {
+        if (rawSubCategory is! Map) continue;
+        final subCategory = jsonMap(rawSubCategory);
+        final cid = jsonString(
+          subCategory['CID'] ??
+              subCategory['cid'] ??
+              subCategory['id'] ??
+              subCategory['slug'],
+        ).trim();
+        final subName =
+            jsonString(subCategory['name'] ?? subCategory['title']).trim();
+        final subSlug = jsonString(subCategory['slug']).trim();
+        if (cid.isEmpty || subName.isEmpty) continue;
+        subCategories.add(JmSubCategory(cid, subName, subSlug));
+      }
+      categories.add(JmCategory(name, slug, subCategories));
+    }
+    return Res(categories);
+  }
+
+  /// 获取分类漫画，排序值由源适配层映射为服务端 order。
+  Future<Res<List<JmComicBrief>>> getCategoryComics(
+    String category,
+    String order,
+    int page,
+  ) async {
+    final uri = Uri.parse('$baseUrl/categories/filter').replace(
+      queryParameters: {
+        'o': order,
+        'c': category,
+        'page': page.toString(),
+      },
+    );
+    final res = await get(uri.toString());
+    if (res.error) return Res(null, errorMessage: res.errorMessage);
+    if (res.data is! Map) {
+      return const Res(null, errorMessage: '分类漫画解析失败');
+    }
+    final data = jsonMap(res.data);
+    if (data['content'] is! List) {
+      return const Res(null, errorMessage: '分类漫画解析失败');
+    }
+    final content = jsonList(data['content']);
+    final comics = <JmComicBrief>[];
+    for (final rawComic in content) {
+      if (rawComic is! Map) continue;
+      final comic = JmComicBrief.fromJson(jsonMap(rawComic));
+      if (comic.id.isEmpty) continue;
+      comics.add(comic);
+    }
+
+    final total = jsonInt(data['total'], fallback: comics.length);
+    var pageSize = jsonInt(
+      data['page_size'] ?? data['pageSize'] ?? data['per_page'],
+    );
+    if (pageSize < 1) pageSize = content.length;
+    var maxPage = page;
+    if (total > 0 && pageSize > 0) {
+      maxPage = (total / pageSize).ceil();
+      if (maxPage < page) maxPage = page;
+    }
+    return Res(comics, subData: maxPage);
+  }
+
+  /// 获取首页分区。
+  Future<Res<List<JmHomeSection>>> getHomeSections() async {
+    final res = await get('$baseUrl/promote?page=0');
+    if (res.error) return Res(null, errorMessage: res.errorMessage);
+    if (res.data is! List) {
+      return const Res(null, errorMessage: '首页分区解析失败');
+    }
+    final sections = <JmHomeSection>[];
+    for (final rawSection in jsonList(res.data)) {
+      if (rawSection is! Map) continue;
+      final section = jsonMap(rawSection);
+      final title = jsonString(section['title']).trim();
+      final type = jsonString(section['type']);
+      final id = jsonString(section['id']).trim();
+      final slug = jsonString(section['slug']).trim();
+      final key = (type == 'category_id' && slug.isNotEmpty ? slug : id).trim();
+      if (title.isEmpty) continue;
+
+      final comics = <JmComicBrief>[];
+      for (final rawComic in jsonList(section['content'])) {
+        if (rawComic is! Map) continue;
+        final comic = JmComicBrief.fromJson(jsonMap(rawComic));
+        if (comic.id.isEmpty) continue;
+        comics.add(comic);
+      }
+      sections.add(JmHomeSection(
+        key: key.isEmpty ? title : key,
+        title: title,
+        categoryParam: type == 'promote' || key.isEmpty ? null : key,
+        comics: comics,
+      ));
+    }
+    return Res(sections);
   }
 
   /// 专辑（漫画）详情。
