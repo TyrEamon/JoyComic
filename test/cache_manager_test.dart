@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:joycomic/foundation/cache_manager.dart';
+import 'package:joycomic/foundation/download_manager.dart';
+import 'package:joycomic/foundation/download_task.dart';
 
 void main() {
   late Directory root;
@@ -32,7 +34,10 @@ void main() {
     await root.delete(recursive: true);
   });
 
-  CacheManager manager({Future<void> Function()? onClearCompleted}) {
+  CacheManager manager({
+    Future<void> Function()? onClearCompleted,
+    PartialDownloadStore? partialDownloadStore,
+  }) {
     return CacheManager(
       rootDirectory: root,
       cacheDirectory: cache,
@@ -40,6 +45,7 @@ void main() {
       logDirectory: logs,
       downloadTemporaryDirectory: downloadTemporary,
       onClearCompletedDownloads: onClearCompleted,
+      partialDownloadStore: partialDownloadStore,
     );
   }
 
@@ -108,10 +114,107 @@ void main() {
     expect(await File(p.join(sourceData.path, 'account.json')).exists(), isTrue);
   });
 
+  test('counts and clears only paused and failed task partial directories', () async {
+    final downloads = Directory(p.join(root.path, 'downloads'))
+      ..createSync(recursive: true);
+    final paused = p.join(downloads.path, 'paused');
+    final failed = p.join(downloads.path, 'failed');
+    final active = p.join(downloads.path, 'active');
+    final completed = p.join(downloads.path, 'completed');
+    final stranger = p.join(downloads.path, 'stranger.part');
+    for (final path in [paused, failed, active, completed]) {
+      await Directory('$path.part').create(recursive: true);
+    }
+    await write(p.join('$paused.part', 'page.bin'), 2);
+    await write(p.join('$failed.part', 'page.bin'), 3);
+    await write(p.join('$active.part', 'page.bin'), 5);
+    await write(p.join('$completed.part', 'page.bin'), 7);
+    await write(p.join(stranger, 'page.bin'), 11);
+
+    final store = _FakePartialDownloadStore([
+      _partialTask(1, paused, DownloadStatus.paused),
+      _partialTask(2, failed, DownloadStatus.failed),
+      _partialTask(3, active, DownloadStatus.downloading),
+      _partialTask(4, completed, DownloadStatus.completed),
+    ]);
+    final cache = manager(partialDownloadStore: store);
+
+    final result = await cache.calculateSize();
+    expect(result.diskBytes, 5);
+
+    await cache.clearSafeCaches();
+    expect(store.clearedIds, [1, 2]);
+    expect(await Directory('$paused.part').exists(), isFalse);
+    expect(await Directory('$failed.part').exists(), isFalse);
+    expect(await Directory('$active.part').exists(), isTrue);
+    expect(await Directory('$completed.part').exists(), isTrue);
+    expect(await Directory(stranger).exists(), isTrue);
+    expect(store.validatedPaths, contains('$paused.part'));
+    expect(store.validatedPaths, contains('$failed.part'));
+    expect(store.validatedPaths, isNot(contains('$active.part')));
+  });
+
+  test('skips partial paths rejected by the download manager boundary', () async {
+    final downloads = Directory(p.join(root.path, 'downloads'))
+      ..createSync(recursive: true);
+    final unmanaged = p.join(downloads.path, 'unmanaged');
+    await Directory('$unmanaged.part').create(recursive: true);
+    await write(p.join('$unmanaged.part', 'page.bin'), 13);
+    final store = _FakePartialDownloadStore([
+      _partialTask(5, unmanaged, DownloadStatus.failed),
+    ]);
+
+    final result = await manager(partialDownloadStore: store).calculateSize();
+
+    expect(result.diskBytes, 0);
+    expect(await Directory('$unmanaged.part').exists(), isTrue);
+  });
+
   test('completed downloads require an explicit separate operation', () async {
     var called = 0;
     await manager(onClearCompleted: () async => called++).clearCompletedDownloads();
 
     expect(called, 1);
   });
+}
+
+class _FakePartialDownloadStore implements PartialDownloadStore {
+  _FakePartialDownloadStore(this.tasks);
+
+  @override
+  final List<DownloadTask> tasks;
+  final validatedPaths = <String>[];
+  final clearedIds = <int>[];
+
+  @override
+  Future<void> validateManagedPath(String path) async {
+    validatedPaths.add(path);
+    if (path.contains('unmanaged')) {
+      throw FileSystemException('outside managed download root', path);
+    }
+  }
+
+  @override
+  Future<bool> clearPartialDownload(DownloadTask task) async {
+    final partial = Directory('${task.directory}.part');
+    await validateManagedPath(partial.path);
+    if (task.status == DownloadStatus.downloading ||
+        task.status == DownloadStatus.completed) {
+      return false;
+    }
+    clearedIds.add(task.id!);
+    if (await partial.exists()) await partial.delete(recursive: true);
+    return true;
+  }
+}
+
+DownloadTask _partialTask(int id, String directory, DownloadStatus status) {
+  return DownloadTask(
+    id: id,
+    comicId: 'comic-$id',
+    sourceKey: 'jm',
+    chapterId: 'chapter-$id',
+    directory: directory,
+    status: status,
+  );
 }

@@ -18,8 +18,16 @@ import 'log.dart';
 
 typedef DownloadSourceResolver = ComicSource? Function(String sourceKey);
 
+abstract interface class PartialDownloadStore {
+  List<DownloadTask> get tasks;
+
+  Future<void> validateManagedPath(String path);
+
+  Future<bool> clearPartialDownload(DownloadTask task);
+}
+
 /// Persists, schedules, pauses and resumes chapter-level downloads.
-class DownloadManager extends ChangeNotifier {
+class DownloadManager extends ChangeNotifier implements PartialDownloadStore {
   DownloadManager._()
     : _helper = DownloadHelper(),
       _configuredDirectory = null,
@@ -57,6 +65,7 @@ class DownloadManager extends ChangeNotifier {
   bool _disposed = false;
   final Set<int> _activeIds = <int>{};
   final Set<int> _resumeRequested = <int>{};
+  final Set<int> _partialCleanupIds = <int>{};
   final Map<int, CancelToken> _cancelTokens = <int, CancelToken>{};
 
   int get activeCount => _activeIds.length;
@@ -283,6 +292,7 @@ class DownloadManager extends ChangeNotifier {
         final id = task.id;
         if (id == null ||
             _activeIds.contains(id) ||
+            _partialCleanupIds.contains(id) ||
             persistenceFailures.contains(id)) {
           return false;
         }
@@ -544,6 +554,43 @@ class DownloadManager extends ChangeNotifier {
     }
     return true;
   }
+
+  @override
+  Future<void> validateManagedPath(String path) => _assertManagedPath(path);
+
+  @override
+  Future<bool> clearPartialDownload(DownloadTask task) async {
+    final id = task.id;
+    if (id == null || !_partialCleanupIds.add(id)) return false;
+    try {
+      final current = _taskById(id);
+      if (current == null ||
+          _activeIds.contains(id) ||
+          !_isPartialCacheStatus(current.status) ||
+          current.directory == null ||
+          current.directory!.isEmpty) {
+        return false;
+      }
+      final partial = Directory('${current.directory}.part');
+      await _assertManagedPath(partial.path);
+      final latest = _taskById(id);
+      if (!identical(latest, current) ||
+          _activeIds.contains(id) ||
+          !_isPartialCacheStatus(current.status)) {
+        return false;
+      }
+      await _deleteDirectoryIfPresent(partial);
+      return true;
+    } finally {
+      _partialCleanupIds.remove(id);
+      _processQueue();
+    }
+  }
+
+  static bool _isPartialCacheStatus(DownloadStatus status) =>
+      status == DownloadStatus.pending ||
+      status == DownloadStatus.paused ||
+      status == DownloadStatus.failed;
 
   /// Clears completed task records while deliberately preserving chapter files.
   Future<void> clearCompleted() async {

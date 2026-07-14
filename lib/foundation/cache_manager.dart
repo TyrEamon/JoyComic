@@ -8,6 +8,9 @@ import 'package:flutter/painting.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import 'download_manager.dart';
+import 'download_task.dart';
+
 /// The result of a cache size calculation.
 class CacheSize {
   const CacheSize({required this.diskBytes, required this.imageCacheBytes});
@@ -31,6 +34,7 @@ class CacheManager {
     required Directory logDirectory,
     required Directory downloadTemporaryDirectory,
     this.onClearCompletedDownloads,
+    this.partialDownloadStore,
     ImageCache? imageCache,
     Iterable<Directory>? securityRoots,
   })  : _rootDirectories = [
@@ -64,6 +68,7 @@ class CacheManager {
       downloadTemporaryDirectory: Directory(p.join(downloads.path, '.temp')),
       imageCache: PaintingBinding.instance.imageCache,
       onClearCompletedDownloads: onClearCompletedDownloads,
+      partialDownloadStore: DownloadManager.instance,
     );
   }
 
@@ -71,6 +76,7 @@ class CacheManager {
   final List<Directory> _safeDirectories;
   final ImageCache? _imageCache;
   final FutureOr<void> Function()? onClearCompletedDownloads;
+  final PartialDownloadStore? partialDownloadStore;
 
   /// Calculates disk bytes plus Flutter's in-memory image cache bytes.
   Future<CacheSize> calculateSize({
@@ -82,6 +88,13 @@ class CacheManager {
 
     for (final directory in _safeDirectories) {
       diskBytes += await _directorySize(directory, seenFiles);
+    }
+    for (final target in await _partialDownloadTargets()) {
+      diskBytes += await _directorySize(
+        target.directory,
+        seenFiles,
+        allowOutsideSafeDirectory: true,
+      );
     }
 
     // Extra paths are useful for diagnostics, but are still constrained to a
@@ -105,6 +118,16 @@ class CacheManager {
     for (final directory in _safeDirectories) {
       await _clearDirectoryContents(directory);
     }
+    final store = partialDownloadStore;
+    if (store != null) {
+      for (final target in await _partialDownloadTargets()) {
+        try {
+          await store.clearPartialDownload(target.task);
+        } catch (_) {
+          // One unsafe or locked partial must not block other cache cleanup.
+        }
+      }
+    }
     _imageCache?.clear();
     _imageCache?.clearLiveImages();
   }
@@ -121,9 +144,45 @@ class CacheManager {
     await cleaner();
   }
 
-  Future<int> _directorySize(Directory directory, Set<String> seenFiles) async {
+  Future<List<_PartialDownloadTarget>> _partialDownloadTargets() async {
+    final store = partialDownloadStore;
+    if (store == null) return const <_PartialDownloadTarget>[];
+    final targets = <_PartialDownloadTarget>[];
+    final seen = <String>{};
+    for (final task in store.tasks) {
+      if (!_isPartialCacheStatus(task.status)) continue;
+      final directory = task.directory;
+      if (directory == null || directory.isEmpty) continue;
+      final path = _normalize('$directory.part');
+      if (!seen.add(path) || !_isAllowedPath(path)) continue;
+      try {
+        await store.validateManagedPath(path);
+        if (await FileSystemEntity.type(path, followLinks: false) ==
+            FileSystemEntityType.directory) {
+          targets.add(_PartialDownloadTarget(task, Directory(path)));
+        }
+      } catch (_) {
+        // Invalid, escaped, linked, missing, or unreadable task paths are skipped.
+      }
+    }
+    return targets;
+  }
+
+  static bool _isPartialCacheStatus(DownloadStatus status) =>
+      status == DownloadStatus.pending ||
+      status == DownloadStatus.paused ||
+      status == DownloadStatus.failed;
+
+  Future<int> _directorySize(
+    Directory directory,
+    Set<String> seenFiles, {
+    bool allowOutsideSafeDirectory = false,
+  }) async {
     final path = _normalize(directory.path);
-    if (!_isAllowedPath(path)) return 0;
+    if (!_isAllowedPath(path) ||
+        (!allowOutsideSafeDirectory && !_isInsideSafeDirectory(path))) {
+      return 0;
+    }
 
     try {
       if (await FileSystemEntity.type(path, followLinks: false) !=
@@ -137,9 +196,17 @@ class CacheManager {
         try {
           final type = await FileSystemEntity.type(entityPath, followLinks: false);
           if (type == FileSystemEntityType.file) {
-            bytes += await _fileSize(File(entityPath), seenFiles);
+            bytes += await _fileSize(
+              File(entityPath),
+              seenFiles,
+              allowOutsideSafeDirectory: allowOutsideSafeDirectory,
+            );
           } else if (type == FileSystemEntityType.directory) {
-            bytes += await _directorySize(Directory(entityPath), seenFiles);
+            bytes += await _directorySize(
+              Directory(entityPath),
+              seenFiles,
+              allowOutsideSafeDirectory: allowOutsideSafeDirectory,
+            );
           }
         } catch (_) {
           // One broken entry must not hide the rest of the cache.
@@ -151,9 +218,16 @@ class CacheManager {
     }
   }
 
-  Future<int> _fileSize(File file, Set<String> seenFiles) async {
+  Future<int> _fileSize(
+    File file,
+    Set<String> seenFiles, {
+    bool allowOutsideSafeDirectory = false,
+  }) async {
     final path = _normalize(file.path);
-    if (!_isAllowedPath(path) || !_isInsideSafeDirectory(path)) return 0;
+    if (!_isAllowedPath(path) ||
+        (!allowOutsideSafeDirectory && !_isInsideSafeDirectory(path))) {
+      return 0;
+    }
     if (!seenFiles.add(path)) return 0;
 
     try {
@@ -224,4 +298,11 @@ String formatCacheBytes(int bytes) {
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
   return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+}
+
+class _PartialDownloadTarget {
+  const _PartialDownloadTarget(this.task, this.directory);
+
+  final DownloadTask task;
+  final Directory directory;
 }
