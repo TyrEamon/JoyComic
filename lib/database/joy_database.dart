@@ -427,6 +427,7 @@ class JoyDatabase {
         'page_urls',
         'completed_count',
         'directory',
+        'legacy_file_path',
         'error_message',
         'status',
         'created_at',
@@ -466,20 +467,21 @@ class JoyDatabase {
                 : status == 'completed' && url.isNotEmpty
                 ? 1
                 : 0;
-            var directory = columns.contains('directory')
+            final directory = columns.contains('directory')
                 ? (row['directory'] as String?) ?? ''
                 : '';
-            if (directory.isEmpty && columns.contains('file_path')) {
-              final filePath = (row['file_path'] as String?) ?? '';
-              if (filePath.isNotEmpty) directory = p.dirname(filePath);
-            }
+            final legacyFilePath = columns.contains('legacy_file_path')
+                ? row['legacy_file_path'] as String?
+                : columns.contains('file_path')
+                ? row['file_path'] as String?
+                : null;
             db.execute(
               '''
               INSERT INTO downloads_migrated (
                 id, source_key, comic_id, chapter_id, title, cover_url,
                 chapter_title, page_urls, completed_count, directory,
-                error_message, status, created_at, updated_at
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                legacy_file_path, error_message, status, created_at, updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
               ''',
               <Object?>[
                 row['id'],
@@ -496,6 +498,7 @@ class JoyDatabase {
                 existingUrls,
                 completed,
                 directory,
+                legacyFilePath,
                 columns.contains('error_message') ? row['error_message'] : null,
                 status,
                 row['created_at'],
@@ -550,6 +553,7 @@ class JoyDatabase {
         page_urls TEXT NOT NULL DEFAULT '[]',
         completed_count INTEGER NOT NULL DEFAULT 0,
         directory TEXT NOT NULL DEFAULT '',
+        legacy_file_path TEXT,
         error_message TEXT,
         status TEXT NOT NULL DEFAULT 'pending'
           CHECK (status IN ('pending', 'downloading', 'paused', 'completed', 'failed')),

@@ -41,6 +41,32 @@ import 'widgets/page_no_tag.dart';
 import 'widgets/reader_keyboard_listener.dart';
 import 'widgets/vertical_list/vertical_list.dart';
 
+/// Returns only a network loader suitable for route injection.
+/// Local reader states deliberately receive no source loader.
+ReaderImageLoader? readerRouteNetworkLoader(
+  ComicState state,
+  ComicSource? source,
+) {
+  if (state.type == ReaderType.local || source?.loadComicPages == null) {
+    return null;
+  }
+  return (String comicId, String? ep) => source!.loadComicPages!(comicId, ep);
+}
+
+/// Resolves Reader content with local paths taking precedence over every
+/// supplied or source-backed network loader.
+ReaderImageLoader? resolveReaderImageLoader({
+  required ComicState state,
+  ReaderImageLoader? supplied,
+  ComicSource? source,
+}) {
+  if (state.type == ReaderType.local) {
+    final paths = List<String>.unmodifiable(state.localPagePaths);
+    return (_, __) async => Res<List<String>>(paths);
+  }
+  return supplied ?? readerRouteNetworkLoader(state, source);
+}
+
 /// 阅读器页面。
 class Reader extends StatefulWidget {
   /// [comicState] 为进入阅读器的初始状态快照。
@@ -79,16 +105,11 @@ class _ReaderState extends State<Reader> {
     super.dispose();
   }
 
-  ReaderImageLoader? _resolveImageLoader() {
-    if (widget.imageLoader != null) return widget.imageLoader;
-    if (widget.comicState.type == ReaderType.local) {
-      final paths = widget.comicState.localPagePaths;
-      return (_, __) async => Res<List<String>>(paths);
-    }
-    final source = ComicSource.find(widget.comicState.sourceKey);
-    if (source?.loadComicPages == null) return null;
-    return (String comicId, String? ep) => source!.loadComicPages!(comicId, ep);
-  }
+  ReaderImageLoader? _resolveImageLoader() => resolveReaderImageLoader(
+    state: widget.comicState,
+    supplied: widget.imageLoader,
+    source: ComicSource.find(widget.comicState.sourceKey),
+  );
 
   @override
   Widget build(BuildContext context) {

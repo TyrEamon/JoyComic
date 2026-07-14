@@ -18,7 +18,6 @@ import 'views/history/history_page.dart';
 import 'views/image_search/image_search_page.dart';
 import 'views/main_scaffold.dart';
 import 'views/ranking/ranking_page.dart';
-import 'views/reader/providers/reader_provider.dart';
 import 'views/reader/reader.dart';
 import 'views/reader/state/comic_state.dart';
 import 'views/search/search_page.dart';
@@ -120,13 +119,8 @@ final _router = GoRouter(
       path: '/reader',
       builder: (context, state) {
         final comicState = state.extra as ComicState;
-        // 自动匹配源对应的图片加载器
-        ReaderImageLoader? imageLoader;
         final source = ComicSource.find(comicState.sourceKey);
-        if (source?.loadComicPages != null) {
-          imageLoader = (String comicId, String? ep) =>
-              source!.loadComicPages!(comicId, ep);
-        }
+        final imageLoader = readerRouteNetworkLoader(comicState, source);
         return Reader(comicState: comicState, imageLoader: imageLoader);
       },
     ),

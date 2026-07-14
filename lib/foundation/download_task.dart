@@ -43,6 +43,7 @@ class DownloadTask {
   List<String> pageUrls;
   int completedCount;
   String? directory;
+  String? legacyFilePath;
   String? errorMessage;
   DownloadStatus status;
   final DateTime createdAt;
@@ -59,6 +60,7 @@ class DownloadTask {
     List<String>? pageUrls,
     this.completedCount = 0,
     this.directory,
+    this.legacyFilePath,
     this.errorMessage,
     this.status = DownloadStatus.pending,
     DateTime? createdAt,
@@ -151,6 +153,7 @@ class DownloadTask {
       pageUrls: urls,
       completedCount: (row['completed_count'] as int?) ?? 0,
       directory: row['directory'] as String?,
+      legacyFilePath: row['legacy_file_path'] as String?,
       errorMessage: row['error_message'] as String?,
       status: DownloadStatus.values.firstWhere(
         (value) => value.name == row['status'],
@@ -176,6 +179,7 @@ class DownloadTask {
     'page_urls': jsonEncode(pageUrls),
     'completed_count': completedCount,
     'directory': directory ?? '',
+    'legacy_file_path': legacyFilePath,
     'error_message': errorMessage,
     'status': status.name,
     'created_at': createdAt.millisecondsSinceEpoch,

@@ -19,9 +19,9 @@ class DownloadHelper {
       '''
       INSERT OR IGNORE INTO downloads (
         source_key, comic_id, chapter_id, title, cover_url, chapter_title,
-        page_urls, completed_count, directory, error_message, status,
+        page_urls, completed_count, directory, legacy_file_path, error_message, status,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ''',
       <Object?>[
         row['source_key'],
@@ -33,6 +33,7 @@ class DownloadHelper {
         row['page_urls'],
         row['completed_count'],
         row['directory'],
+        row['legacy_file_path'],
         row['error_message'],
         row['status'],
         row['created_at'],
@@ -55,7 +56,8 @@ class DownloadHelper {
       '''
       UPDATE downloads SET
         title = ?, cover_url = ?, chapter_title = ?, page_urls = ?,
-        completed_count = ?, directory = ?, error_message = ?, status = ?,
+        completed_count = ?, directory = ?, legacy_file_path = ?,
+        error_message = ?, status = ?,
         updated_at = ?
       WHERE id = ?
       ''',
@@ -66,6 +68,7 @@ class DownloadHelper {
         row['page_urls'],
         row['completed_count'],
         row['directory'],
+        row['legacy_file_path'],
         row['error_message'],
         row['status'],
         row['updated_at'],
@@ -151,6 +154,7 @@ class DownloadHelper {
     'page_urls': row['page_urls'],
     'completed_count': row['completed_count'],
     'directory': row['directory'],
+    'legacy_file_path': row['legacy_file_path'],
     'error_message': row['error_message'],
     'status': row['status'],
     'created_at': row['created_at'],

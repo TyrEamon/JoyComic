@@ -51,12 +51,15 @@ class DownloadManager extends ChangeNotifier {
   List<DownloadTask> get tasks => List<DownloadTask>.unmodifiable(_tasks);
 
   Directory? _downloadDirectory;
+  String? _canonicalDownloadRoot;
   Future<void>? _initializeFuture;
   bool _initialized = false;
   bool _disposed = false;
   final Set<int> _activeIds = <int>{};
   final Set<int> _resumeRequested = <int>{};
   final Map<int, CancelToken> _cancelTokens = <int, CancelToken>{};
+
+  int get activeCount => _activeIds.length;
 
   Future<void> initialize() {
     if (_initialized) return Future<void>.value();
@@ -75,8 +78,14 @@ class DownloadManager extends ChangeNotifier {
           );
       await directory.create(recursive: true);
       _downloadDirectory = directory;
+      _canonicalDownloadRoot = p.normalize(
+        await directory.resolveSymbolicLinks(),
+      );
       _helper.recoverInterrupted();
       _tasks = _helper.getAll();
+      for (final task in _tasks) {
+        await _preparePersistedTaskStorage(task);
+      }
       _initialized = true;
       Log.i(
         'DownloadManager init',
@@ -103,6 +112,9 @@ class DownloadManager extends ChangeNotifier {
     required String chapterTitle,
   }) async {
     await initialize();
+    final safeSource = _safeSegment(sourceKey);
+    final safeComic = _safeSegment(comicId);
+    final safeChapter = _safeSegment(chapterId);
     final identity = DownloadIdentity(sourceKey, comicId, chapterId);
     final inMemory = _tasks.firstWhereOrNull(
       (task) => task.identity == identity,
@@ -125,9 +137,9 @@ class DownloadManager extends ChangeNotifier {
     if (saved.directory == null || saved.directory!.isEmpty) {
       saved.directory = p.join(
         _downloadDirectory!.path,
-        _safeSegment(sourceKey),
-        _safeSegment(comicId),
-        '${_safeSegment(chapterId)}_${saved.id}',
+        safeSource,
+        safeComic,
+        '${safeChapter}_${saved.id}',
       );
       _helper.update(saved);
       saved = _helper.getById(saved.id!)!;
@@ -156,12 +168,124 @@ class DownloadManager extends ChangeNotifier {
     );
   }
 
+  Future<void> _preparePersistedTaskStorage(DownloadTask task) async {
+    var changed = false;
+    if (task.directory == null || task.directory!.trim().isEmpty) {
+      try {
+        task.directory = _safeTaskDirectory(task);
+        changed = true;
+      } on ArgumentError catch (error) {
+        _failPersistedTaskStorage(task, error);
+        return;
+      }
+    } else {
+      try {
+        await _assertManagedPath(task.directory!);
+      } on FileSystemException catch (error) {
+        _failPersistedTaskStorage(task, error);
+        return;
+      }
+    }
+
+    final legacyPath = task.legacyFilePath;
+    if (legacyPath != null && legacyPath.trim().isNotEmpty) {
+      if (task.status == DownloadStatus.completed) {
+        try {
+          await _migrateLegacyCompletedFile(task, File(legacyPath));
+        } on FileSystemException catch (error) {
+          _failPersistedTaskStorage(task, error);
+        } on ArgumentError catch (error) {
+          _failPersistedTaskStorage(task, error);
+        }
+        return;
+      }
+      task.legacyFilePath = null;
+      changed = true;
+    }
+    if (changed) _helper.update(task);
+  }
+
+  void _failPersistedTaskStorage(DownloadTask task, Object error) {
+    task.status = DownloadStatus.failed;
+    task.completedCount = 0;
+    task.errorMessage = error.toString();
+    _helper.update(task);
+  }
+
+  String _safeTaskDirectory(DownloadTask task) {
+    return p.join(
+      _downloadDirectory!.path,
+      _safeSegment(task.sourceKey),
+      _safeSegment(task.comicId),
+      '${_safeSegment(task.chapterId)}_${task.id}',
+    );
+  }
+
+  Future<void> _migrateLegacyCompletedFile(
+    DownloadTask task,
+    File legacyFile,
+  ) async {
+    await _assertManagedPath(legacyFile.path);
+    final safeDirectory = _safeTaskDirectory(task);
+    final finalDirectory = Directory(safeDirectory);
+    final partialDirectory = Directory('$safeDirectory.part');
+    await _assertManagedPath(finalDirectory.path);
+    await _assertManagedPath(partialDirectory.path);
+
+    if (!await legacyFile.exists()) {
+      task.directory = safeDirectory;
+      task.completedCount = 0;
+      task.status = DownloadStatus.failed;
+      task.errorMessage = '旧版下载文件不存在：${legacyFile.path}';
+      _helper.update(task);
+      return;
+    }
+    if (task.pageUrls.isEmpty) {
+      task.pageUrls = <String>[legacyFile.uri.toString()];
+    }
+    await _deleteDirectoryIfPresent(partialDirectory);
+    await partialDirectory.create(recursive: true);
+    final target = File(
+      p.join(
+        partialDirectory.path,
+        DownloadTask.pageFileName(0, task.pageUrls.first),
+      ),
+    );
+    final temporary = File('${target.path}.tmp');
+    await _assertManagedPath(temporary.path);
+    final sink = temporary.openWrite();
+    try {
+      await sink.addStream(legacyFile.openRead());
+      await sink.flush();
+    } finally {
+      await sink.close();
+    }
+    await _renameManagedFile(temporary, target);
+    await _deleteDirectoryIfPresent(finalDirectory);
+    await _renameManagedDirectory(partialDirectory, finalDirectory);
+
+    task.directory = safeDirectory;
+    task.completedCount = 1;
+    task.legacyFilePath = null;
+    task.errorMessage = null;
+    _helper.update(task);
+    if (!p.equals(legacyFile.path, target.path) && await legacyFile.exists()) {
+      await _assertManagedPath(legacyFile.path);
+      await legacyFile.delete();
+    }
+  }
+
   void _processQueue() {
     if (!_initialized || _disposed) return;
+    final persistenceFailures = <int>{};
     while (_activeIds.length < maxConcurrent) {
       final next = _tasks.firstWhereOrNull((task) {
         final id = task.id;
-        if (id == null || _activeIds.contains(id)) return false;
+        if (id == null ||
+            _activeIds.contains(id) ||
+            persistenceFailures.contains(id)) {
+          return false;
+        }
         if (task.status == DownloadStatus.pending) return true;
         return _resumeRequested.contains(id) &&
             (task.status == DownloadStatus.paused ||
@@ -169,11 +293,33 @@ class DownloadManager extends ChangeNotifier {
       });
       if (next == null) break;
       final id = next.id!;
+      final previousStatus = next.status;
+      final previousError = next.errorMessage;
+      final previousUpdatedAt = next.updatedAt;
       _resumeRequested.remove(id);
       _activeIds.add(id);
       next.transitionTo(DownloadStatus.downloading);
       next.errorMessage = null;
-      _helper.update(next);
+      try {
+        _helper.update(next);
+      } catch (error, stackTrace) {
+        next.status = previousStatus;
+        next.errorMessage = previousError;
+        next.updatedAt = previousUpdatedAt;
+        if (previousStatus == DownloadStatus.paused ||
+            previousStatus == DownloadStatus.failed) {
+          _resumeRequested.add(id);
+        }
+        _activeIds.remove(id);
+        persistenceFailures.add(id);
+        Log.e(
+          'Download scheduling persistence failed',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        _notify();
+        continue;
+      }
       _notify();
       unawaited(_runTask(next));
     }
@@ -207,6 +353,8 @@ class DownloadManager extends ChangeNotifier {
 
       final finalDirectory = Directory(task.directory!);
       final partialDirectory = Directory('${task.directory}.part');
+      await _assertManagedPath(finalDirectory.path);
+      await _assertManagedPath(partialDirectory.path);
       if (await finalDirectory.exists() && !await partialDirectory.exists()) {
         final complete = await _hasAllPages(finalDirectory, task);
         if (complete) {
@@ -249,36 +397,65 @@ class DownloadManager extends ChangeNotifier {
         final headers = _extractHeaders(config);
         final cancelToken = CancelToken();
         _cancelTokens[id] = cancelToken;
-        final response = await _dio.request<List<int>>(
-          requestUrl,
-          options: Options(
-            method: method,
-            headers: headers,
-            responseType: ResponseType.bytes,
-          ),
-          cancelToken: cancelToken,
-        );
-        if (task.status != DownloadStatus.downloading) return;
-        final data = response.data;
-        if (data == null || data.isEmpty) {
-          throw StateError('图片 ${index + 1} 返回空数据');
-        }
-        var bytes = Uint8List.fromList(data);
+        final temporary = File('${target.path}.tmp');
+        await _assertManagedPath(target.path);
+        await _assertManagedPath(temporary.path);
         if (task.sourceKey.toLowerCase() == 'jm') {
+          final response = await _dio.request<List<int>>(
+            requestUrl,
+            options: Options(
+              method: method,
+              headers: headers,
+              responseType: ResponseType.bytes,
+            ),
+            cancelToken: cancelToken,
+          );
+          if (task.status != DownloadStatus.downloading) return;
+          final data = response.data;
+          if (data == null || data.isEmpty) {
+            throw StateError('图片 ${index + 1} 返回空数据');
+          }
+          final rawBytes = data is Uint8List ? data : Uint8List.fromList(data);
           final imageName = p.basenameWithoutExtension(Uri.parse(url).path);
-          bytes = await JmRecombine.recombine(
-            bytes,
+          final recombined = await JmRecombine.recombine(
+            rawBytes,
             task.chapterId,
             jmScrambleId,
             imageName,
           );
+          await temporary.writeAsBytes(recombined, flush: true);
+        } else {
+          final response = await _dio.request<ResponseBody>(
+            requestUrl,
+            options: Options(
+              method: method,
+              headers: headers,
+              responseType: ResponseType.stream,
+            ),
+            cancelToken: cancelToken,
+          );
+          if (task.status != DownloadStatus.downloading) return;
+          final body = response.data;
+          if (body == null) {
+            throw StateError('图片 ${index + 1} 返回空数据');
+          }
+          final sink = temporary.openWrite();
+          try {
+            await sink.addStream(body.stream);
+            await sink.flush();
+          } finally {
+            await sink.close();
+          }
+          if (await temporary.length() == 0) {
+            throw StateError('图片 ${index + 1} 返回空数据');
+          }
         }
         if (task.status != DownloadStatus.downloading) return;
-
-        final temporary = File('${target.path}.tmp');
-        await temporary.writeAsBytes(bytes, flush: true);
-        if (await target.exists()) await target.delete();
-        await temporary.rename(target.path);
+        if (await target.exists()) {
+          await _assertManagedPath(target.path);
+          await target.delete();
+        }
+        await _renameManagedFile(temporary, target);
         task.completedCount = index + 1;
         task.errorMessage = null;
         _helper.update(task);
@@ -286,10 +463,8 @@ class DownloadManager extends ChangeNotifier {
       }
 
       if (task.status != DownloadStatus.downloading) return;
-      if (await finalDirectory.exists()) {
-        await finalDirectory.delete(recursive: true);
-      }
-      await partialDirectory.rename(finalDirectory.path);
+      await _deleteDirectoryIfPresent(finalDirectory);
+      await _renameManagedDirectory(partialDirectory, finalDirectory);
       task.completedCount = task.pageUrls.length;
       task.transitionTo(DownloadStatus.completed);
       _helper.update(task);
@@ -347,6 +522,10 @@ class DownloadManager extends ChangeNotifier {
   Future<bool> _remove(int id, {required bool deleteFiles}) async {
     final task = _taskById(id);
     if (task == null) return false;
+    if (deleteFiles && task.directory != null && task.directory!.isNotEmpty) {
+      await _assertManagedPath(task.directory!);
+      await _assertManagedPath('${task.directory}.part');
+    }
     if (task.status == DownloadStatus.downloading) {
       task.transitionTo(DownloadStatus.paused);
       _cancelTokens[id]?.cancel('deleted');
@@ -429,12 +608,72 @@ class DownloadManager extends ChangeNotifier {
     return await _contiguousPageCount(directory, task) == task.pageUrls.length;
   }
 
-  static Future<void> _deleteDirectoryIfPresent(Directory directory) async {
+  Future<void> _deleteDirectoryIfPresent(Directory directory) async {
+    await _assertManagedPath(directory.path);
     if (await directory.exists()) await directory.delete(recursive: true);
   }
 
+  Future<void> _renameManagedFile(File source, File target) async {
+    await _assertManagedPath(source.path);
+    await _assertManagedPath(target.path);
+    await source.rename(target.path);
+  }
+
+  Future<void> _renameManagedDirectory(
+    Directory source,
+    Directory target,
+  ) async {
+    await _assertManagedPath(source.path);
+    await _assertManagedPath(target.path);
+    await source.rename(target.path);
+  }
+
+  Future<void> _assertManagedPath(String candidatePath) async {
+    final root = _canonicalDownloadRoot;
+    if (root == null) throw StateError('DownloadManager not initialized');
+    final candidate = await _canonicalPath(candidatePath);
+    final comparableRoot = Platform.isWindows ? root.toLowerCase() : root;
+    final comparableCandidate = Platform.isWindows
+        ? candidate.toLowerCase()
+        : candidate;
+    if (p.equals(comparableRoot, comparableCandidate) ||
+        !p.isWithin(comparableRoot, comparableCandidate)) {
+      throw FileSystemException(
+        'Refusing unsafe download path outside the managed root',
+        candidatePath,
+      );
+    }
+  }
+
+  static Future<String> _canonicalPath(String input) async {
+    var probe = p.normalize(p.absolute(input));
+    final missingSegments = <String>[];
+    while (await FileSystemEntity.type(probe, followLinks: true) ==
+        FileSystemEntityType.notFound) {
+      final parent = p.dirname(probe);
+      if (p.equals(parent, probe)) {
+        throw FileSystemException('Cannot canonicalize path', input);
+      }
+      missingSegments.insert(0, p.basename(probe));
+      probe = parent;
+    }
+    final resolvedParent = await File(probe).resolveSymbolicLinks();
+    return p.normalize(
+      missingSegments.isEmpty
+          ? resolvedParent
+          : p.joinAll(<String>[resolvedParent, ...missingSegments]),
+    );
+  }
+
   static String _safeSegment(String value) {
-    final safe = value.replaceAll(RegExp(r'[<>:"/\\|?*\x00-\x1F]'), '_').trim();
+    final trimmed = value.trim();
+    if (trimmed == '.' || trimmed == '..') {
+      throw ArgumentError.value(value, 'value', 'dot path segments are unsafe');
+    }
+    final safe = trimmed.replaceAll(RegExp(r'[<>:"/\\|?*\x00-\x1F]'), '_');
+    if (safe == '.' || safe == '..') {
+      throw ArgumentError.value(value, 'value', 'dot path segments are unsafe');
+    }
     return safe.isEmpty ? '_' : safe;
   }
 
