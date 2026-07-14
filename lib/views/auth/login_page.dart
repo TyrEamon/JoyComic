@@ -59,7 +59,7 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _login() async {
-    if (_account.text.isEmpty || _password.isEmpty) return;
+    if (_account.text.isEmpty || _password.text.isEmpty) return;
     setState(() => _loading = true);
     final s = ComicSource.find(_sourceKey);
     if (s?.account?.login == null) {

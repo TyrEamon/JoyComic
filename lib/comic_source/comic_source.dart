@@ -375,7 +375,7 @@ class ComicInfoData with HistoryMixin {
   });
 
   @override
-  HistoryType get historyType => HistoryType(sourceKey);
+  HistoryType get historyType => HistoryType.fromKey(sourceKey);
 
   @override
   String get target => comicId;

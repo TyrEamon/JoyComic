@@ -4,9 +4,9 @@
 /// 的构造器注入到 [ComicSource.builtInMap]，供 [ComicSource.init] 按启用项加载。
 library built_in_registrar;
 
-import '../comic_source/comic_source.dart';
-import 'built_in/jm.dart';
-import 'built_in/picacg.dart';
+import '../comic_source.dart';
+import 'jm.dart';
+import 'picacg.dart';
 
 /// 登记所有内置源。必须在 [ComicSource.init] 之前调用。
 void registerBuiltInSources() {
