@@ -7,7 +7,7 @@ library favorites_helper;
 
 import 'package:flutter/foundation.dart';
 
-import '../../foundation/log.dart';
+import '../foundation/log.dart';
 import '../comic_source/comic_source.dart';
 import '../network/base_comic.dart';
 import 'joy_database.dart';

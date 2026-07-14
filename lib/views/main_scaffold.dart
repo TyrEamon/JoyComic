@@ -10,12 +10,12 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
-import '../../theme/app_colors.dart';
-import '../../theme/app_radius.dart';
-import '../category/category_page.dart';
-import '../favorites/favorites_page.dart';
-import '../home/home_page.dart';
-import '../mine/mine_page.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_radius.dart';
+import 'category/category_page.dart';
+import 'favorites/favorites_page.dart';
+import 'home/home_page.dart';
+import 'mine/mine_page.dart';
 
 class MainScaffold extends StatefulWidget {
   const MainScaffold({super.key});

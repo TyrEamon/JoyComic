@@ -68,7 +68,7 @@ class _Star extends StatelessWidget {
   }
 }
 
-class _StarPainter implements CustomPainter {
+class _StarPainter extends CustomPainter {
   _StarPainter({required this.color, required this.fill});
 
   final Color color;

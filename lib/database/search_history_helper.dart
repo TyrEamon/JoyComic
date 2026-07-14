@@ -1,7 +1,7 @@
 /// 搜索历史数据库操作。
 library search_history_helper;
 
-import '../../foundation/log.dart';
+import '../foundation/log.dart';
 import 'joy_database.dart';
 
 class SearchHistoryHelper {
