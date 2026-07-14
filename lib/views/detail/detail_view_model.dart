@@ -34,7 +34,8 @@ class DetailViewModel extends ChangeNotifier {
     required this.sourceKey,
     required this.comicId,
     this.demoData,
-  });
+    FavoritesHelper? favoritesHelper,
+  }) : _favHelper = favoritesHelper ?? FavoritesHelper();
 
   final String sourceKey;
   final String comicId;
@@ -42,7 +43,7 @@ class DetailViewModel extends ChangeNotifier {
   /// 演示数据旁路。
   final ComicInfoData? demoData;
 
-  final _favHelper = FavoritesHelper();
+  final FavoritesHelper _favHelper;
 
   DetailLoadState _state = DetailLoadState.idle;
   DetailLoadState get state => _state;
@@ -171,9 +172,6 @@ class DetailViewModel extends ChangeNotifier {
       coverUrl: info.cover,
     );
     _isFavorite = newState;
-
-    // 通知收藏页刷新
-    FavoriteNotifier.instance.markDirty();
 
     notifyListeners();
   }
