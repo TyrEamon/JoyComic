@@ -183,6 +183,120 @@ class SourceContentSection {
       );
 }
 
+@immutable
+class HomeSourceResult {
+  final String sourceKey;
+  final String sourceName;
+  final Res<List<SourceContentSection>> result;
+
+  const HomeSourceResult({
+    required this.sourceKey,
+    required this.sourceName,
+    required this.result,
+  });
+}
+
+@immutable
+class HomeContentSection {
+  final String sourceKey;
+  final String sourceName;
+  final String key;
+  final String title;
+  final List<BaseComic> comics;
+  final SourceContentQuery? moreQuery;
+
+  HomeContentSection({
+    required this.sourceKey,
+    required this.sourceName,
+    required this.key,
+    required this.title,
+    required List<BaseComic> comics,
+    this.moreQuery,
+  }) : comics = List<BaseComic>.unmodifiable(comics);
+}
+
+@immutable
+class HomeSourceError {
+  final String sourceKey;
+  final String sourceName;
+  final String message;
+
+  const HomeSourceError({
+    required this.sourceKey,
+    required this.sourceName,
+    required this.message,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is HomeSourceError &&
+          sourceKey == other.sourceKey &&
+          sourceName == other.sourceName &&
+          message == other.message;
+
+  @override
+  int get hashCode => Object.hash(sourceKey, sourceName, message);
+}
+
+@immutable
+class HomeContent {
+  final List<HomeContentSection> sections;
+  final List<HomeSourceError> errors;
+
+  HomeContent({
+    required List<HomeContentSection> sections,
+    required List<HomeSourceError> errors,
+  })  : sections = List<HomeContentSection>.unmodifiable(sections),
+        errors = List<HomeSourceError>.unmodifiable(errors);
+}
+
+/// Combines source home responses without allowing one failed source to hide
+/// successful content from another source.
+///
+/// Input source order and source-local section order are retained. Empty
+/// sections are discarded. For duplicate section keys within one source and
+/// duplicate comic ids within one section, the first non-empty value wins.
+HomeContent mergeHomeSections(Iterable<HomeSourceResult> sourceResults) {
+  final sections = <HomeContentSection>[];
+  final errors = <HomeSourceError>[];
+  final sectionKeys = <String>{};
+
+  for (final sourceResult in sourceResults) {
+    final result = sourceResult.result;
+    if (result.error) {
+      errors.add(HomeSourceError(
+        sourceKey: sourceResult.sourceKey,
+        sourceName: sourceResult.sourceName,
+        message: result.errorMessageWithoutNull,
+      ));
+      continue;
+    }
+
+    for (final section in result.data) {
+      final comicIds = <String>{};
+      final comics = <BaseComic>[];
+      for (final comic in section.comics) {
+        if (comicIds.add(comic.id)) comics.add(comic);
+      }
+      if (comics.isEmpty) continue;
+
+      final sectionIdentity = '${sourceResult.sourceKey}:${section.key}';
+      if (!sectionKeys.add(sectionIdentity)) continue;
+      sections.add(HomeContentSection(
+        sourceKey: sourceResult.sourceKey,
+        sourceName: sourceResult.sourceName,
+        key: section.key,
+        title: section.title,
+        comics: comics,
+        moreQuery: section.moreQuery,
+      ));
+    }
+  }
+
+  return HomeContent(sections: sections, errors: errors);
+}
+
 typedef LoadSourceCategories = Future<Res<List<SourceCategory>>> Function();
 typedef LoadSourceContent = Future<Res<SourceContentPage>> Function(
   SourceContentQuery query,

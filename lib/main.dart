@@ -10,6 +10,7 @@ import 'foundation/app_data.dart';
 import 'foundation/log.dart';
 import 'theme/app_theme.dart';
 import 'views/auth/login_page.dart';
+import 'views/common/source_content_page.dart';
 import 'views/detail/detail_page.dart';
 import 'views/download/download_page.dart';
 import 'views/image_search/image_search_page.dart';
@@ -49,6 +50,16 @@ final _router = GoRouter(
       path: '/search/:sourceKey',
       builder: (context, state) => SearchPage(
         sourceKey: state.pathParameters['sourceKey']!,
+      ),
+    ),
+    GoRoute(
+      path: '/content/:sourceKey',
+      builder: (context, state) => SourceContentPage(
+        sourceKey: state.pathParameters['sourceKey']!,
+        kind: state.uri.queryParameters['kind'] ?? 'category',
+        category: state.uri.queryParameters['category'] ?? '',
+        param: state.uri.queryParameters['param'],
+        sort: state.uri.queryParameters['sort'],
       ),
     ),
     GoRoute(

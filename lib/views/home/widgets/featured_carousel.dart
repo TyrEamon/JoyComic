@@ -1,8 +1,4 @@
-/// 首页编辑推荐横滑大卡。
-///
-/// 每卡 = 大幅封面背景 + 渐变蒙版 + 标题 + 标签，类似杂志封面轮播。
-/// 功能集成说明：数据来自 ComicSource.explorePages[0].loadMultiPart
-/// 或 source.favoriteData 之外的推荐位；mock 用 picsum 占位。
+/// Featured home carousel with source-aware covers and navigation metadata.
 library featured_carousel;
 
 import 'package:flutter/material.dart';
@@ -30,11 +26,14 @@ class FeaturedCarousel extends StatelessWidget {
         padEnds: false,
         controller: PageController(viewportFraction: 0.88),
         itemCount: items.length,
-        itemBuilder: (_, i) {
-          final it = items[i];
+        itemBuilder: (_, index) {
+          final item = items[index];
           return Padding(
             padding: const EdgeInsets.only(right: AppSpacing.sm),
-            child: _FeaturedCard(item: it, onTap: onTap == null ? null : () => onTap!(it)),
+            child: _FeaturedCard(
+              item: item,
+              onTap: onTap == null ? null : () => onTap!(item),
+            ),
           );
         },
       ),
@@ -50,17 +49,21 @@ class FeaturedItem {
     this.tag,
     this.badge,
     this.sourceKey,
+    this.headers,
   });
+
   final String id;
   final String title;
   final String coverUrl;
   final String? tag;
-  final String? badge; // "编辑推荐"/"独家" 等
+  final String? badge;
   final String? sourceKey;
+  final Map<String, dynamic>? headers;
 }
 
 class _FeaturedCard extends StatelessWidget {
   const _FeaturedCard({required this.item, required this.onTap});
+
   final FeaturedItem item;
   final VoidCallback? onTap;
 
@@ -77,15 +80,15 @@ class _FeaturedCard extends StatelessWidget {
             Image.network(
               item.coverUrl,
               fit: BoxFit.cover,
+              headers: item.headers?.cast<String, String>(),
               colorBlendMode: BlendMode.dstATop,
-              color: AppColors.surface, // 加载失败时底色
+              color: AppColors.surface,
               errorBuilder: (_, __, ___) => Container(
                 decoration: const BoxDecoration(
                   gradient: AppColors.brandGradient,
                 ),
               ),
             ),
-            // 渐变蒙版：左下深 → 右上透明，承载文字。
             const Positioned.fill(
               child: IgnorePointer(
                 child: DecoratedBox(
@@ -104,22 +107,29 @@ class _FeaturedCard extends StatelessWidget {
                 ),
               ),
             ),
-            if (item.badge != null)
+            if (item.badge != null || item.sourceKey != null)
               Positioned(
                 top: 12,
                 left: 12,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                        colors: [AppColors.brandPink, AppColors.brandViolet]),
+                      colors: [AppColors.brandPink, AppColors.brandViolet],
+                    ),
                     borderRadius: BorderRadius.circular(4),
                   ),
-                  child: Text(item.badge!,
-                      style: const TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white)),
+                  child: Text(
+                    item.badge ?? _sourceLabel(item.sourceKey!),
+                    style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
                 ),
               ),
             Positioned(
@@ -130,12 +140,15 @@ class _FeaturedCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (item.tag != null)
-                    Text(item.tag!,
-                        style: const TextStyle(
-                            fontSize: 11,
-                            color: AppColors.brandPink,
-                            fontWeight: FontWeight.w600)),
+                  if (item.tag?.isNotEmpty == true)
+                    Text(
+                      item.tag!,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.brandPink,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   const SizedBox(height: 4),
                   Text(
                     item.title,
@@ -146,9 +159,7 @@ class _FeaturedCard extends StatelessWidget {
                       fontWeight: FontWeight.w700,
                       color: Colors.white,
                       height: 1.25,
-                      shadows: [
-                        Shadow(color: Colors.black54, blurRadius: 8),
-                      ],
+                      shadows: [Shadow(color: Colors.black54, blurRadius: 8)],
                     ),
                   ),
                 ],
@@ -159,4 +170,10 @@ class _FeaturedCard extends StatelessWidget {
       ),
     );
   }
+
+  String _sourceLabel(String sourceKey) => switch (sourceKey) {
+        'jm' => 'JM',
+        'picacg' => 'Pica',
+        _ => sourceKey,
+      };
 }

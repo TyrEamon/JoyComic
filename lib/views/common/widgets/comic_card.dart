@@ -98,6 +98,7 @@ class ComicCard extends StatelessWidget {
           width: width,
           headers: headers,
           onTap: onTap,
+          sourceKey: sourceKey,
         );
       case _Layout.grid:
         return _Grid(
@@ -109,6 +110,7 @@ class ComicCard extends StatelessWidget {
           width: width,
           headers: headers,
           onTap: onTap,
+          sourceKey: sourceKey,
         );
     }
   }
@@ -151,7 +153,7 @@ class _Poster extends StatelessWidget {
           children: [
             Stack(
               children: [
-                ComicCover(url: coverUrl, width: width),
+                ComicCover(url: coverUrl, width: width, headers: headers),
                 if (sourceKey != null)
                   Positioned(
                     left: 6,
@@ -210,6 +212,7 @@ class _Horizontal extends StatelessWidget {
     required this.width,
     required this.headers,
     required this.onTap,
+    required this.sourceKey,
   });
 
   final String title;
@@ -220,6 +223,7 @@ class _Horizontal extends StatelessWidget {
   final double width;
   final Map<String, dynamic>? headers;
   final VoidCallback? onTap;
+  final String? sourceKey;
 
   @override
   Widget build(BuildContext context) {
@@ -237,14 +241,24 @@ class _Horizontal extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: Row(
           children: [
-            ComicCover(
-              url: coverUrl,
-              width: 92,
-              aspectRatio: 3 / 4,
-              radius: 0,
-              elevation: false,
-              border: false,
-              headers: headers,
+            Stack(
+              children: [
+                ComicCover(
+                  url: coverUrl,
+                  width: 92,
+                  aspectRatio: 3 / 4,
+                  radius: 0,
+                  elevation: false,
+                  border: false,
+                  headers: headers,
+                ),
+                if (sourceKey != null)
+                  Positioned(
+                    left: 6,
+                    top: 6,
+                    child: _SourceBadge(sourceKey: sourceKey!),
+                  ),
+              ],
             ),
             Expanded(
               child: Padding(
@@ -315,6 +329,7 @@ class _Grid extends StatelessWidget {
     required this.width,
     required this.headers,
     required this.onTap,
+    required this.sourceKey,
   });
 
   final String title;
@@ -325,6 +340,7 @@ class _Grid extends StatelessWidget {
   final double width;
   final Map<String, dynamic>? headers;
   final VoidCallback? onTap;
+  final String? sourceKey;
 
   @override
   Widget build(BuildContext context) {
@@ -337,6 +353,12 @@ class _Grid extends StatelessWidget {
           Stack(
             children: [
               ComicCover(url: coverUrl, width: width, headers: headers),
+              if (sourceKey != null)
+                Positioned(
+                  left: 6,
+                  top: 6,
+                  child: _SourceBadge(sourceKey: sourceKey!),
+                ),
               if (badge != null)
                 Positioned(top: 8, right: 8, child: badge!),
             ],
@@ -362,6 +384,7 @@ class _SourceBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isJm = sourceKey == 'jm';
+    final isPicacg = sourceKey == 'picacg';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
       decoration: BoxDecoration(
@@ -371,7 +394,7 @@ class _SourceBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(4),
       ),
       child: Text(
-        isJm ? 'JM' : 'Pica',
+        isJm ? 'JM' : (isPicacg ? 'Pica' : sourceKey.toUpperCase()),
         style: const TextStyle(
           color: Colors.white,
           fontSize: 9,

@@ -3,6 +3,7 @@ import 'package:joycomic/comic_source/built_in/jm.dart';
 import 'package:joycomic/network/base_comic.dart';
 import 'package:joycomic/network/jm/jm_network.dart';
 import 'package:joycomic/network/picacg/picacg_network.dart';
+import 'package:joycomic/network/res.dart';
 import 'package:joycomic/views/common/source_content_models.dart';
 
 void main() {
@@ -27,6 +28,102 @@ void main() {
       ]);
 
       expect(values.map((category) => category.title), ['恋爱', '校园']);
+    });
+  });
+
+  group('mergeHomeSections', () {
+    test('keeps successful sections and records a source-level error', () {
+      final content = mergeHomeSections([
+        HomeSourceResult(
+          sourceKey: 'jm',
+          sourceName: '禁漫',
+          result: Res([
+            SourceContentSection(
+              key: 'recommended',
+              title: '编辑推荐',
+              comics: const [_TestComic('jm-1')],
+              moreQuery: const SourceContentQuery(
+                categoryKey: 'recommended',
+                param: 'recommend-param',
+              ),
+            ),
+          ]),
+        ),
+        const HomeSourceResult(
+          sourceKey: 'picacg',
+          sourceName: '哔咔',
+          result: Res.error('network unavailable'),
+        ),
+      ]);
+
+      expect(content.sections, hasLength(1));
+      expect(content.sections.single.sourceKey, 'jm');
+      expect(content.sections.single.sourceName, '禁漫');
+      expect(content.sections.single.key, 'recommended');
+      expect(content.errors, [
+        const HomeSourceError(
+          sourceKey: 'picacg',
+          sourceName: '哔咔',
+          message: 'network unavailable',
+        ),
+      ]);
+    });
+
+    test('preserves source and section order while deduplicating first wins', () {
+      final content = mergeHomeSections([
+        HomeSourceResult(
+          sourceKey: 'picacg',
+          sourceName: '哔咔',
+          result: Res([
+            SourceContentSection(
+              key: 'latest',
+              title: '最新漫画',
+              comics: const [
+                _TestComic('pica-1'),
+                _TestComic('pica-1'),
+                _TestComic('shared-id'),
+              ],
+            ),
+            SourceContentSection(
+              key: 'empty',
+              title: '空分区',
+              comics: const [],
+            ),
+            SourceContentSection(
+              key: 'latest',
+              title: '重复分区',
+              comics: const [_TestComic('ignored')],
+            ),
+            SourceContentSection(
+              key: 'recommended',
+              title: '推荐',
+              comics: const [_TestComic('pica-2')],
+            ),
+          ]),
+        ),
+        HomeSourceResult(
+          sourceKey: 'jm',
+          sourceName: '禁漫',
+          result: Res([
+            SourceContentSection(
+              key: 'latest',
+              title: '最新更新',
+              comics: const [_TestComic('shared-id')],
+            ),
+          ]),
+        ),
+      ]);
+
+      expect(
+        content.sections.map((section) => '${section.sourceKey}:${section.key}'),
+        ['picacg:latest', 'picacg:recommended', 'jm:latest'],
+      );
+      expect(
+        content.sections.first.comics.map((comic) => comic.id),
+        ['pica-1', 'shared-id'],
+      );
+      expect(content.sections.last.comics.single.id, 'shared-id');
+      expect(content.errors, isEmpty);
     });
   });
 
