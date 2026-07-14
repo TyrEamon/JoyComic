@@ -76,6 +76,67 @@ class JmHomeSection {
   });
 }
 
+/// JM 分类接口在没有显式分页元数据时使用的稳定协议页大小。
+const jmCategoryProtocolPageSize = 20;
+
+/// Parses the category payload while preserving missing parent identifiers.
+/// The source adapter/normalizer is responsible for dropping unroutable entries.
+List<JmCategory> parseJmCategories(Object? value) {
+  final data = jsonMap(value);
+  if (data['categories'] is! List) return const [];
+  final categories = <JmCategory>[];
+  for (final rawCategory in jsonList(data['categories'])) {
+    if (rawCategory is! Map) continue;
+    final category = jsonMap(rawCategory);
+    final name = jsonString(category['name'] ?? category['title']).trim();
+    final slug = jsonString(
+      category['slug'] ?? category['id'] ?? category['key'],
+    ).trim();
+    if (name.isEmpty) continue;
+
+    final subCategories = <JmSubCategory>[];
+    for (final rawSubCategory in jsonList(category['sub_categories'])) {
+      if (rawSubCategory is! Map) continue;
+      final subCategory = jsonMap(rawSubCategory);
+      final cid = jsonString(
+        subCategory['CID'] ??
+            subCategory['cid'] ??
+            subCategory['id'] ??
+            subCategory['key'] ??
+            subCategory['slug'],
+      ).trim();
+      final subName =
+          jsonString(subCategory['name'] ?? subCategory['title']).trim();
+      final subSlug = jsonString(subCategory['slug']).trim();
+      if (cid.isEmpty || subName.isEmpty) continue;
+      subCategories.add(JmSubCategory(cid, subName, subSlug));
+    }
+    categories.add(JmCategory(name, slug, subCategories));
+  }
+  return categories;
+}
+
+/// Computes the last page without treating a short final page as page size.
+/// An empty response page means there is no more content after [currentPage].
+int jmCategoryMaxPage({
+  required int total,
+  required int currentPage,
+  required int itemCount,
+  int? pageSize,
+  int? pageCount,
+}) {
+  final page = currentPage < 1 ? 1 : currentPage;
+  if (pageCount != null && pageCount > 0) {
+    return pageCount < page ? page : pageCount;
+  }
+  if (itemCount == 0) return page;
+  if (total <= 0) return page;
+  final size = pageSize != null && pageSize > 0
+      ? pageSize
+      : jmCategoryProtocolPageSize;
+  final calculated = (total + size - 1) ~/ size;
+  return calculated < page ? page : calculated;
+}
 /// 禁漫网络请求类。
 class JmNetwork {
   JmNetwork._create();
@@ -438,36 +499,8 @@ class JmNetwork {
     if (data['categories'] is! List) {
       return const Res(null, errorMessage: '分类解析失败');
     }
-    final categories = <JmCategory>[];
-    for (final rawCategory in jsonList(data['categories'])) {
-      if (rawCategory is! Map) continue;
-      final category = jsonMap(rawCategory);
-      final name = jsonString(category['name'] ?? category['title']).trim();
-      var slug = jsonString(category['slug'] ?? category['id']).trim();
-      if (name.isEmpty) continue;
-      if (slug.isEmpty) slug = '0';
-
-      final subCategories = <JmSubCategory>[];
-      for (final rawSubCategory in jsonList(category['sub_categories'])) {
-        if (rawSubCategory is! Map) continue;
-        final subCategory = jsonMap(rawSubCategory);
-        final cid = jsonString(
-          subCategory['CID'] ??
-              subCategory['cid'] ??
-              subCategory['id'] ??
-              subCategory['slug'],
-        ).trim();
-        final subName =
-            jsonString(subCategory['name'] ?? subCategory['title']).trim();
-        final subSlug = jsonString(subCategory['slug']).trim();
-        if (cid.isEmpty || subName.isEmpty) continue;
-        subCategories.add(JmSubCategory(cid, subName, subSlug));
-      }
-      categories.add(JmCategory(name, slug, subCategories));
-    }
-    return Res(categories);
+    return Res(parseJmCategories(data));
   }
-
   /// 获取分类漫画，排序值由源适配层映射为服务端 order。
   Future<Res<List<JmComicBrief>>> getCategoryComics(
     String category,
@@ -499,16 +532,21 @@ class JmNetwork {
       comics.add(comic);
     }
 
-    final total = jsonInt(data['total'], fallback: comics.length);
-    var pageSize = jsonInt(
+    final total = jsonInt(data['total']);
+    final rawPageSize = jsonInt(
       data['page_size'] ?? data['pageSize'] ?? data['per_page'],
     );
-    if (pageSize < 1) pageSize = content.length;
-    var maxPage = page;
-    if (total > 0 && pageSize > 0) {
-      maxPage = (total / pageSize).ceil();
-      if (maxPage < page) maxPage = page;
-    }
+    final rawPageCount = jsonInt(
+      data['page_count'] ?? data['pageCount'] ?? data['total_page'] ??
+          data['totalPage'],
+    );
+    final maxPage = jmCategoryMaxPage(
+      total: total,
+      currentPage: page,
+      itemCount: content.length,
+      pageSize: rawPageSize > 0 ? rawPageSize : null,
+      pageCount: rawPageCount > 0 ? rawPageCount : null,
+    );
     return Res(comics, subData: maxPage);
   }
 

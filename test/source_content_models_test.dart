@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:joycomic/network/jm/jm_network.dart';
 import 'package:joycomic/views/common/source_content_models.dart';
 
 void main() {
@@ -90,5 +91,90 @@ void main() {
     expect(child.key, '34');
     expect(child.parentKey, '12');
     expect(child.param, '56');
+  });
+  test('drops JM categories without real identifiers', () {
+    final categories = parseJmCategories({
+      'categories': [
+        {
+          'name': '缺少父标识',
+          'sub_categories': [
+            {'name': '缺少子标识'},
+          ],
+        },
+        {
+          'name': '有效父分类',
+          'id': 9,
+          'sub_categories': [
+            {'name': '缺少 CID'},
+            {'name': '有效子分类', 'CID': 42, 'slug': 'child-slug'},
+          ],
+        },
+      ],
+    });
+
+    expect(categories, hasLength(2));
+    expect(categories.first.slug, isEmpty);
+    expect(categories.first.subCategories, isEmpty);
+    expect(categories[1].slug, '9');
+    expect(categories[1].subCategories, hasLength(1));
+    expect(categories[1].subCategories.single.cid, '42');
+
+    final visible = normalizeCategories([
+      for (final category in categories)
+        SourceCategory(key: category.slug, title: category.name),
+    ]);
+    expect(visible.map((category) => category.key), ['9']);
+  });
+
+  group('jmCategoryMaxPage', () {
+    test('uses the stable protocol page size for a partial final page', () {
+      expect(
+        jmCategoryMaxPage(total: 101, currentPage: 6, itemCount: 1),
+        6,
+      );
+    });
+
+    test('calculates max page from a full page', () {
+      expect(
+        jmCategoryMaxPage(total: 101, currentPage: 1, itemCount: 20),
+        6,
+      );
+    });
+
+    test('stops at the current page when the response page is empty', () {
+      expect(
+        jmCategoryMaxPage(total: 101, currentPage: 6, itemCount: 0),
+        6,
+      );
+      expect(
+        jmCategoryMaxPage(total: 101, currentPage: 2, itemCount: 0),
+        2,
+      );
+    });
+
+    test('prefers explicit page count or page size when available', () {
+      expect(
+        jmCategoryMaxPage(
+          total: 101,
+          currentPage: 1,
+          itemCount: 20,
+          pageCount: 7,
+        ),
+        7,
+      );
+      expect(
+        jmCategoryMaxPage(
+          total: 101,
+          currentPage: 1,
+          itemCount: 20,
+          pageSize: 50,
+        ),
+        3,
+      );
+    });
+
+    test('keeps an empty result at the first page', () {
+      expect(jmCategoryMaxPage(total: 0, currentPage: 1, itemCount: 0), 1);
+    });
   });
 }
