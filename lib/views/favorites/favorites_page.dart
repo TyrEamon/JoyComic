@@ -97,13 +97,16 @@ class _FavoritesPageState extends State<FavoritesPage> {
   String? _filterSource;
   List<FavoriteLibraryItem> _items = const [];
   Set<String> _failedSources = const {};
+  final Set<(String, String)> _busyFavorites = <(String, String)>{};
   bool _loading = true;
   bool _syncingRemote = false;
   int _loadGeneration = 0;
+  late int _lastSeenRevision;
 
   @override
   void initState() {
     super.initState();
+    _lastSeenRevision = FavoriteNotifier.instance.revision;
     FavoriteNotifier.instance.addListener(_onFavoriteChanged);
     _loadFavorites();
   }
@@ -115,8 +118,10 @@ class _FavoritesPageState extends State<FavoritesPage> {
   }
 
   void _onFavoriteChanged() {
-    if (!FavoriteNotifier.instance.isDirty || _syncingRemote) return;
-    FavoriteNotifier.instance.consumeDirty();
+    final revision = FavoriteNotifier.instance.revision;
+    if (revision <= _lastSeenRevision) return;
+    _lastSeenRevision = revision;
+    if (_syncingRemote) return;
     _loadFavorites();
   }
 
@@ -137,6 +142,79 @@ class _FavoritesPageState extends State<FavoritesPage> {
         .toList();
   }
 
+  static const int _remotePageSafetyLimit = 100;
+
+  int? _maxPageFrom(Object? value) {
+    final parsed = switch (value) {
+      int number => number,
+      num number => number.toInt(),
+      String text => int.tryParse(text),
+      _ => null,
+    };
+    return parsed != null && parsed > 0 ? parsed : null;
+  }
+
+  Future<List<FavoriteLibraryItem>> _loadRemoteSource(
+    ComicSource source,
+    Set<String> failed,
+  ) async {
+    final items = <FavoriteLibraryItem>[];
+    final seenComicIds = <String>{};
+    int? maxPage;
+    var page = 1;
+
+    while (page <= _remotePageSafetyLimit) {
+      try {
+        final result = await source.favoriteData!.load(page);
+        if (result.error) {
+          failed.add(source.key);
+          break;
+        }
+
+        final comics = result.data;
+        var newItems = 0;
+        for (final comic in comics) {
+          if (!seenComicIds.add(comic.id)) continue;
+          newItems++;
+          items.add(
+            FavoriteLibraryItem(
+              sourceKey: source.key,
+              comicId: comic.id,
+              title: comic.title,
+              coverUrl: comic.cover,
+              author: comic.subTitle,
+              isRemote: true,
+            ),
+          );
+        }
+
+        maxPage ??= _maxPageFrom(result.subData);
+        if (maxPage != null) {
+          if (page >= maxPage) break;
+        } else if (comics.isEmpty || newItems == 0) {
+          break;
+        }
+        page++;
+      } catch (error, stackTrace) {
+        failed.add(source.key);
+        Log.e(
+          'Favorite source load failed',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        break;
+      }
+    }
+
+    if (page > _remotePageSafetyLimit) {
+      Log.w(
+        'Favorite pagination stopped',
+        error: '${source.key} exceeded $_remotePageSafetyLimit pages',
+      );
+    }
+    return items;
+  }
+
   Future<void> _loadFavorites() async {
     final generation = ++_loadGeneration;
     final local = _localItems();
@@ -150,38 +228,14 @@ class _FavoritesPageState extends State<FavoritesPage> {
     final remote = <FavoriteLibraryItem>[];
     final failed = <String>{};
     final sources = widget.sourcesProvider();
-    await Future.wait(
+    final batches = await Future.wait(
       sources
           .where((source) => source.isLogin && source.favoriteData != null)
-          .map((source) async {
-            try {
-              final result = await source.favoriteData!.load(1);
-              if (result.error) {
-                failed.add(source.key);
-                return;
-              }
-              for (final comic in result.data) {
-                remote.add(
-                  FavoriteLibraryItem(
-                    sourceKey: source.key,
-                    comicId: comic.id,
-                    title: comic.title,
-                    coverUrl: comic.cover,
-                    author: comic.subTitle,
-                    isRemote: true,
-                  ),
-                );
-              }
-            } catch (error, stackTrace) {
-              failed.add(source.key);
-              Log.e(
-                'Favorite source load failed',
-                error: error,
-                stackTrace: stackTrace,
-              );
-            }
-          }),
+          .map((source) => _loadRemoteSource(source, failed)),
     );
+    for (final batch in batches) {
+      remote.addAll(batch);
+    }
 
     if (!mounted || generation != _loadGeneration) return;
 
@@ -219,7 +273,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
       }
     } finally {
       _syncingRemote = false;
-      FavoriteNotifier.instance.consumeDirty();
+      _lastSeenRevision = FavoriteNotifier.instance.revision;
     }
 
     final refreshedLocal = _localItems();
@@ -268,6 +322,9 @@ class _FavoritesPageState extends State<FavoritesPage> {
   }
 
   Future<void> _removeFavorite(FavoriteLibraryItem item) async {
+    final key = (item.sourceKey, item.comicId);
+    if (_busyFavorites.contains(key)) return;
+
     final source = widget
         .sourcesProvider()
         .where((candidate) => candidate.key == item.sourceKey)
@@ -277,6 +334,8 @@ class _FavoritesPageState extends State<FavoritesPage> {
       return;
     }
 
+    if (!mounted) return;
+    setState(() => _busyFavorites.add(key));
     final shouldRemoveRemotely =
         source?.isLogin == true &&
         source?.favoriteData?.addOrDelFavorite != null;
@@ -298,6 +357,10 @@ class _FavoritesPageState extends State<FavoritesPage> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('取消收藏失败：$error')));
+    } finally {
+      if (mounted) {
+        setState(() => _busyFavorites.remove(key));
+      }
     }
   }
 
@@ -380,6 +443,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
                       onRefresh: _loadFavorites,
                       onOpen: _openDetail,
                       onRemove: _removeFavorite,
+                      busyItems: _busyFavorites,
                     ),
             ),
           ],
@@ -516,12 +580,14 @@ class _FavoritesGrid extends StatelessWidget {
     required this.onRefresh,
     required this.onOpen,
     required this.onRemove,
+    required this.busyItems,
   });
 
   final List<FavoriteLibraryItem> items;
   final Future<void> Function() onRefresh;
   final ValueChanged<FavoriteLibraryItem> onOpen;
   final ValueChanged<FavoriteLibraryItem> onRemove;
+  final Set<(String, String)> busyItems;
 
   @override
   Widget build(BuildContext context) {
@@ -551,6 +617,7 @@ class _FavoritesGrid extends StatelessWidget {
             itemCount: items.length,
             itemBuilder: (context, index) {
               final item = items[index];
+              final busy = busyItems.contains((item.sourceKey, item.comicId));
               final source = ComicSource.find(item.sourceKey);
               final headers = source?.getThumbnailLoadingConfig?.call(
                 item.coverUrl,
@@ -572,7 +639,7 @@ class _FavoritesGrid extends StatelessWidget {
                     width: width,
                     headers: headers,
                     sourceKey: item.sourceKey,
-                    onTap: () => onOpen(item),
+                    onTap: busy ? null : () => onOpen(item),
                   ),
                   Positioned(
                     right: 4,
@@ -581,12 +648,23 @@ class _FavoritesGrid extends StatelessWidget {
                       color: Colors.black.withValues(alpha: 0.62),
                       shape: const CircleBorder(),
                       child: IconButton(
-                        tooltip: '取消收藏',
+                        tooltip: busy ? '取消收藏中' : '取消收藏',
                         visualDensity: VisualDensity.compact,
                         iconSize: 18,
                         color: AppColors.brandPink,
-                        onPressed: () => onRemove(item),
-                        icon: const Icon(Icons.favorite_rounded),
+                        onPressed: busy ? null : () => onRemove(item),
+                        icon: busy
+                            ? SizedBox.square(
+                                key: ValueKey<String>(
+                                  'favorite-busy:${item.sourceKey}:${item.comicId}',
+                                ),
+                                dimension: 16,
+                                child: const CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: AppColors.brandPink,
+                                ),
+                              )
+                            : const Icon(Icons.favorite_rounded),
                       ),
                     ),
                   ),

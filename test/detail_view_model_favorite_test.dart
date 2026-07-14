@@ -15,7 +15,7 @@ void main() {
 
       final notifier = FavoriteNotifier.instance;
       notifier.loadFromDb(database);
-      notifier.consumeDirty();
+      final revision = notifier.revision;
 
       final helper = FavoritesHelper(database, (_, _, _) async {});
       final viewModel = DetailViewModel(
@@ -46,7 +46,7 @@ void main() {
 
       expect(viewModel.isFavorite, isTrue);
       expect(notifications, 1);
-      expect(notifier.isDirty, isTrue);
+      expect(notifier.revision, revision + 1);
     },
   );
 }

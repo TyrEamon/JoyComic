@@ -198,22 +198,29 @@ class ReaderProvider extends ChangeNotifier {
   String? _loadingErrorMessage;
   String? get loadingErrorMessage => _loadingErrorMessage;
 
+  int _loadGeneration = 0;
+  bool _disposed = false;
+
   /// 加载当前章节图片 URL。
   ///
   /// 调用外部 [imageLoader] 获取图片列表，成功后更新 [_images] 并通知各子模块，
   /// 失败时置错误态留 UI 层展示 [ErrorPage]。
   Future<void> _loadImageUrls() async {
+    if (_disposed) return;
     final imageLoader = _imageLoader;
     if (imageLoader == null) return;
+    final generation = ++_loadGeneration;
+    final chapterSnapshot = _chapter;
     _loadingState = ReaderLoadState.loading;
     notifyListeners();
 
-    Log.i('Reader load images', 'chapter: ${_chapter.id}');
+    Log.i('Reader load images', 'chapter: ${chapterSnapshot.id}');
 
     final res = await imageLoader(
       id,
-      _chapter.id.isNotEmpty ? _chapter.id : null,
+      chapterSnapshot.id.isNotEmpty ? chapterSnapshot.id : null,
     );
+    if (!_isCurrentLoad(generation, chapterSnapshot)) return;
 
     if (res.error) {
       _loadingState = ReaderLoadState.error;
@@ -227,7 +234,10 @@ class ReaderProvider extends ChangeNotifier {
     if (urls.isEmpty) {
       _loadingState = ReaderLoadState.error;
       _loadingErrorMessage = '该章节暂无图片';
-      Log.w('Reader load empty', error: 'chapter ${_chapter.id} has no images');
+      Log.w(
+        'Reader load empty',
+        error: 'chapter ${chapterSnapshot.id} has no images',
+      );
       notifyListeners();
       return;
     }
@@ -253,6 +263,12 @@ class ReaderProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool _isCurrentLoad(int generation, ReaderChapter chapterSnapshot) {
+    return !_disposed &&
+        generation == _loadGeneration &&
+        chapterSnapshot.id == _chapter.id;
+  }
+
   /// 重新加载当前章节（重试按钮回调）。
   void retry() => _loadImageUrls();
 
@@ -260,6 +276,7 @@ class ReaderProvider extends ChangeNotifier {
 
   /// 跳转到指定章节。
   void go(ReaderChapter target) {
+    if (_disposed) return;
     Log.i('Reader go to chapter', '${target.id} - ${target.name}');
     _pageNoTimer?.cancel();
     _hasPendingReadRecord = false;
@@ -309,12 +326,14 @@ class ReaderProvider extends ChangeNotifier {
   }
 
   void _scheduleReadRecordSave() {
+    if (_disposed) return;
     _pageNoTimer?.cancel();
     _hasPendingReadRecord = true;
     _pageNoTimer = Timer(readRecordDebounce, _persistReadRecord);
   }
 
-  void _persistReadRecord() {
+  void _persistReadRecord({bool allowDisposed = false}) {
+    if (_disposed && !allowDisposed) return;
     _pageNoTimer = null;
     _hasPendingReadRecord = false;
     _readRecordHelper.upsert(buildReadRecord());
@@ -686,12 +705,16 @@ class ReaderProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    _loadGeneration++;
     _pageController.dispose();
     turnPageTimer?.cancel();
     _smoothTicker?.dispose();
     _pageNoTimer?.cancel();
+    _pageNoTimer = null;
     if (_hasPendingReadRecord) {
-      _persistReadRecord();
+      _persistReadRecord(allowDisposed: true);
     }
     super.dispose();
   }

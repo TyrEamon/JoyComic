@@ -49,16 +49,14 @@ class FavoriteNotifier extends ChangeNotifier {
   static final FavoriteNotifier instance = FavoriteNotifier._();
 
   final Set<(String, String)> _favoritedIds = <(String, String)>{};
-  bool _dirty = false;
-  bool get isDirty => _dirty;
+  int _revision = 0;
 
-  void markDirty() {
-    _dirty = true;
+  /// 单调递增的变更版本；每个监听方独立记录自己已观察的版本。
+  int get revision => _revision;
+
+  void _broadcastChange() {
+    _revision++;
     notifyListeners();
-  }
-
-  void consumeDirty() {
-    _dirty = false;
   }
 
   void loadFromDb([Database? database]) {
@@ -86,12 +84,12 @@ class FavoriteNotifier extends ChangeNotifier {
     String author = '',
   ]) {
     _favoritedIds.add((sourceKey, comicId));
-    markDirty();
+    _broadcastChange();
   }
 
   void removeLocal(String sourceKey, String comicId) {
     _favoritedIds.remove((sourceKey, comicId));
-    markDirty();
+    _broadcastChange();
   }
 
   void _favoritesCleared(String? sourceKey) {
@@ -100,7 +98,7 @@ class FavoriteNotifier extends ChangeNotifier {
     } else {
       _favoritedIds.removeWhere((id) => id.$1 == sourceKey);
     }
-    markDirty();
+    _broadcastChange();
   }
 }
 
@@ -112,6 +110,8 @@ class FavoritesHelper {
 
   final Database? _database;
   final FavoriteRemoteToggle? _remoteToggle;
+  final Map<(String, String), Future<bool>> _inFlight =
+      <(String, String), Future<bool>>{};
   Database get _db => _database ?? JoyDatabase.instance.core;
 
   /// 插入收藏；同一来源、同一漫画已存在时完整更新元数据。
@@ -190,47 +190,75 @@ class FavoritesHelper {
     return _db.select('SELECT changes() AS count').single['count'] as int;
   }
 
-  /// 切换收藏状态（API + 本地同步）。
+  /// 切换收藏状态（API + 本地同步）。同一收藏的并发调用共享一个操作。
   Future<bool> toggleFavorite({
     required String sourceKey,
     required String comicId,
     required String title,
     required String coverUrl,
     String author = '',
+  }) {
+    final key = (sourceKey, comicId);
+    final pending = _inFlight[key];
+    if (pending != null) return pending;
+
+    final operation = _toggleFavoriteOnce(
+      key: key,
+      sourceKey: sourceKey,
+      comicId: comicId,
+      title: title,
+      coverUrl: coverUrl,
+      author: author,
+    );
+    _inFlight[key] = operation;
+    return operation;
+  }
+
+  Future<bool> _toggleFavoriteOnce({
+    required (String, String) key,
+    required String sourceKey,
+    required String comicId,
+    required String title,
+    required String coverUrl,
+    required String author,
   }) async {
-    final wasFavorited = FavoriteNotifier.instance.isFavorited(
-      sourceKey,
-      comicId,
-    );
+    try {
+      final wasFavorited = FavoriteNotifier.instance.isFavorited(
+        sourceKey,
+        comicId,
+      );
 
-    if (wasFavorited) {
-      await _removeFromSource(sourceKey, comicId);
-      delete(sourceKey, comicId);
-      FavoriteNotifier.instance.removeLocal(sourceKey, comicId);
-      Log.i('Favorite removed', '$sourceKey/$comicId');
-      return false;
+      if (wasFavorited) {
+        await _removeFromSource(sourceKey, comicId);
+        delete(sourceKey, comicId);
+        FavoriteNotifier.instance.removeLocal(sourceKey, comicId);
+        Log.i('Favorite removed', '$sourceKey/$comicId');
+        return false;
+      }
+
+      await _addToSource(sourceKey, comicId);
+      upsert(
+        FavoriteRecord(
+          source: sourceKey,
+          comic: comicId,
+          title: title,
+          cover: coverUrl,
+          author: author,
+          favoritedAt: DateTime.now().millisecondsSinceEpoch,
+        ),
+      );
+      FavoriteNotifier.instance.addLocal(
+        sourceKey,
+        comicId,
+        title,
+        coverUrl,
+        author,
+      );
+      Log.i('Favorite added', '$sourceKey/$comicId');
+      return true;
+    } finally {
+      _inFlight.remove(key);
     }
-
-    await _addToSource(sourceKey, comicId);
-    upsert(
-      FavoriteRecord(
-        source: sourceKey,
-        comic: comicId,
-        title: title,
-        cover: coverUrl,
-        author: author,
-        favoritedAt: DateTime.now().millisecondsSinceEpoch,
-      ),
-    );
-    FavoriteNotifier.instance.addLocal(
-      sourceKey,
-      comicId,
-      title,
-      coverUrl,
-      author,
-    );
-    Log.i('Favorite added', '$sourceKey/$comicId');
-    return true;
   }
 
   Future<void> _addToSource(String sourceKey, String comicId) async {

@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:joycomic/comic_source/comic_source.dart';
 import 'package:joycomic/database/favorites_helper.dart';
 import 'package:joycomic/database/joy_database.dart';
 import 'package:joycomic/database/read_record_helper.dart';
+import 'package:joycomic/network/base_comic.dart';
 import 'package:joycomic/network/res.dart';
 import 'package:joycomic/views/favorites/favorites_page.dart';
 import 'package:joycomic/views/history/history_page.dart';
@@ -67,6 +70,166 @@ void main() {
       );
     });
 
+    testWidgets('loads every remote favorite page through maxPage', (
+      tester,
+    ) async {
+      final database = sqlite3.openInMemory();
+      addTearDown(database.dispose);
+      JoyDatabase.migrateCore(database);
+      final helper = FavoritesHelper(database);
+      FavoriteNotifier.instance.loadFromDb(database);
+      final calls = <int>[];
+      final source = ComicSource.named(
+        name: 'Paged',
+        key: 'paged',
+        filePath: '',
+        favoriteData: FavoriteData.named(
+          load: (page, [folder]) async {
+            calls.add(page);
+            return Res<List<BaseComic>>(<BaseComic>[
+              _TestComic(id: 'comic-$page', title: 'Page $page'),
+            ], subData: 3);
+          },
+        ),
+      )..data['account'] = <String>['user', 'token'];
+      final previousSources = List<ComicSource>.of(ComicSource.sources);
+      addTearDown(() {
+        ComicSource.sources
+          ..clear()
+          ..addAll(previousSources);
+      });
+      ComicSource.sources
+        ..clear()
+        ..add(source);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: FavoritesPage(
+            favoritesHelper: helper,
+            sourcesProvider: () => <ComicSource>[source],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(calls, <int>[1, 2, 3]);
+      expect(find.text('Page 1'), findsOneWidget);
+      expect(find.text('Page 2'), findsOneWidget);
+      expect(find.text('Page 3'), findsOneWidget);
+      expect(helper.count(), 3);
+    });
+
+    testWidgets('unknown remote page limit stops when a page adds no comics', (
+      tester,
+    ) async {
+      final database = sqlite3.openInMemory();
+      addTearDown(database.dispose);
+      JoyDatabase.migrateCore(database);
+      final helper = FavoritesHelper(database);
+      FavoriteNotifier.instance.loadFromDb(database);
+      final calls = <int>[];
+      final source = ComicSource.named(
+        name: 'Unknown pages',
+        key: 'unknown-pages',
+        filePath: '',
+        favoriteData: FavoriteData.named(
+          load: (page, [folder]) async {
+            calls.add(page);
+            return const Res<List<BaseComic>>(<BaseComic>[
+              _TestComic(id: 'same', title: 'Same comic'),
+            ]);
+          },
+        ),
+      )..data['account'] = <String>['user', 'token'];
+      final previousSources = List<ComicSource>.of(ComicSource.sources);
+      addTearDown(() {
+        ComicSource.sources
+          ..clear()
+          ..addAll(previousSources);
+      });
+      ComicSource.sources
+        ..clear()
+        ..add(source);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: FavoritesPage(
+            favoritesHelper: helper,
+            sourcesProvider: () => <ComicSource>[source],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(calls, <int>[1, 2]);
+      expect(find.text('Same comic'), findsOneWidget);
+      expect(helper.count(), 1);
+    });
+
+    testWidgets('one source page error is isolated and keeps completed pages', (
+      tester,
+    ) async {
+      final database = sqlite3.openInMemory();
+      addTearDown(database.dispose);
+      JoyDatabase.migrateCore(database);
+      final helper = FavoritesHelper(database);
+      FavoriteNotifier.instance.loadFromDb(database);
+      final failedCalls = <int>[];
+      final healthyCalls = <int>[];
+      final failedSource = ComicSource.named(
+        name: 'Partially failed',
+        key: 'partially-failed',
+        filePath: '',
+        favoriteData: FavoriteData.named(
+          load: (page, [folder]) async {
+            failedCalls.add(page);
+            if (page == 2) return const Res.error('page two failed');
+            return const Res<List<BaseComic>>(<BaseComic>[
+              _TestComic(id: 'kept', title: 'Kept page'),
+            ], subData: 2);
+          },
+        ),
+      )..data['account'] = <String>['user', 'token'];
+      final healthySource = ComicSource.named(
+        name: 'Healthy',
+        key: 'healthy',
+        filePath: '',
+        favoriteData: FavoriteData.named(
+          load: (page, [folder]) async {
+            healthyCalls.add(page);
+            return const Res<List<BaseComic>>(<BaseComic>[
+              _TestComic(id: 'healthy', title: 'Healthy page'),
+            ], subData: 1);
+          },
+        ),
+      )..data['account'] = <String>['user', 'token'];
+      final previousSources = List<ComicSource>.of(ComicSource.sources);
+      addTearDown(() {
+        ComicSource.sources
+          ..clear()
+          ..addAll(previousSources);
+      });
+      ComicSource.sources
+        ..clear()
+        ..addAll(<ComicSource>[failedSource, healthySource]);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: FavoritesPage(
+            favoritesHelper: helper,
+            sourcesProvider: () => <ComicSource>[failedSource, healthySource],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(failedCalls, <int>[1, 2]);
+      expect(healthyCalls, <int>[1]);
+      expect(find.text('Kept page'), findsOneWidget);
+      expect(find.text('Healthy page'), findsOneWidget);
+      expect(find.textContaining('Partially failed 同步失败'), findsOneWidget);
+    });
+
     test('remote error response leaves local favorite unchanged', () async {
       final database = sqlite3.openInMemory();
       addTearDown(database.dispose);
@@ -83,7 +246,7 @@ void main() {
         ),
       );
       FavoriteNotifier.instance.loadFromDb(database);
-      FavoriteNotifier.instance.consumeDirty();
+      final revision = FavoriteNotifier.instance.revision;
 
       final previousSources = List<ComicSource>.of(ComicSource.sources);
       addTearDown(() {
@@ -121,7 +284,7 @@ void main() {
         FavoriteNotifier.instance.isFavorited('failing-source', 'comic-1'),
         isTrue,
       );
-      expect(FavoriteNotifier.instance.isDirty, isFalse);
+      expect(FavoriteNotifier.instance.revision, revision);
     });
 
     testWidgets('local favorites remain visible without a logged-in source', (
@@ -157,6 +320,53 @@ void main() {
       expect(find.textContaining('本地'), findsWidgets);
     });
 
+    testWidgets('favorite revision refreshes every mounted page', (
+      tester,
+    ) async {
+      final database = sqlite3.openInMemory();
+      addTearDown(database.dispose);
+      JoyDatabase.migrateCore(database);
+      final helper = FavoritesHelper(database);
+      FavoriteNotifier.instance.loadFromDb(database);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Stack(
+            children: <Widget>[
+              FavoritesPage(
+                favoritesHelper: helper,
+                sourcesProvider: () => const <ComicSource>[],
+              ),
+              FavoritesPage(
+                favoritesHelper: helper,
+                sourcesProvider: () => const <ComicSource>[],
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      helper.upsert(
+        const FavoriteRecord(
+          source: 'jm',
+          comic: 'broadcast-1',
+          title: 'Broadcast favorite',
+          cover: '',
+          author: '',
+          favoritedAt: 10,
+        ),
+      );
+      FavoriteNotifier.instance.addLocal(
+        'jm',
+        'broadcast-1',
+        'Broadcast favorite',
+        '',
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Broadcast favorite'), findsNWidgets(2));
+    });
+
     testWidgets(
       'remote load failure still uses remote-first removal and preserves local on failure',
       (tester) async {
@@ -175,8 +385,6 @@ void main() {
           ),
         );
         FavoriteNotifier.instance.loadFromDb(database);
-        FavoriteNotifier.instance.consumeDirty();
-
         var remoteCalls = 0;
         final source = ComicSource.named(
           name: 'Remote capable',
@@ -223,6 +431,82 @@ void main() {
     );
 
     testWidgets(
+      'favorite removal shows busy state and disables repeated taps',
+      (tester) async {
+        final database = sqlite3.openInMemory();
+        addTearDown(database.dispose);
+        JoyDatabase.migrateCore(database);
+        final helper = FavoritesHelper(database);
+        helper.upsert(
+          const FavoriteRecord(
+            source: 'busy-source',
+            comic: 'comic-1',
+            title: 'Busy favorite',
+            cover: '',
+            author: '',
+            favoritedAt: 10,
+          ),
+        );
+        FavoriteNotifier.instance.loadFromDb(database);
+
+        final removeGate = Completer<Res<bool>>();
+        final source = ComicSource.named(
+          name: 'Busy source',
+          key: 'busy-source',
+          filePath: '',
+          favoriteData: FavoriteData.named(
+            load: (page, [folder]) async =>
+                const Res.error('favorite load failed'),
+            addOrDelFavorite: (comicId, folderId, isAdding) =>
+                removeGate.future,
+          ),
+        )..data['account'] = <String>['user', 'token'];
+        final previousSources = List<ComicSource>.of(ComicSource.sources);
+        addTearDown(() {
+          ComicSource.sources
+            ..clear()
+            ..addAll(previousSources);
+        });
+        ComicSource.sources
+          ..clear()
+          ..add(source);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: FavoritesPage(
+              favoritesHelper: helper,
+              sourcesProvider: () => <ComicSource>[source],
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('取消收藏'));
+        await tester.pump();
+
+        expect(
+          find.byKey(
+            const ValueKey<String>('favorite-busy:busy-source:comic-1'),
+          ),
+          findsOneWidget,
+        );
+        final busyButton = tester.widget<IconButton>(
+          find.ancestor(
+            of: find.byKey(
+              const ValueKey<String>('favorite-busy:busy-source:comic-1'),
+            ),
+            matching: find.byType(IconButton),
+          ),
+        );
+        expect(busyButton.tooltip, '取消收藏中');
+        expect(busyButton.onPressed, isNull);
+
+        removeGate.complete(const Res(true));
+        await tester.pumpAndSettle();
+        expect(helper.get('busy-source', 'comic-1'), isNull);
+      },
+    );
+
+    testWidgets(
       'remote load failure still uses remote-first removal and deletes local on success',
       (tester) async {
         final database = sqlite3.openInMemory();
@@ -240,8 +524,6 @@ void main() {
           ),
         );
         FavoriteNotifier.instance.loadFromDb(database);
-        FavoriteNotifier.instance.consumeDirty();
-
         var remoteCalls = 0;
         final source = ComicSource.named(
           name: 'Remote capable',
@@ -393,6 +675,172 @@ void main() {
     });
   });
 
+  group('reader request and persistence concurrency', () {
+    test(
+      'stale chapter response cannot replace the latest chapter images',
+      () async {
+        final database = sqlite3.openInMemory();
+        addTearDown(database.dispose);
+        JoyDatabase.migrateCore(database);
+        final helper = ReadRecordHelper(database);
+        const chapterA = ReaderChapter(id: 'a', order: 1, name: 'A');
+        const chapterB = ReaderChapter(id: 'b', order: 2, name: 'B');
+        final loads = <String, Completer<Res<List<String>>>>{
+          'a': Completer<Res<List<String>>>(),
+          'b': Completer<Res<List<String>>>(),
+        };
+        final provider = ReaderProvider(
+          state: const ComicState(
+            id: 'comic-race',
+            title: 'Race',
+            chapters: <ReaderChapter>[chapterA, chapterB],
+            chapter: chapterA,
+            pageNo: 0,
+            sourceKey: 'jm',
+          ),
+          imageLoader: (comicId, episodeKey) => loads[episodeKey]!.future,
+          readRecordHelper: helper,
+          readRecordDebounce: const Duration(seconds: 10),
+        );
+        addTearDown(provider.dispose);
+
+        provider.go(chapterB);
+        loads['b']!.complete(const Res(<String>['b-1', 'b-2']));
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        expect(provider.chapter, same(chapterB));
+        expect(provider.images.map((image) => image.url), <String>[
+          'b-1',
+          'b-2',
+        ]);
+
+        loads['a']!.complete(const Res(<String>['a-1']));
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        expect(provider.chapter, same(chapterB));
+        expect(provider.images.map((image) => image.url), <String>[
+          'b-1',
+          'b-2',
+        ]);
+      },
+    );
+
+    testWidgets('late chapter response after dispose is ignored', (
+      tester,
+    ) async {
+      final database = sqlite3.openInMemory();
+      addTearDown(database.dispose);
+      JoyDatabase.migrateCore(database);
+      final helper = ReadRecordHelper(database);
+      final load = Completer<Res<List<String>>>();
+      const chapter = ReaderChapter(id: 'late', order: 1, name: 'Late');
+      final provider = ReaderProvider(
+        state: const ComicState(
+          id: 'comic-late',
+          title: 'Late',
+          chapters: <ReaderChapter>[chapter],
+          chapter: chapter,
+          pageNo: 2,
+          sourceKey: 'jm',
+        ),
+        imageLoader: (comicId, episodeKey) => load.future,
+        readRecordHelper: helper,
+        readRecordDebounce: const Duration(milliseconds: 100),
+      );
+
+      provider.dispose();
+      expect(helper.get('jm', 'comic-late')?.pageCount, 0);
+      load.complete(const Res(<String>['late-1', 'late-2']));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      final flushed = helper.get('jm', 'comic-late');
+      expect(flushed, isNotNull);
+      expect(flushed!.pageNo, 2);
+      expect(flushed.pageCount, 0);
+    });
+
+    testWidgets('real debounce merges rapid page saves into one write', (
+      tester,
+    ) async {
+      final database = sqlite3.openInMemory();
+      addTearDown(database.dispose);
+      JoyDatabase.migrateCore(database);
+      database.execute('CREATE TABLE read_record_writes (value INTEGER)');
+      database.execute('''
+        CREATE TRIGGER count_read_record_insert
+        AFTER INSERT ON read_records
+        BEGIN
+          INSERT INTO read_record_writes VALUES (1);
+        END
+      ''');
+      database.execute('''
+        CREATE TRIGGER count_read_record_update
+        AFTER UPDATE ON read_records
+        BEGIN
+          INSERT INTO read_record_writes VALUES (1);
+        END
+      ''');
+      final helper = ReadRecordHelper(database);
+      const chapter = ReaderChapter(id: 'debounce', order: 1, name: 'Debounce');
+      final provider = ReaderProvider(
+        state: const ComicState(
+          id: 'comic-debounce',
+          title: 'Debounce',
+          chapters: <ReaderChapter>[chapter],
+          chapter: chapter,
+          pageNo: 0,
+          sourceKey: 'jm',
+        ),
+        imageLoader: (comicId, episodeKey) async =>
+            const Res(<String>['1', '2', '3', '4', '5']),
+        readRecordHelper: helper,
+        readRecordDebounce: const Duration(milliseconds: 200),
+      );
+      addTearDown(provider.dispose);
+      await tester.pump();
+
+      provider.onPageNoChanged(1);
+      provider.onPageNoChanged(2);
+      provider.onPageNoChanged(3);
+      await tester.pump(const Duration(milliseconds: 199));
+      expect(database.select('SELECT * FROM read_record_writes'), isEmpty);
+
+      await tester.pump(const Duration(milliseconds: 1));
+      expect(database.select('SELECT * FROM read_record_writes'), hasLength(1));
+      expect(helper.get('jm', 'comic-debounce')?.pageNo, 3);
+    });
+
+    test('dispose flushes a pending debounced read record', () {
+      final database = sqlite3.openInMemory();
+      addTearDown(database.dispose);
+      JoyDatabase.migrateCore(database);
+      final helper = ReadRecordHelper(database);
+      const chapter = ReaderChapter(id: 'flush', order: 1, name: 'Flush');
+      final provider = ReaderProvider(
+        state: const ComicState(
+          id: 'comic-flush',
+          title: 'Flush',
+          chapters: <ReaderChapter>[chapter],
+          chapter: chapter,
+          pageNo: 0,
+          sourceKey: 'jm',
+        ),
+        readRecordHelper: helper,
+        readRecordDebounce: const Duration(seconds: 10),
+      );
+
+      provider.onPageNoChanged(4);
+      expect(helper.get('jm', 'comic-flush'), isNull);
+      provider.dispose();
+
+      final flushed = helper.get('jm', 'comic-flush');
+      expect(flushed, isNotNull);
+      expect(flushed!.chapterId, 'flush');
+      expect(flushed.pageNo, 4);
+    });
+  });
+
   test('reader builds and debounces a complete history record', () async {
     final database = sqlite3.openInMemory();
     addTearDown(database.dispose);
@@ -453,4 +901,26 @@ void main() {
     expect(chapterSaved.pageNo, 0);
     expect(chapterSaved.pageCount, 8);
   });
+}
+
+class _TestComic extends BaseComic {
+  const _TestComic({required this.id, required this.title});
+
+  @override
+  final String id;
+
+  @override
+  final String title;
+
+  @override
+  String get subTitle => '';
+
+  @override
+  String get cover => '';
+
+  @override
+  List<String> get tags => const <String>[];
+
+  @override
+  String get description => '';
 }

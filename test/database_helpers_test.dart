@@ -338,7 +338,6 @@ void main() {
     setUp(() {
       JoyDatabase.migrateCore(db);
       FavoriteNotifier.instance.loadFromDb(db);
-      FavoriteNotifier.instance.consumeDirty();
     });
 
     test(
@@ -379,6 +378,72 @@ void main() {
           isFalse,
         );
         expect(calls, <bool>[true, false]);
+      },
+    );
+
+    test(
+      'concurrent toggles share one remote operation per favorite',
+      () async {
+        final addGate = Completer<void>();
+        var addCalls = 0;
+        final addHelper = FavoritesHelper(db, (source, comic, favorite) async {
+          addCalls++;
+          await addGate.future;
+        });
+
+        final firstAdd = addHelper.toggleFavorite(
+          sourceKey: 'injected',
+          comicId: 'comic-1',
+          title: 'Title',
+          coverUrl: 'cover',
+        );
+        final secondAdd = addHelper.toggleFavorite(
+          sourceKey: 'injected',
+          comicId: 'comic-1',
+          title: 'Title',
+          coverUrl: 'cover',
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        expect(addCalls, 1);
+        addGate.complete();
+        expect(await Future.wait(<Future<bool>>[firstAdd, secondAdd]), <bool>[
+          true,
+          true,
+        ]);
+        expect(addHelper.count(), 1);
+
+        final removeGate = Completer<void>();
+        var removeCalls = 0;
+        final removeHelper = FavoritesHelper(db, (
+          source,
+          comic,
+          favorite,
+        ) async {
+          removeCalls++;
+          await removeGate.future;
+        });
+        final firstRemove = removeHelper.toggleFavorite(
+          sourceKey: 'injected',
+          comicId: 'comic-1',
+          title: 'Title',
+          coverUrl: 'cover',
+        );
+        final secondRemove = removeHelper.toggleFavorite(
+          sourceKey: 'injected',
+          comicId: 'comic-1',
+          title: 'Title',
+          coverUrl: 'cover',
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        expect(removeCalls, 1);
+        removeGate.complete();
+        expect(
+          await Future.wait(<Future<bool>>[firstRemove, secondRemove]),
+          <bool>[false, false],
+        );
+        expect(removeHelper.count(), 0);
       },
     );
 
@@ -479,7 +544,7 @@ void main() {
 
     test('clears every local favorite when sourceKey is omitted', () {
       FavoriteNotifier.instance.loadFromDb(db);
-      FavoriteNotifier.instance.consumeDirty();
+      final revision = FavoriteNotifier.instance.revision;
 
       expect(helper.clear(), 3);
       expect(helper.count(), 0);
@@ -489,12 +554,12 @@ void main() {
         FavoriteNotifier.instance.isFavorited('picacg', 'pica-1'),
         isFalse,
       );
-      expect(FavoriteNotifier.instance.isDirty, isTrue);
+      expect(FavoriteNotifier.instance.revision, revision + 1);
     });
 
     test('clears only the requested source', () {
       FavoriteNotifier.instance.loadFromDb(db);
-      FavoriteNotifier.instance.consumeDirty();
+      final revision = FavoriteNotifier.instance.revision;
 
       expect(helper.clear(sourceKey: 'jm'), 2);
       expect(helper.count(), 1);
@@ -503,12 +568,11 @@ void main() {
       expect(helper.get('picacg', 'pica-1'), isNotNull);
       expect(FavoriteNotifier.instance.isFavorited('jm', 'jm-1'), isFalse);
       expect(FavoriteNotifier.instance.isFavorited('picacg', 'pica-1'), isTrue);
-      expect(FavoriteNotifier.instance.isDirty, isTrue);
+      expect(FavoriteNotifier.instance.revision, revision + 1);
 
-      FavoriteNotifier.instance.consumeDirty();
       expect(helper.clear(sourceKey: 'missing'), 0);
       expect(helper.count(), 1);
-      expect(FavoriteNotifier.instance.isDirty, isFalse);
+      expect(FavoriteNotifier.instance.revision, revision + 1);
     });
   });
   test('favorite identity and source filtering do not collide on colons', () {
