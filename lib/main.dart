@@ -55,6 +55,7 @@ final _router = GoRouter(
     GoRoute(
       path: '/content/:sourceKey',
       builder: (context, state) => SourceContentPage(
+        key: ValueKey(state.uri.toString()),
         sourceKey: state.pathParameters['sourceKey']!,
         kind: state.uri.queryParameters['kind'] ?? 'category',
         category: state.uri.queryParameters['category'] ?? '',

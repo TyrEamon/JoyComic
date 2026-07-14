@@ -35,7 +35,10 @@ class SourceContentPage extends StatefulWidget {
 
 class _SourceContentPageState extends State<SourceContentPage> {
   List<BaseComic> _comics = const [];
+  List<models.SourceSortOption> _sortOptions = const [];
+  late String? _selectedSort;
   int _currentPage = 0;
+  int _requestGeneration = 0;
   bool _loadingInitial = true;
   bool _refreshing = false;
   bool _loadingMore = false;
@@ -48,7 +51,57 @@ class _SourceContentPageState extends State<SourceContentPage> {
   @override
   void initState() {
     super.initState();
+    _selectedSort = widget.sort;
+    _loadCategoryMetadata();
     _loadInitial();
+  }
+
+  Future<void> _loadCategoryMetadata() async {
+    if (widget.kind != 'category') return;
+    final loader = _source?.loadSourceCategories;
+    if (loader == null) return;
+    try {
+      final response = await loader();
+      if (!mounted || response.error) return;
+      models.SourceCategory? match;
+      for (final category in response.data) {
+        if (category.key == widget.category) {
+          match = category;
+          break;
+        }
+      }
+      if (match == null) return;
+      setState(() {
+        _sortOptions = match.sortOptions;
+        if (_selectedSort == null && _sortOptions.isNotEmpty) {
+          _selectedSort = _sortOptions.first.key;
+        }
+      });
+    } catch (error, stackTrace) {
+      Log.e(
+        'Failed to load ${widget.sourceKey} category metadata',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+  }
+
+  Future<void> _selectSort(String sort) async {
+    if (sort == _selectedSort ||
+        _loadingInitial ||
+        _refreshing ||
+        _loadingMore) {
+      return;
+    }
+    setState(() {
+      _selectedSort = sort;
+      _comics = const [];
+      _currentPage = 0;
+      _reachedEnd = false;
+      _initialError = null;
+      _loadMoreError = null;
+    });
+    await _loadPage(1, replace: true);
   }
 
   Future<void> _loadInitial() => _loadPage(1, replace: true);
@@ -80,6 +133,7 @@ class _SourceContentPageState extends State<SourceContentPage> {
     required bool replace,
     bool refreshing = false,
   }) async {
+    final generation = ++_requestGeneration;
     final source = _source;
     final loader = source?.loadSourceContent;
     if (loader == null) {
@@ -93,30 +147,28 @@ class _SourceContentPageState extends State<SourceContentPage> {
       return;
     }
 
-    if (mounted) {
-      setState(() {
-        if (replace) {
-          _refreshing = refreshing;
-          _loadingInitial = !refreshing && _comics.isEmpty;
-          _initialError = null;
-          _loadMoreError = null;
-        } else {
-          _loadingMore = true;
-          _loadMoreError = null;
-        }
-      });
-    }
+    setState(() {
+      if (replace) {
+        _refreshing = refreshing;
+        _loadingInitial = !refreshing && _comics.isEmpty;
+        _initialError = null;
+        _loadMoreError = null;
+      } else {
+        _loadingMore = true;
+        _loadMoreError = null;
+      }
+    });
 
     final query = models.SourceContentQuery(
       categoryKey: widget.category,
       param: widget.param,
       page: page,
-      sort: widget.sort,
+      sort: _selectedSort,
     );
 
     try {
       final response = await loader(query);
-      if (!mounted) return;
+      if (!mounted || generation != _requestGeneration) return;
       if (response.error) {
         setState(() {
           if (replace) {
@@ -150,7 +202,7 @@ class _SourceContentPageState extends State<SourceContentPage> {
         error: error,
         stackTrace: stackTrace,
       );
-      if (!mounted) return;
+      if (!mounted || generation != _requestGeneration) return;
       setState(() {
         if (replace) {
           _initialError = error.toString();
@@ -159,7 +211,7 @@ class _SourceContentPageState extends State<SourceContentPage> {
         }
       });
     } finally {
-      if (mounted) {
+      if (mounted && generation == _requestGeneration) {
         setState(() {
           _loadingInitial = false;
           _refreshing = false;
@@ -190,7 +242,30 @@ class _SourceContentPageState extends State<SourceContentPage> {
         title: Text(_pageTitle),
         backgroundColor: AppColors.background,
       ),
-      body: _buildBody(),
+      body: Column(
+        children: [
+          if (_sortOptions.length > 1)
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                children: [
+                  for (final option in _sortOptions)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ChoiceChip(
+                        key: ValueKey('source-content-sort-${option.key}'),
+                        label: Text(option.title),
+                        selected: option.key == _selectedSort,
+                        onSelected: (_) => _selectSort(option.key),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          Expanded(child: _buildBody()),
+        ],
+      ),
     );
   }
 
@@ -266,9 +341,8 @@ class _SourceContentPageState extends State<SourceContentPage> {
     );
   }
 
-  String _detailLocation(String comicId) => Uri(
-        pathSegments: ['', 'detail', widget.sourceKey, comicId],
-      ).toString();
+  String _detailLocation(String comicId) =>
+      Uri(pathSegments: ['', 'detail', widget.sourceKey, comicId]).toString();
 }
 
 class _PageFooter extends StatelessWidget {
@@ -280,10 +354,7 @@ class _PageFooter extends StatelessWidget {
   Widget build(BuildContext context) {
     return SafeArea(
       top: false,
-      child: SizedBox(
-        height: 44,
-        child: Center(child: child),
-      ),
+      child: SizedBox(height: 44, child: Center(child: child)),
     );
   }
 }
