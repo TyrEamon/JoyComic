@@ -52,6 +52,15 @@ final appRouter = GoRouter(
           SearchPage(sourceKey: state.pathParameters['sourceKey']!),
     ),
     GoRoute(
+      path: '/category/:sourceKey/:categoryKey',
+      builder: (context, state) => SourceContentPage(
+        key: ValueKey(state.uri.toString()),
+        sourceKey: state.pathParameters['sourceKey']!,
+        kind: 'category',
+        category: state.pathParameters['categoryKey']!,
+      ),
+    ),
+    GoRoute(
       path: '/content/:sourceKey',
       builder: (context, state) => SourceContentPage(
         key: ValueKey(state.uri.toString()),
@@ -121,7 +130,11 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/reader',
       builder: (context, state) {
-        final comicState = state.extra as ComicState;
+        final extra = state.extra;
+        if (extra is! ComicState) {
+          return NotFoundPage(uri: state.uri, message: '阅读器参数无效');
+        }
+        final comicState = extra;
         final source = ComicSource.find(comicState.sourceKey);
         final imageLoader = readerRouteNetworkLoader(comicState, source);
         return Reader(comicState: comicState, imageLoader: imageLoader);
@@ -132,9 +145,10 @@ final appRouter = GoRouter(
 );
 
 class NotFoundPage extends StatelessWidget {
-  const NotFoundPage({super.key, required this.uri});
+  const NotFoundPage({super.key, required this.uri, this.message = '页面不存在'});
 
   final Uri uri;
+  final String message;
 
   @override
   Widget build(BuildContext context) {
@@ -152,9 +166,12 @@ class NotFoundPage extends StatelessWidget {
                 color: Theme.of(context).colorScheme.primary,
               ),
               const SizedBox(height: 16),
-              const Text(
-                '页面不存在',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+              Text(
+                message,
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               const SizedBox(height: 8),
               Text(uri.toString(), textAlign: TextAlign.center),

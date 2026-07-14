@@ -45,8 +45,82 @@ class PicacgStateImpl implements PicacgState {
   Future<bool> reLogin() => source.reLogin();
 }
 
+typedef PicacgHomePageLoader =
+    Future<Res<List<BaseComic>>> Function(String sort);
+
+const _picacgHomeSections = <({String key, String title, String sort})>[
+  (key: 'latest', title: '最新漫画', sort: 'dd'),
+  (key: 'popular', title: '热门漫画', sort: 'ld'),
+  (key: 'recommended', title: '推荐漫画', sort: 'ua'),
+];
+
+/// Loads independent Picacg home feeds and keeps every successful section.
+Future<Res<List<SourceContentSection>>> loadPicacgHomeSections(
+  PicacgHomePageLoader loadPage,
+) async {
+  final results = await Future.wait([
+    for (final section in _picacgHomeSections)
+      _loadPicacgHomeSection(section, loadPage),
+  ]);
+  final sections = <SourceContentSection>[];
+  final errors = <String>[];
+  for (final result in results) {
+    if (result.response.error) {
+      errors.add('${result.key}: ${result.response.errorMessageWithoutNull}');
+      continue;
+    }
+    sections.add(
+      SourceContentSection(
+        key: result.key,
+        title: result.title,
+        comics: result.response.data,
+        moreQuery: SourceContentQuery(
+          categoryKey: '',
+          page: 1,
+          sort: result.sort,
+        ),
+      ),
+    );
+  }
+  if (sections.isEmpty) {
+    return Res.error(errors.join('; '));
+  }
+  return Res(sections);
+}
+
+Future<({String key, String title, String sort, Res<List<BaseComic>> response})>
+_loadPicacgHomeSection(
+  ({String key, String title, String sort}) section,
+  PicacgHomePageLoader loadPage,
+) async {
+  try {
+    return (
+      key: section.key,
+      title: section.title,
+      sort: section.sort,
+      response: await loadPage(section.sort),
+    );
+  } catch (error) {
+    return (
+      key: section.key,
+      title: section.title,
+      sort: section.sort,
+      response: Res<List<BaseComic>>.error(error.toString()),
+    );
+  }
+}
+
 /// 哔咔内置源声明。
-ComicSource buildPicacgSource() {
+ComicSource buildPicacgSource({PicacgHomePageLoader? homePageLoader}) {
+  final loadHomePage =
+      homePageLoader ??
+      (String sort) async {
+        final result = await PicacgNetwork().getCategoryComics('', 1, sort);
+        if (result.error) {
+          return Res<List<BaseComic>>.error(result.errorMessageWithoutNull);
+        }
+        return Res<List<BaseComic>>(<BaseComic>[...result.data]);
+      };
   final source = ComicSource.named(
     name: '哔咔',
     key: 'picacg',
@@ -110,19 +184,7 @@ ComicSource buildPicacgSource() {
         ),
       );
     },
-    loadHomeSections: () async {
-      const query = SourceContentQuery(categoryKey: '', page: 1, sort: 'dd');
-      final res = await PicacgNetwork().getCategoryComics('', 1, 'dd');
-      if (res.error) return Res(null, errorMessage: res.errorMessage);
-      return Res([
-        SourceContentSection(
-          key: 'latest',
-          title: '最新漫画',
-          comics: <BaseComic>[...res.data],
-          moreQuery: query,
-        ),
-      ]);
-    },
+    loadHomeSections: () => loadPicacgHomeSections(loadHomePage),
     // 哔咔搜索：高级搜索，sort='ua' 默认排序。
     searchPageData: SearchPageData.named(
       loadPage: (keyword, page, options) async {

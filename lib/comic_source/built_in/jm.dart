@@ -93,8 +93,17 @@ class JmStateImpl implements JmState {
   Future<bool> reLogin() => source.reLogin();
 }
 
+typedef JmFavoriteToggle = Future<Res<bool>> Function(String comicId);
+
+/// Adapts the JM toggle endpoint without replacing its error or boolean data.
+Future<Res<bool>> adaptJmFavoriteToggle(
+  String comicId,
+  JmFavoriteToggle toggleFavorite,
+) => toggleFavorite(comicId);
+
 /// 禁漫内置源声明。
-ComicSource buildJmSource() {
+ComicSource buildJmSource({JmFavoriteToggle? favoriteToggle}) {
+  final toggleFavoriteRequest = favoriteToggle ?? JmNetwork().toggleFavorite;
   final source = ComicSource.named(
     name: '禁漫',
     key: 'jm',
@@ -216,15 +225,9 @@ ComicSource buildJmSource() {
         if (res.error) return Res(null, errorMessage: res.errorMessage);
         return Res<List<BaseComic>>(<BaseComic>[...res.data]);
       },
-      addOrDelFavorite: (comicId, folderId, isAdding) async {
-        if (isAdding) {
-          // 禁漫切换收藏：调用 /favorite?aid=
-          await JmNetwork().toggleFavorite(comicId);
-        } else {
-          await JmNetwork().toggleFavorite(comicId);
-        }
-        return const Res(true);
-      },
+      // 禁漫端点本身执行切换；保留网络层的 error 和 bool 结果。
+      addOrDelFavorite: (comicId, folderId, isAdding) =>
+          adaptJmFavoriteToggle(comicId, toggleFavoriteRequest),
       multiFolder: true,
     ),
     // 评论。
