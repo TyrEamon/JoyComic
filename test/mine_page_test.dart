@@ -140,6 +140,45 @@ void main() {
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
+
+  testWidgets('Mine refreshes history count when records change', (
+    tester,
+  ) async {
+    final history = ReadRecordHelper(database);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MinePage(statsLoader: () => MineStats(history: history.count())),
+      ),
+    );
+    await tester.pump();
+    expect(
+      tester.widget<Text>(find.byKey(const Key('mine-stat-history'))).data,
+      '0',
+    );
+
+    history.upsert(
+      const ReadRecord(
+        source: 'jm',
+        comic: 'live-history',
+        chapterId: 'chapter-1',
+        pageNo: 1,
+        updatedAt: 1,
+      ),
+    );
+    await tester.pump();
+    expect(
+      tester.widget<Text>(find.byKey(const Key('mine-stat-history'))).data,
+      '1',
+    );
+
+    history.delete('jm', 'live-history');
+    await tester.pump();
+    expect(
+      tester.widget<Text>(find.byKey(const Key('mine-stat-history'))).data,
+      '0',
+    );
+  });
 }
 
 MineStats _emptyStats() => const MineStats();

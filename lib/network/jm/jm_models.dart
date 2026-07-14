@@ -61,8 +61,6 @@ class JmComicBrief extends BaseComic {
 
   @override
   List<String> get tags => categories.map((e) => e.name).toList();
-
-  JmComicInfo? toDetailStub() => null;
 }
 
 /// 禁漫分类信息。
@@ -151,12 +149,12 @@ class JmComicInfo extends BaseComic {
   }
 
   JmComicBrief toBrief() => JmComicBrief(
-        id: id,
-        author: author.isNotEmpty ? author.first : '',
-        name: name,
-        rawDescription: _description,
-        categories: const [],
-      );
+    id: id,
+    author: author.isNotEmpty ? author.first : '',
+    name: name,
+    rawDescription: _description,
+    categories: const [],
+  );
 
   @override
   String get title => name;

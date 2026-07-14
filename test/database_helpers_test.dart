@@ -772,6 +772,51 @@ void main() {
       expect(helper.count(), 0);
       expect(helper.list(), isEmpty);
     });
+
+    test('notifier revision advances once for every history mutation', () {
+      final notifier = ReadRecordNotifier.instance;
+      final initialRevision = notifier.revision;
+      var notifications = 0;
+      void listener() => notifications++;
+      notifier.addListener(listener);
+      addTearDown(() => notifier.removeListener(listener));
+
+      helper.upsert(
+        const ReadRecord(
+          source: 'jm',
+          comic: 'tracked',
+          chapterId: 'chapter-1',
+          pageNo: 1,
+          updatedAt: 1,
+        ),
+      );
+      expect(notifier.revision, initialRevision + 1);
+
+      helper.save(
+        sourceKey: 'jm',
+        comicId: 'tracked',
+        chapterId: 'chapter-1',
+        pageNo: 2,
+        updatedAt: 2,
+      );
+      expect(notifier.revision, initialRevision + 2);
+
+      expect(helper.delete('jm', 'tracked'), 1);
+      expect(notifier.revision, initialRevision + 3);
+
+      helper.upsert(
+        const ReadRecord(
+          source: 'jm',
+          comic: 'clear-me',
+          chapterId: 'chapter-1',
+          pageNo: 1,
+          updatedAt: 3,
+        ),
+      );
+      expect(helper.clear(), 1);
+      expect(notifier.revision, initialRevision + 5);
+      expect(notifications, 5);
+    });
   });
 }
 

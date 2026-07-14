@@ -44,7 +44,8 @@ class _WebDavSettingsPageState extends State<WebDavSettingsPage> {
 
   Future<void> _loadConfig() async {
     final store = await _configStore;
-    final config = store.read();
+    if (!mounted) return;
+    final config = await store.read();
     if (!mounted) return;
     if (config != null) {
       _urlCtrl.text = config.url;
@@ -82,8 +83,11 @@ class _WebDavSettingsPageState extends State<WebDavSettingsPage> {
       }
       return false;
     }
+    if (!mounted) return false;
     setState(() => _saving = true);
-    final saved = await (await _configStore).save(config);
+    final store = await _configStore;
+    if (!mounted) return false;
+    final saved = await store.save(config);
     if (!mounted) return saved;
     setState(() => _saving = false);
     if (showMessage) {
@@ -96,7 +100,9 @@ class _WebDavSettingsPageState extends State<WebDavSettingsPage> {
 
   Future<void> _testConnection() async {
     final config = _config;
-    if (config == null || !await _saveConfig(showMessage: false)) return;
+    if (config == null) return;
+    final saved = await _saveConfig(showMessage: false);
+    if (!mounted || !saved) return;
     setState(() => _testing = true);
     final result = await WebDavClient(config).testConnection();
     if (!mounted) return;
@@ -108,7 +114,9 @@ class _WebDavSettingsPageState extends State<WebDavSettingsPage> {
 
   Future<void> _backup() async {
     final config = _config;
-    if (config == null || !await _saveConfig(showMessage: false)) return;
+    if (config == null) return;
+    final saved = await _saveConfig(showMessage: false);
+    if (!mounted || !saved) return;
     setState(() {
       _syncing = true;
       _syncMessage = null;
@@ -128,8 +136,9 @@ class _WebDavSettingsPageState extends State<WebDavSettingsPage> {
 
   Future<void> _restore() async {
     final config = _config;
-    if (config == null || !await _saveConfig(showMessage: false)) return;
-    if (!mounted) return;
+    if (config == null) return;
+    final saved = await _saveConfig(showMessage: false);
+    if (!mounted || !saved) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -151,7 +160,7 @@ class _WebDavSettingsPageState extends State<WebDavSettingsPage> {
         ],
       ),
     );
-    if (confirmed != true) return;
+    if (!mounted || confirmed != true) return;
     setState(() {
       _syncing = true;
       _syncMessage = null;

@@ -139,11 +139,20 @@ int? jmCategoryMaxPage({
   return calculated < page ? page : calculated;
 }
 
+typedef JmDioFactory = Dio Function(BaseOptions options);
+
 /// 禁漫网络请求类。
 class JmNetwork {
-  JmNetwork._create();
+  JmNetwork._create([JmDioFactory? dioFactory])
+    : _dioFactory = dioFactory ?? Dio.new;
+
   static JmNetwork? _cache;
-  factory JmNetwork() => _cache ??= JmNetwork._create();
+
+  factory JmNetwork({JmDioFactory? dioFactory}) => dioFactory == null
+      ? _cache ??= JmNetwork._create()
+      : JmNetwork._create(dioFactory);
+
+  final JmDioFactory _dioFactory;
 
   /// 由源注册流程注入状态门面。
   JmState? state;
@@ -380,19 +389,25 @@ class JmNetwork {
   /// 测试某图床延迟（HEAD `/favicon.ico`，8s 超时）。失败返回 -1。
   Future<int> testImgHostLatency(String host) async {
     final clean = host.replaceAll(RegExp(r'^https?://'), '');
-    final dio = Dio(
+    final dio = _dioFactory(
       BaseOptions(
         connectTimeout: const Duration(seconds: 8),
         receiveTimeout: const Duration(seconds: 8),
         validateStatus: (_) => true,
       ),
     );
-    final sw = Stopwatch()..start();
+    final stopwatch = Stopwatch()..start();
     try {
-      await dio.head('https://$clean/favicon.ico');
-      return sw.elapsedMilliseconds;
+      final response = await dio.head('https://$clean/favicon.ico');
+      final status = response.statusCode;
+      return status != null && status >= 200 && status < 300
+          ? stopwatch.elapsedMilliseconds
+          : -1;
     } catch (_) {
       return -1;
+    } finally {
+      stopwatch.stop();
+      dio.close(force: true);
     }
   }
 
@@ -408,7 +423,7 @@ class JmNetwork {
     final uri = Uri.tryParse(raw.contains('://') ? raw : 'https://$raw');
     if (uri == null || uri.host.isEmpty) return -1;
     final endpoint = uri.replace(path: '/', query: null, fragment: null);
-    final dio = Dio(
+    final dio = _dioFactory(
       BaseOptions(
         connectTimeout: timeout,
         sendTimeout: timeout,

@@ -34,12 +34,14 @@ class _MinePageState extends State<MinePage> {
     super.initState();
     _stats = _readStats();
     FavoriteNotifier.instance.addListener(_refreshStats);
+    ReadRecordNotifier.instance.addListener(_refreshStats);
     DownloadManager.instance.addListener(_refreshStats);
   }
 
   @override
   void dispose() {
     FavoriteNotifier.instance.removeListener(_refreshStats);
+    ReadRecordNotifier.instance.removeListener(_refreshStats);
     DownloadManager.instance.removeListener(_refreshStats);
     super.dispose();
   }

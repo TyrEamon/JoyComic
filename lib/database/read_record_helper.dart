@@ -1,4 +1,5 @@
 // 阅读记录数据库操作。
+import 'package:flutter/foundation.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 import 'joy_database.dart';
@@ -56,6 +57,23 @@ class ReadRecord {
   }
 }
 
+/// Global reading-history change signal shared by readers and summary pages.
+class ReadRecordNotifier extends ChangeNotifier {
+  ReadRecordNotifier._();
+
+  static final ReadRecordNotifier instance = ReadRecordNotifier._();
+
+  int _revision = 0;
+
+  /// Monotonically increasing version for successful history mutations.
+  int get revision => _revision;
+
+  void _broadcastChange() {
+    _revision++;
+    notifyListeners();
+  }
+}
+
 class ReadRecordHelper {
   ReadRecordHelper([Database? database]) : _database = database;
 
@@ -93,6 +111,7 @@ class ReadRecordHelper {
         record.updatedAt,
       ],
     );
+    ReadRecordNotifier.instance._broadcastChange();
   }
 
   /// 兼容阅读器现有调用的快捷保存接口。
@@ -160,12 +179,16 @@ class ReadRecordHelper {
       'DELETE FROM read_records WHERE source_key = ? AND comic_id = ?',
       <Object?>[source, comic],
     );
-    return _changes();
+    final deleted = _changes();
+    if (deleted > 0) ReadRecordNotifier.instance._broadcastChange();
+    return deleted;
   }
 
   int clear() {
     _db.execute('DELETE FROM read_records');
-    return _changes();
+    final deleted = _changes();
+    if (deleted > 0) ReadRecordNotifier.instance._broadcastChange();
+    return deleted;
   }
 
   int count() {

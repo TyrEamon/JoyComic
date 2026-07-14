@@ -151,6 +151,12 @@ void main() {
           .map((file) => file.readAsStringSync())
           .join('\n');
 
+      final emptyExpressionImplementation = RegExp(
+        r'(?:\b(?:void|Future<void>)\s+[A-Za-z_]\w*\s*\([^;{}]*\)'
+        r'|on(?:Tap|Pressed|Action):\s*\([^)]*\))'
+        r'\s*(?:async\s*)?=>\s*null\s*;',
+        multiLine: true,
+      );
       for (final forbidden in <Pattern>[
         '_PlaceholderPage',
         '功能待集成',
@@ -158,10 +164,24 @@ void main() {
         'current mock',
         '/search/all',
         'demoData',
+        RegExp(r'\b[A-Za-z_]\w*Stub\w*\b|\bStub\b'),
         RegExp(r'on(?:Tap|Pressed|Action):\s*\(\)\s*\{\s*\}'),
+        emptyExpressionImplementation,
       ]) {
         expect(source, isNot(contains(forbidden)), reason: 'found $forbidden');
       }
+      expect(
+        emptyExpressionImplementation.hasMatch('void save() => null;'),
+        isTrue,
+      );
+      expect(
+        emptyExpressionImplementation.hasMatch('onPressed: () => null;'),
+        isTrue,
+      );
+      expect(
+        emptyExpressionImplementation.hasMatch('String? optional() => null;'),
+        isFalse,
+      );
       expect(
         File('lib/views/detail/detail_demo_data.dart').existsSync(),
         isFalse,

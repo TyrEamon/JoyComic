@@ -38,6 +38,7 @@ dependencies:
 
   # 本地持久化（源 token / 设置）
   shared_preferences: ^2.3.3
+  flutter_secure_storage: ^9.2.4
   path_provider: ^2.1.5
 
   # 图片加载与显示（阅读器缩放）

@@ -37,6 +37,8 @@ class DetailViewModel extends ChangeNotifier {
   final String comicId;
 
   final FavoritesHelper _favHelper;
+  bool _disposed = false;
+  int _commentGeneration = 0;
 
   DetailLoadState _state = DetailLoadState.idle;
   DetailLoadState get state => _state;
@@ -69,6 +71,18 @@ class DetailViewModel extends ChangeNotifier {
   bool get canLoadComments =>
       ComicSource.find(sourceKey)?.commentsLoader != null;
 
+  @override
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    _commentGeneration++;
+    super.dispose();
+  }
+
+  void _notifyListeners() {
+    if (!_disposed) notifyListeners();
+  }
+
   /// 封面图鉴权 headers（来源的 getThumbnailLoadingConfig）。
   Map<String, dynamic>? get coverHeaders {
     final cover = _data?.info.cover;
@@ -79,27 +93,28 @@ class DetailViewModel extends ChangeNotifier {
   }
 
   Future<void> load() async {
-    if (_state == DetailLoadState.loading) return;
+    if (_disposed || _state == DetailLoadState.loading) return;
 
     _state = DetailLoadState.loading;
     _error = null;
-    notifyListeners();
+    _notifyListeners();
 
     final source = ComicSource.find(sourceKey);
     if (source == null || source.loadComicInfo == null) {
       _state = DetailLoadState.error;
       _error = '未找到漫画源：$sourceKey';
-      notifyListeners();
+      _notifyListeners();
       return;
     }
 
     try {
       final res = await source.loadComicInfo!(comicId);
+      if (_disposed) return;
       if (res.error) {
         _state = DetailLoadState.error;
         _error = res.errorMessage ?? '加载失败';
         Log.e('Detail load failed', error: res.errorMessage);
-        notifyListeners();
+        _notifyListeners();
         return;
       }
       final info = res.data;
@@ -110,7 +125,7 @@ class DetailViewModel extends ChangeNotifier {
       // 先以兜底色铺好，UI 立即可渲染；取色完成后再平滑替换。
       _data = DetailUiData(info: info, palette: ComicPalette.fallback);
       _state = DetailLoadState.success;
-      notifyListeners();
+      _notifyListeners();
 
       // 后台取色（不阻塞首屏）。
       final headers = source.getThumbnailLoadingConfig?.call(info.cover);
@@ -118,17 +133,19 @@ class DetailViewModel extends ChangeNotifier {
         info.cover,
         headers: headers,
       );
+      if (_disposed) return;
       if (_data != null && _data!.info == info) {
         _data = DetailUiData(info: info, palette: palette);
-        notifyListeners();
+        _notifyListeners();
       }
 
       // 后台加载评论（不阻塞首屏）。
       loadComments();
     } catch (e) {
+      if (_disposed) return;
       _state = DetailLoadState.error;
       _error = e.toString();
-      notifyListeners();
+      _notifyListeners();
     }
   }
 
@@ -171,6 +188,7 @@ class DetailViewModel extends ChangeNotifier {
 
   /// 切换收藏态（远端成功后才更新本地）。
   Future<void> toggleFavorite() async {
+    if (_disposed) return;
     final info = _data?.info;
     if (info == null) return;
 
@@ -181,32 +199,35 @@ class DetailViewModel extends ChangeNotifier {
       coverUrl: info.cover,
       author: _authorOf(info),
     );
+    if (_disposed) return;
     _isFavorite = newState;
 
-    notifyListeners();
+    _notifyListeners();
   }
 
   /// Loads the first comment page.
   Future<void> loadComments() async {
-    if (_commentsLoaded || _commentsLoading) return;
+    if (_disposed || _commentsLoaded || _commentsLoading) return;
     await _loadCommentsPage(1, replace: true);
   }
 
   /// Loads the next comment page when the remote total has not been reached.
   Future<void> loadMoreComments() async {
-    if (_commentsLoading || !_hasMoreComments) return;
+    if (_disposed || _commentsLoading || !_hasMoreComments) return;
     await _loadCommentsPage(_commentPage + 1, replace: false);
   }
 
   Future<void> _loadCommentsPage(int page, {required bool replace}) async {
+    if (_disposed) return;
+    final generation = _commentGeneration;
     final source = ComicSource.find(sourceKey);
     final loader = source?.commentsLoader;
     if (loader == null) return;
     _commentsLoading = true;
-    notifyListeners();
+    _notifyListeners();
     try {
       final res = await loader(comicId, null, page, null);
-      if (res.error) return;
+      if (_disposed || generation != _commentGeneration || res.error) return;
       final incoming = res.data;
       if (replace) {
         _comments = List<Comment>.of(incoming);
@@ -230,12 +251,16 @@ class DetailViewModel extends ChangeNotifier {
           incoming.isNotEmpty &&
           (remoteTotal == null || _comments.length < remoteTotal);
     } finally {
-      _commentsLoading = false;
-      notifyListeners();
+      if (!_disposed && generation == _commentGeneration) {
+        _commentsLoading = false;
+        _notifyListeners();
+      }
     }
   }
 
   Future<void> reload() async {
+    if (_disposed) return;
+    _commentGeneration++;
     _state = DetailLoadState.idle;
     _data = null;
     _error = null;
@@ -243,8 +268,9 @@ class DetailViewModel extends ChangeNotifier {
     _commentTotal = 0;
     _commentPage = 0;
     _commentsLoaded = false;
+    _commentsLoading = false;
     _hasMoreComments = false;
-    notifyListeners();
+    _notifyListeners();
     await load();
   }
 }

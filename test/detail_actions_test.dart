@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:joycomic/comic_source/comic_source.dart';
 import 'package:joycomic/database/favorites_helper.dart';
@@ -64,4 +66,92 @@ void main() {
     expect(rotateRecommendationItems(items, 0, batchSize: 3), <int>[1, 2, 3]);
     expect(rotateRecommendationItems(items, 3, batchSize: 3), <int>[4, 5, 1]);
   });
+
+  test('detail ignores an async load result after dispose', () async {
+    final database = sqlite3.openInMemory();
+    addTearDown(database.dispose);
+    JoyDatabase.migrateCore(database);
+    final result = Completer<Res<ComicInfoData>>();
+    final source = ComicSource.named(
+      name: 'Disposed detail',
+      key: 'disposed-detail',
+      filePath: 'test',
+      loadComicInfo: (_) => result.future,
+    );
+    ComicSource.sources.add(source);
+    addTearDown(() => ComicSource.sources.remove(source));
+    final viewModel = DetailViewModel(
+      sourceKey: source.key,
+      comicId: 'comic',
+      favoritesHelper: FavoritesHelper(database),
+    );
+
+    final pending = viewModel.load();
+    expect(viewModel.state, DetailLoadState.loading);
+    viewModel.dispose();
+    result.complete(const Res(_comicInfo));
+
+    await pending;
+    expect(viewModel.state, DetailLoadState.loading);
+    expect(viewModel.data, isNull);
+  });
+
+  test('stale comment generation cannot overwrite reloaded comments', () async {
+    final database = sqlite3.openInMemory();
+    addTearDown(database.dispose);
+    JoyDatabase.migrateCore(database);
+    final oldComments = Completer<Res<List<Comment>>>();
+    final newComments = Completer<Res<List<Comment>>>();
+    var calls = 0;
+    final source = ComicSource.named(
+      name: 'Comment generations',
+      key: 'comment-generations',
+      filePath: 'test',
+      loadComicInfo: (_) async => const Res(_comicInfo),
+      commentsLoader: (_, __, ___, ____) {
+        calls++;
+        return calls == 1 ? oldComments.future : newComments.future;
+      },
+    );
+    ComicSource.sources.add(source);
+    addTearDown(() => ComicSource.sources.remove(source));
+    final viewModel = DetailViewModel(
+      sourceKey: source.key,
+      comicId: 'comic',
+      favoritesHelper: FavoritesHelper(database),
+    );
+    addTearDown(viewModel.dispose);
+
+    final staleLoad = viewModel.loadComments();
+    await viewModel.reload();
+    expect(calls, 2);
+
+    newComments.complete(
+      const Res<List<Comment>>(<Comment>[
+        Comment('New', null, 'fresh', null, 0, 'new'),
+      ]),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(viewModel.comments.single.id, 'new');
+
+    oldComments.complete(
+      const Res<List<Comment>>(<Comment>[
+        Comment('Old', null, 'stale', null, 0, 'old'),
+      ]),
+    );
+    await staleLoad;
+    expect(viewModel.comments.single.id, 'new');
+  });
 }
+
+const _comicInfo = ComicInfoData(
+  title: 'Comic',
+  subTitle: null,
+  cover: '',
+  description: null,
+  tags: <String, List<String>>{},
+  chapters: null,
+  thumbnails: null,
+  sourceKey: 'comment-generations',
+  comicId: 'comic',
+);
