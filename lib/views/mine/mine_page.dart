@@ -15,8 +15,12 @@ import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
 import '../common/source_account_profile.dart';
 
+typedef MineStatsLoader = MineStats Function();
+
 class MinePage extends StatefulWidget {
-  const MinePage({super.key});
+  const MinePage({super.key, this.statsLoader});
+
+  final MineStatsLoader? statsLoader;
 
   @override
   State<MinePage> createState() => _MinePageState();
@@ -41,6 +45,8 @@ class _MinePageState extends State<MinePage> {
   }
 
   MineStats _readStats() {
+    final loader = widget.statsLoader;
+    if (loader != null) return loader();
     try {
       return MineStats(
         favorites: FavoritesHelper().count(),
