@@ -58,9 +58,9 @@ class FavoriteNotifier extends ChangeNotifier {
     _dirty = false;
   }
 
-  void loadFromDb() {
+  void loadFromDb([Database? database]) {
     _favoritedIds.clear();
-    for (final favorite in FavoritesHelper().list()) {
+    for (final favorite in FavoritesHelper(database).list()) {
       _favoritedIds.add('${favorite.source}:${favorite.comic}');
     }
   }
@@ -92,6 +92,15 @@ class FavoriteNotifier extends ChangeNotifier {
   void removeLocal(String sourceKey, String comicId) {
     _favoritedIds.remove('$sourceKey:$comicId');
     FavoritesHelper().delete(sourceKey, comicId);
+  }
+
+  void _favoritesCleared(String? sourceKey) {
+    if (sourceKey == null) {
+      _favoritedIds.clear();
+    } else {
+      _favoritedIds.removeWhere((id) => id.startsWith('$sourceKey:'));
+    }
+    markDirty();
   }
 }
 
@@ -151,6 +160,22 @@ class FavoritesHelper {
       <Object?>[source, comic],
     );
     return _changes();
+  }
+
+  /// 清空本地收藏。传入 [sourceKey] 时仅清理该来源。
+  int clear({String? sourceKey}) {
+    if (sourceKey == null) {
+      _db.execute('DELETE FROM favorites');
+    } else {
+      _db.execute('DELETE FROM favorites WHERE source_key = ?', <Object?>[
+        sourceKey,
+      ]);
+    }
+    final deleted = _changes();
+    if (deleted > 0) {
+      FavoriteNotifier.instance._favoritesCleared(sourceKey);
+    }
+    return deleted;
   }
 
   int count() {

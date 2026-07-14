@@ -227,6 +227,76 @@ void main() {
     });
   });
 
+  group('FavoritesHelper clear', () {
+    late FavoritesHelper helper;
+
+    setUp(() {
+      JoyDatabase.migrateCore(db);
+      helper = FavoritesHelper(db);
+      for (final record in const <FavoriteRecord>[
+        FavoriteRecord(
+          source: 'jm',
+          comic: 'jm-1',
+          title: 'JM 1',
+          cover: '',
+          author: '',
+          favoritedAt: 10,
+        ),
+        FavoriteRecord(
+          source: 'jm',
+          comic: 'jm-2',
+          title: 'JM 2',
+          cover: '',
+          author: '',
+          favoritedAt: 20,
+        ),
+        FavoriteRecord(
+          source: 'picacg',
+          comic: 'pica-1',
+          title: 'Pica 1',
+          cover: '',
+          author: '',
+          favoritedAt: 30,
+        ),
+      ]) {
+        helper.upsert(record);
+      }
+    });
+
+    test('clears every local favorite when sourceKey is omitted', () {
+      FavoriteNotifier.instance.loadFromDb(db);
+      FavoriteNotifier.instance.consumeDirty();
+
+      expect(helper.clear(), 3);
+      expect(helper.count(), 0);
+      expect(helper.list(), isEmpty);
+      expect(FavoriteNotifier.instance.isFavorited('jm', 'jm-1'), isFalse);
+      expect(
+        FavoriteNotifier.instance.isFavorited('picacg', 'pica-1'),
+        isFalse,
+      );
+      expect(FavoriteNotifier.instance.isDirty, isTrue);
+    });
+
+    test('clears only the requested source', () {
+      FavoriteNotifier.instance.loadFromDb(db);
+      FavoriteNotifier.instance.consumeDirty();
+
+      expect(helper.clear(sourceKey: 'jm'), 2);
+      expect(helper.count(), 1);
+      expect(helper.get('jm', 'jm-1'), isNull);
+      expect(helper.get('jm', 'jm-2'), isNull);
+      expect(helper.get('picacg', 'pica-1'), isNotNull);
+      expect(FavoriteNotifier.instance.isFavorited('jm', 'jm-1'), isFalse);
+      expect(FavoriteNotifier.instance.isFavorited('picacg', 'pica-1'), isTrue);
+      expect(FavoriteNotifier.instance.isDirty, isTrue);
+
+      FavoriteNotifier.instance.consumeDirty();
+      expect(helper.clear(sourceKey: 'missing'), 0);
+      expect(helper.count(), 1);
+      expect(FavoriteNotifier.instance.isDirty, isFalse);
+    });
+  });
   group('ReadRecordHelper', () {
     late ReadRecordHelper helper;
 
