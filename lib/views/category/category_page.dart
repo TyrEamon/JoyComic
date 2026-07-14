@@ -96,7 +96,7 @@ class _CategoryPageState extends State<CategoryPage>
         actions: [
           IconButton(
             tooltip: '搜索漫画',
-            onPressed: () => context.push('/search/all'),
+            onPressed: () => context.push('/search'),
             icon: const Icon(Icons.search_rounded),
           ),
         ],

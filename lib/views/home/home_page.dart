@@ -374,7 +374,7 @@ class _TopBar extends StatelessWidget {
           ),
           const Spacer(),
           InkWell(
-            onTap: () => context.push('/search/all'),
+            onTap: () => context.push('/search'),
             borderRadius: BorderRadius.circular(24),
             child: Container(
               width: 44,

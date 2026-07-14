@@ -30,15 +30,11 @@ class DetailViewModel extends ChangeNotifier {
   DetailViewModel({
     required this.sourceKey,
     required this.comicId,
-    this.demoData,
     FavoritesHelper? favoritesHelper,
   }) : _favHelper = favoritesHelper ?? FavoritesHelper();
 
   final String sourceKey;
   final String comicId;
-
-  /// 演示数据旁路。
-  final ComicInfoData? demoData;
 
   final FavoritesHelper _favHelper;
 
@@ -75,34 +71,8 @@ class DetailViewModel extends ChangeNotifier {
     return source!.getThumbnailLoadingConfig!(cover);
   }
 
-  /// 演示旁路用的 headers（无源时不加鉴权）。
-  Map<String, dynamic>? get _demoHeaders {
-    final cover = demoData?.cover;
-    if (cover == null) return null;
-    final source = ComicSource.find(sourceKey);
-    if (source?.getThumbnailLoadingConfig == null) return null;
-    return source!.getThumbnailLoadingConfig!(cover);
-  }
-
   Future<void> load() async {
     if (_state == DetailLoadState.loading) return;
-
-    // 演示数据旁路：跳过网络，直接铺兜底色渲染，随后取色。
-    if (demoData != null) {
-      _data = DetailUiData(info: demoData!, palette: ComicPalette.fallback);
-      _applyFavoriteState(demoData!);
-      _state = DetailLoadState.success;
-      notifyListeners();
-      final palette = await PaletteExtractor.extract(
-        demoData!.cover,
-        headers: _demoHeaders,
-      );
-      if (_data != null) {
-        _data = DetailUiData(info: demoData!, palette: palette);
-        notifyListeners();
-      }
-      return;
-    }
 
     _state = DetailLoadState.loading;
     _error = null;

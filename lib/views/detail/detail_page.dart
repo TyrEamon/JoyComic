@@ -29,27 +29,16 @@ import 'widgets/sticky_action_bar.dart';
 import 'widgets/synopsis_block.dart';
 
 class DetailPage extends StatelessWidget {
-  const DetailPage({
-    super.key,
-    required this.sourceKey,
-    required this.comicId,
-    this.demoData,
-  });
+  const DetailPage({super.key, required this.sourceKey, required this.comicId});
 
   final String sourceKey;
   final String comicId;
 
-  /// 演示数据旁路：非 null 时详情页跳过网络加载，直接用此数据渲染。
-  final ComicInfoData? demoData;
-
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (_) => DetailViewModel(
-        sourceKey: sourceKey,
-        comicId: comicId,
-        demoData: demoData,
-      )..load(),
+      create: (_) =>
+          DetailViewModel(sourceKey: sourceKey, comicId: comicId)..load(),
       child: const _DetailScaffold(),
     );
   }

@@ -9,7 +9,7 @@
 ///
 /// 功能集成说明：
 /// - 源管理数据来自 `ComicSource.sources` + `AppData.enabledSources`。
-/// - WebDAV 同步阶段4 实现（archive 包 zip 备份）。
+/// - WebDAV、缓存与诊断入口均连接到真实页面或操作。
 /// - 主题模式由 AppData 持久化并即时通知应用。
 library settings_page;
 
@@ -17,12 +17,14 @@ import 'package:flutter/material.dart';
 import 'package:joycomic/theme/app_theme_context.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../comic_source/comic_source.dart';
 import '../../foundation/app_data.dart';
 import '../../foundation/cache_manager.dart';
 import '../../foundation/download_manager.dart';
 import '../../foundation/reader_config.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
+import '../common/source_account_profile.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key, this.cacheManager});
@@ -58,10 +60,12 @@ class _SettingsPageState extends State<SettingsPage> {
       setState(() => _cacheSize = size);
     } catch (error) {
       if (!mounted) return;
-      setState(() => _cacheSize = const CacheSize(diskBytes: 0, imageCacheBytes: 0));
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('读取缓存大小失败：$error')),
+      setState(
+        () => _cacheSize = const CacheSize(diskBytes: 0, imageCacheBytes: 0),
       );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('读取缓存大小失败：$error')));
     }
   }
 
@@ -70,10 +74,18 @@ class _SettingsPageState extends State<SettingsPage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('清除缓存？'),
-        content: const Text('只会删除网络图片缓存、临时文件、日志和未完成下载临时文件，不会删除数据库、账号、收藏、历史或已完成下载。'),
+        content: const Text(
+          '只会删除网络图片缓存、临时文件、日志和未完成下载临时文件，不会删除数据库、账号、收藏、历史或已完成下载。',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('清除')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('清除'),
+          ),
         ],
       ),
     );
@@ -84,10 +96,14 @@ class _SettingsPageState extends State<SettingsPage> {
       await manager.clearSafeCaches();
       await _refreshCacheSize();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('缓存已清除')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('缓存已清除')));
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('清除缓存失败：$error')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('清除缓存失败：$error')));
     } finally {
       if (mounted) setState(() => _loadingCache = false);
     }
@@ -100,9 +116,14 @@ class _SettingsPageState extends State<SettingsPage> {
         title: const Text('删除已完成下载？'),
         content: const Text('这是危险操作，将删除所有已完成的离线章节及其下载记录，且无法恢复。'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
             onPressed: () => Navigator.pop(context, true),
             child: const Text('删除已完成下载'),
           ),
@@ -116,14 +137,19 @@ class _SettingsPageState extends State<SettingsPage> {
       await manager.clearCompletedDownloads();
       await _refreshCacheSize();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已完成下载已删除')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('已完成下载已删除')));
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('删除已完成下载失败：$error')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('删除已完成下载失败：$error')));
     } finally {
       if (mounted) setState(() => _loadingCache = false);
     }
   }
+
   Future<void> _openReaderSettings() async {
     await context.push('/settings/reader');
     if (mounted) setState(() {});
@@ -131,6 +157,15 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final accountSources = ComicSource.sources
+        .where((source) => source.account != null)
+        .toList(growable: false);
+    final accountProfiles = accountSources
+        .map(SourceAccountProfile.fromSource)
+        .toList(growable: false);
+    final sourceForSettings = accountSources.isEmpty
+        ? null
+        : accountSources.first;
     return Scaffold(
       backgroundColor: context.pageBackground,
       appBar: AppBar(
@@ -143,24 +178,30 @@ class _SettingsPageState extends State<SettingsPage> {
           _SettingsGroup(
             title: '源管理',
             items: [
-              _SettingsItem(
-                icon: Icons.source_outlined,
-                label: '禁漫',
-                value: '未登录',
-                route: '/login',
-              ),
-              _SettingsItem(
-                icon: Icons.source_outlined,
-                label: '哔咔',
-                value: '已登录 · Lv.12',
-                route: '/login',
-              ),
-              _SettingsItem(
-                icon: Icons.speed_rounded,
-                label: '测速选源',
-                value: '禁漫图床',
-                route: '/settings/source',
-              ),
+              if (accountProfiles.isEmpty)
+                const _SettingsItem(
+                  icon: Icons.source_outlined,
+                  label: '账号源',
+                  value: '未启用',
+                  route: '/login',
+                )
+              else
+                for (final profile in accountProfiles)
+                  _SettingsItem(
+                    icon: Icons.source_outlined,
+                    label: profile.sourceName,
+                    value: profile.settingsStatus,
+                    route:
+                        '/login?source=${Uri.encodeQueryComponent(profile.sourceKey)}',
+                  ),
+              if (sourceForSettings != null)
+                _SettingsItem(
+                  icon: Icons.speed_rounded,
+                  label: '测速选源',
+                  value: sourceForSettings.name,
+                  route:
+                      '/settings/source?source=${Uri.encodeQueryComponent(sourceForSettings.key)}',
+                ),
             ],
           ),
           _SettingsGroup(
@@ -194,8 +235,8 @@ class _SettingsPageState extends State<SettingsPage> {
                 value: _loadingCache
                     ? '处理中…'
                     : _cacheSize == null
-                        ? '读取中…'
-                        : formatCacheBytes(_cacheSize!.totalBytes),
+                    ? '读取中…'
+                    : formatCacheBytes(_cacheSize!.totalBytes),
                 onTap: _loadingCache ? null : _clearCaches,
                 loading: _loadingCache,
               ),
@@ -313,7 +354,11 @@ class _SettingsItem extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(icon, size: 22, color: iconColor ?? context.colorScheme.primary),
+            Icon(
+              icon,
+              size: 22,
+              color: iconColor ?? context.colorScheme.primary,
+            ),
             const SizedBox(width: AppSpacing.md),
             Expanded(
               child: Text(

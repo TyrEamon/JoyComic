@@ -239,7 +239,13 @@ class _HorizontalListState extends State<HorizontalList> {
       filterQuality: FilterQuality.medium,
       errorBuilder: (context, error, stackTrace) {
         return Center(
-          child: IconButton(icon: const Icon(Icons.refresh), onPressed: () {}),
+          child: IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () async {
+              await _providerFor(item).evict();
+              if (mounted) setState(() {});
+            },
+          ),
         );
       },
     );

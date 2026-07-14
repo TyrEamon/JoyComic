@@ -12,7 +12,7 @@
 ///   `JmShuntSpeed` 列表（含 latency/imgHost）→ `pickFastest` →
 ///   `selectShunt(key)` 持久化。
 /// - 哔咔双源切换：`PicacgStateImpl.setApiBaseUrl(url)` 持久化。
-/// - 当前全 mock，测速进度条动画。
+/// - 测速结果和源选择会写入对应源状态并持久化。
 library source_settings_page;
 
 import 'package:flutter/material.dart';
@@ -46,7 +46,9 @@ class _SourceSettingsPageState extends State<SourceSettingsPage> {
     if (widget.sourceKey == 'picacg') {
       final source = ComicSource.find('picacg');
       final state = source != null ? PicacgNetwork().state : null;
-      _picaDomain = state?.apiBaseUrl.contains('picacomic') == true ? 'picacomic' : 'go2778';
+      _picaDomain = state?.apiBaseUrl.contains('picacomic') == true
+          ? 'picacomic'
+          : 'go2778';
     }
   }
 
@@ -64,21 +66,28 @@ class _SourceSettingsPageState extends State<SourceSettingsPage> {
         children: [
           if (isJm) ...[
             const _SectionLabel(label: '图床分流（6 项）'),
-            ..._jmShunts.map((s) => _ShuntTile(
-                  title: s.title,
-                  subtitle: s.host,
-                  latency: s.latency,
-                  selected: _selectedShunt == s.key,
-                  testing: _testing,
-                  onTap: () => setState(() => _selectedShunt = s.key),
-                )),
+            ..._jmShunts.map(
+              (s) => _ShuntTile(
+                title: s.title,
+                subtitle: s.host,
+                latency: s.latency,
+                selected: _selectedShunt == s.key,
+                testing: _testing,
+                onTap: () => setState(() => _selectedShunt = s.key),
+              ),
+            ),
             const SizedBox(height: AppSpacing.lg),
             FilledButton.icon(
               onPressed: _testing ? null : _test,
               icon: _testing
                   ? const SizedBox(
-                      width: 16, height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
                   : const Icon(Icons.speed_rounded, size: 18),
               label: Text(_testing ? '测速中…' : '开始测速'),
               style: FilledButton.styleFrom(
@@ -88,7 +97,9 @@ class _SourceSettingsPageState extends State<SourceSettingsPage> {
             ),
             const SizedBox(height: AppSpacing.lg),
             const _SectionLabel(label: 'API 兜底域名（9 个）'),
-            ..._jmDomains.map((d) => _DomainTile(title: d, latency: _domainLatency(d))),
+            ..._jmDomains.map(
+              (d) => _DomainTile(title: d, latency: _domainLatency(d)),
+            ),
           ] else ...[
             const _SectionLabel(label: 'API 接入域名'),
             _RadioTile(
@@ -150,7 +161,7 @@ class _SourceSettingsPageState extends State<SourceSettingsPage> {
         }
       }
     } catch (_) {
-      // 测速失败保持 mock 状态
+      // 失败时保留上一次可用线路，页面结束加载态
     }
     if (!mounted) return;
     setState(() => _testing = false);
@@ -165,12 +176,18 @@ class _SectionLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(
-          top: AppSpacing.sm, bottom: AppSpacing.xs, left: AppSpacing.xxs),
-      child: Text(label,
-          style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: context.tertiaryTextColor)),
+        top: AppSpacing.sm,
+        bottom: AppSpacing.xs,
+        left: AppSpacing.xxs,
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: context.tertiaryTextColor,
+        ),
+      ),
     );
   }
 }
@@ -199,7 +216,9 @@ class _ShuntTile extends StatelessWidget {
       child: Container(
         margin: const EdgeInsets.only(bottom: AppSpacing.xs),
         padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.md, vertical: AppSpacing.sm + 2),
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.sm + 2,
+        ),
         decoration: BoxDecoration(
           color: context.surfaceColor,
           borderRadius: AppRadius.brMd,
@@ -214,22 +233,31 @@ class _ShuntTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title,
-                      style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: context.primaryTextColor)),
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: context.primaryTextColor,
+                    ),
+                  ),
                   const SizedBox(height: 2),
-                  Text(subtitle,
-                      style: TextStyle(
-                          fontSize: 12, color: context.tertiaryTextColor)),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: context.tertiaryTextColor,
+                    ),
+                  ),
                 ],
               ),
             ),
             if (testing)
               const SizedBox(
-                  width: 16, height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2))
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
             else if (latency != null)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -244,15 +272,20 @@ class _ShuntTile extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    color: latency! < 300 ? AppColors.success : AppColors.hotAccent,
+                    color: latency! < 300
+                        ? AppColors.success
+                        : AppColors.hotAccent,
                   ),
                 ),
               ),
             if (selected)
               Padding(
                 padding: EdgeInsets.only(left: AppSpacing.xs),
-                child: Icon(Icons.check_circle_rounded,
-                    color: context.colorScheme.primary, size: 20),
+                child: Icon(
+                  Icons.check_circle_rounded,
+                  color: context.colorScheme.primary,
+                  size: 20,
+                ),
               ),
           ],
         ),
@@ -271,7 +304,9 @@ class _DomainTile extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.xxs),
       padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.sm,
+      ),
       decoration: BoxDecoration(
         color: context.surfaceColor,
         borderRadius: AppRadius.brSm,
@@ -280,16 +315,20 @@ class _DomainTile extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Text(title,
-                style: TextStyle(
-                    fontSize: 13, color: context.secondaryTextColor)),
+            child: Text(
+              title,
+              style: TextStyle(fontSize: 13, color: context.secondaryTextColor),
+            ),
           ),
           if (latency != null)
-            Text(latency! < 0 ? '失败' : '${latency}ms',
-                style: TextStyle(
-                    fontSize: 12,
-                    color: latency! < 300 ? AppColors.success : AppColors.hotAccent,
-                    fontWeight: FontWeight.w600)),
+            Text(
+              latency! < 0 ? '失败' : '${latency}ms',
+              style: TextStyle(
+                fontSize: 12,
+                color: latency! < 300 ? AppColors.success : AppColors.hotAccent,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
         ],
       ),
     );
@@ -316,7 +355,9 @@ class _RadioTile extends StatelessWidget {
       child: Container(
         margin: const EdgeInsets.only(bottom: AppSpacing.xs),
         padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.md, vertical: AppSpacing.sm + 2),
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.sm + 2,
+        ),
         decoration: BoxDecoration(
           color: context.surfaceColor,
           borderRadius: AppRadius.brMd,
@@ -331,21 +372,30 @@ class _RadioTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title,
-                      style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: context.primaryTextColor)),
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: context.primaryTextColor,
+                    ),
+                  ),
                   const SizedBox(height: 2),
-                  Text(subtitle,
-                      style: TextStyle(
-                          fontSize: 12, color: context.tertiaryTextColor)),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: context.tertiaryTextColor,
+                    ),
+                  ),
                 ],
               ),
             ),
             Icon(
               selected ? Icons.radio_button_checked : Icons.radio_button_off,
-              color: selected ? context.colorScheme.primary : context.tertiaryTextColor,
+              color: selected
+                  ? context.colorScheme.primary
+                  : context.tertiaryTextColor,
               size: 22,
             ),
           ],
@@ -356,7 +406,12 @@ class _RadioTile extends StatelessWidget {
 }
 
 class _JmShunt {
-  const _JmShunt({required this.key, required this.title, required this.host, this.latency});
+  const _JmShunt({
+    required this.key,
+    required this.title,
+    required this.host,
+    this.latency,
+  });
   final int key;
   final String title;
   final String host;
@@ -364,10 +419,20 @@ class _JmShunt {
 }
 
 final _jmShunts = [
-  _JmShunt(key: 0, title: '快速通道 (express)', host: 'cdn-msp.18comic.vip', latency: 180),
+  _JmShunt(
+    key: 0,
+    title: '快速通道 (express)',
+    host: 'cdn-msp.18comic.vip',
+    latency: 180,
+  ),
   _JmShunt(key: 1, title: '线路一', host: 'cdn-msp3.jmapiproxy1.cc', latency: 320),
   _JmShunt(key: 2, title: '线路二', host: 'cdn-msp.jmapiproxy3.cc', latency: 450),
-  _JmShunt(key: 3, title: '线路三', host: 'cdn-msp2.jmapiproxy2.cc', latency: null),
+  _JmShunt(
+    key: 3,
+    title: '线路三',
+    host: 'cdn-msp2.jmapiproxy2.cc',
+    latency: null,
+  ),
   _JmShunt(key: 4, title: '线路四', host: 'cdn-msp3.jmapiproxy3.cc', latency: 580),
   _JmShunt(key: 5, title: '线路五', host: 'cdn-msp.18comic.vip', latency: null),
 ];

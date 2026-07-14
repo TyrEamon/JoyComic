@@ -45,6 +45,7 @@ final appRouter = GoRouter(
   initialLocation: '/',
   routes: [
     GoRoute(path: '/', builder: (context, state) => const MainScaffold()),
+    GoRoute(path: '/search', builder: (context, state) => const SearchPage()),
     GoRoute(
       path: '/search/:sourceKey',
       builder: (context, state) =>
@@ -93,10 +94,7 @@ final appRouter = GoRouter(
       path: '/settings',
       builder: (context, state) => const SettingsPage(),
     ),
-    GoRoute(
-      path: '/about',
-      builder: (context, state) => const AboutPage(),
-    ),
+    GoRoute(path: '/about', builder: (context, state) => const AboutPage()),
     GoRoute(
       path: '/settings/source',
       builder: (context, state) => SourceSettingsPage(
@@ -130,43 +128,59 @@ final appRouter = GoRouter(
       },
     ),
   ],
-  // 未匹配路由（历史/关于/WebDAV/分类结果等"留功能位置"页）落到占位页，
-  // 避免崩溃。功能集成时替换为真实页面。
-  errorBuilder: (context, state) => _PlaceholderPage(title: state.uri.path),
+  errorBuilder: (context, state) => NotFoundPage(uri: state.uri),
 );
 
-/// 功能待集成占位页。
-class _PlaceholderPage extends StatelessWidget {
-  const _PlaceholderPage({required this.title});
-  final String title;
+class NotFoundPage extends StatelessWidget {
+  const NotFoundPage({super.key, required this.uri});
+
+  final Uri uri;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('功能待集成'),
-        backgroundColor: const Color(0xFF0E0B14),
-      ),
+      appBar: AppBar(title: const Text('页面不存在')),
       body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.construction_rounded,
-              size: 48,
-              color: Color(0xFF8A8298),
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              '该页面 UI 框架已留位，真实功能待集成',
-              style: TextStyle(color: Color(0xFF8A8298)),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              title,
-              style: const TextStyle(fontSize: 12, color: Color(0xFF5A5466)),
-            ),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.error_outline_rounded,
+                size: 56,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                '页面不存在',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              Text(uri.toString(), textAlign: TextAlign.center),
+              const SizedBox(height: 24),
+              Wrap(
+                spacing: 12,
+                children: [
+                  OutlinedButton(
+                    onPressed: () {
+                      final router = GoRouter.of(context);
+                      if (router.canPop()) {
+                        router.pop();
+                      } else {
+                        router.go('/');
+                      }
+                    },
+                    child: const Text('返回上一页'),
+                  ),
+                  FilledButton(
+                    onPressed: () => context.go('/'),
+                    child: const Text('返回首页'),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
