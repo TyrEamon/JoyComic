@@ -59,7 +59,9 @@ void main() {
     expect(picacgLoads, 1);
   });
 
-  testWidgets('refreshing one source reloads only that source', (tester) async {
+  testWidgets('refreshing the current source does not initialize a lazy tab', (
+    tester,
+  ) async {
     var jmLoads = 0;
     var picacgLoads = 0;
     ComicSource.sources.addAll([
@@ -73,7 +75,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(jmLoads, 2);
-    expect(picacgLoads, 1);
+    expect(picacgLoads, 0);
   });
 
   testWidgets('shows one source error and retries that source', (tester) async {
