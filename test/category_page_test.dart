@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:joycomic/comic_source/comic_source.dart';
+import 'package:joycomic/network/base_comic.dart';
 import 'package:joycomic/network/res.dart';
 import 'package:joycomic/views/category/category_page.dart';
 import 'package:joycomic/views/common/source_content_models.dart';
@@ -48,8 +49,6 @@ void main() {
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey('category-source-tab-picacg')));
     await tester.pumpAndSettle();
-
-    expect(find.text('禁漫分类'), findsNothing);
     expect(find.text('哔咔分类'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('category-source-tab-jm')));
@@ -58,6 +57,108 @@ void main() {
     expect(find.text('禁漫分类'), findsOneWidget);
     expect(jmLoads, 1);
     expect(picacgLoads, 1);
+  });
+
+  testWidgets('refreshing one source reloads only that source', (tester) async {
+    var jmLoads = 0;
+    var picacgLoads = 0;
+    ComicSource.sources.addAll([
+      _source('jm', '禁漫', '禁漫分类', onLoad: () => jmLoads++),
+      _source('picacg', '哔咔', '哔咔分类', onLoad: () => picacgLoads++),
+    ]);
+
+    await tester.pumpWidget(const MaterialApp(home: CategoryPage()));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView), const Offset(0, 500));
+    await tester.pumpAndSettle();
+
+    expect(jmLoads, 2);
+    expect(picacgLoads, 1);
+  });
+
+  testWidgets('shows one source error and retries that source', (tester) async {
+    var loads = 0;
+    ComicSource.sources.add(
+      ComicSource.named(
+        key: 'jm',
+        name: '禁漫',
+        filePath: 'test',
+        loadSourceCategories: () async {
+          loads++;
+          if (loads == 1) {
+            return Res<List<SourceCategory>>(null, errorMessage: '网络错误');
+          }
+          return Res([SourceCategory(key: 'ok', title: '重试成功')]);
+        },
+      ),
+    );
+
+    await tester.pumpWidget(const MaterialApp(home: CategoryPage()));
+    await tester.pump();
+    expect(find.text('禁漫分类加载失败'), findsOneWidget);
+    expect(find.text('网络错误'), findsOneWidget);
+
+    await tester.tap(find.text('重试'));
+    await tester.pump();
+
+    expect(loads, 2);
+    expect(find.text('重试成功'), findsOneWidget);
+  });
+
+  testWidgets('shows a source-specific empty category state', (tester) async {
+    ComicSource.sources.add(
+      ComicSource.named(
+        key: 'jm',
+        name: '禁漫',
+        filePath: 'test',
+        loadSourceCategories: () async => Res(<SourceCategory>[]),
+      ),
+    );
+
+    await tester.pumpWidget(const MaterialApp(home: CategoryPage()));
+    await tester.pump();
+
+    expect(find.text('禁漫暂无分类'), findsOneWidget);
+    expect(find.text('刷新'), findsOneWidget);
+  });
+
+  testWidgets('switching tabs preserves each source scroll position', (
+    tester,
+  ) async {
+    List<SourceCategory> categories(String prefix) => [
+      for (var i = 0; i < 40; i++)
+        SourceCategory(key: '$prefix-$i', title: '$prefix 分类 $i'),
+    ];
+    ComicSource.sources.addAll([
+      ComicSource.named(
+        key: 'jm',
+        name: '禁漫',
+        filePath: 'test',
+        loadSourceCategories: () async => Res(categories('禁漫')),
+      ),
+      ComicSource.named(
+        key: 'picacg',
+        name: '哔咔',
+        filePath: 'test',
+        loadSourceCategories: () async => Res(categories('哔咔')),
+      ),
+    ]);
+
+    await tester.pumpWidget(const MaterialApp(home: CategoryPage()));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView), const Offset(0, -700));
+    await tester.pumpAndSettle();
+    final jmList = tester.widget<ListView>(find.byType(ListView));
+    final offset = jmList.controller!.offset;
+    expect(offset, greaterThan(0));
+
+    await tester.tap(find.byKey(const ValueKey('category-source-tab-picacg')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('category-source-tab-jm')));
+    await tester.pumpAndSettle();
+
+    final restored = tester.widget<ListView>(find.byType(ListView));
+    expect(restored.controller!.offset, offset);
   });
 
   test('category content location round-trips encoded route values', () {
@@ -103,7 +204,7 @@ void main() {
     expect(find.byIcon(Icons.subdirectory_arrow_right), findsOneWidget);
   });
 
-  testWidgets('switching result sort reloads page one with the new sort', (
+  testWidgets('sort clears old pages and reached end before loading page one', (
     tester,
   ) async {
     final queries = <SourceContentQuery>[];
@@ -124,8 +225,20 @@ void main() {
         ]),
         loadSourceContent: (query) async {
           queries.add(query);
+          if (query.sort == 'popular') {
+            return Res(
+              SourceContentPage(
+                query: query,
+                comics: const [_TestComic('new-popular')],
+                maxPage: 1,
+              ),
+            );
+          }
+          final comics = query.page == 1
+              ? [for (var i = 0; i < 15; i++) _TestComic('old-$i')]
+              : const [_TestComic('old-tail')];
           return Res(
-            SourceContentPage(query: query, comics: const [], maxPage: 1),
+            SourceContentPage(query: query, comics: comics, maxPage: 2),
           );
         },
       ),
@@ -141,15 +254,30 @@ void main() {
         ),
       ),
     );
-    await tester.pump();
-    await tester.pump();
+    await tester.pumpAndSettle();
+    await tester.fling(find.byType(GridView), const Offset(0, -3000), 1200);
+    await tester.pumpAndSettle();
+
+    expect(queries.any((query) => query.page == 2), isTrue);
+    expect(find.text('已经到底了'), findsOneWidget);
+    expect(find.text('old-tail'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('source-content-sort-popular')));
-    await tester.pump();
+    await tester.pumpAndSettle();
 
-    expect(queries.map((query) => query.sort), ['latest', 'popular']);
-    expect(queries.last.page, 1);
+    expect(
+      queries.last,
+      const SourceContentQuery(
+        categoryKey: 'category',
+        page: 1,
+        sort: 'popular',
+      ),
+    );
+    expect(find.text('old-tail'), findsNothing);
+    expect(find.text('new-popular'), findsOneWidget);
+    expect(find.text('已经到底了'), findsOneWidget);
   });
+
   testWidgets('shows an empty state when no category source is enabled', (
     tester,
   ) async {
@@ -175,4 +303,26 @@ ComicSource _source(
       return Res([SourceCategory(key: '$key-category', title: categoryTitle)]);
     },
   );
+}
+
+class _TestComic extends BaseComic {
+  @override
+  final String id;
+
+  const _TestComic(this.id);
+
+  @override
+  String get title => id;
+
+  @override
+  String get subTitle => '';
+
+  @override
+  String get cover => '';
+
+  @override
+  List<String> get tags => const [];
+
+  @override
+  String get description => '';
 }
