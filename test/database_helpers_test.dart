@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:joycomic/database/favorites_helper.dart';
 import 'package:joycomic/database/joy_database.dart';
@@ -13,6 +15,74 @@ void main() {
 
   tearDown(() {
     db.dispose();
+  });
+
+  group('JoyDatabase initialization lifecycle', () {
+    test(
+      'shares one initialization future across concurrent callers',
+      () async {
+        final directory = Completer<String>();
+        final opened = <Database>[];
+        final manager = JoyDatabase.forTesting(
+          databaseDirectory: () => directory.future,
+          openDatabase: (_) {
+            final database = sqlite3.openInMemory();
+            opened.add(database);
+            return database;
+          },
+          coreMigrator: JoyDatabase.migrateCore,
+          downloadMigrator: (_) {},
+        );
+
+        final first = manager.initialize();
+        final second = manager.initialize();
+
+        expect(identical(first, second), isTrue);
+        expect(opened, isEmpty);
+        directory.complete('memory');
+        await Future.wait(<Future<void>>[first, second]);
+
+        expect(opened, hasLength(2));
+        expect(manager.core, same(opened.first));
+        expect(manager.downloadDb, same(opened.last));
+        await manager.close();
+      },
+    );
+
+    test(
+      'disposes partial connections and allows retry after failure',
+      () async {
+        final opened = <Database>[];
+        var migrations = 0;
+        final manager = JoyDatabase.forTesting(
+          databaseDirectory: () async => 'memory',
+          openDatabase: (_) {
+            final database = sqlite3.openInMemory();
+            opened.add(database);
+            return database;
+          },
+          coreMigrator: (database) {
+            migrations++;
+            if (migrations == 1) throw StateError('migration failed');
+            JoyDatabase.migrateCore(database);
+          },
+          downloadMigrator: (_) {},
+        );
+
+        await expectLater(manager.initialize(), throwsStateError);
+        expect(() => manager.core, throwsStateError);
+        expect(() => manager.downloadDb, throwsStateError);
+        expect(opened, hasLength(2));
+        expect(() => opened[0].select('SELECT 1'), throwsA(anything));
+        expect(() => opened[1].select('SELECT 1'), throwsA(anything));
+
+        await manager.initialize();
+        expect(opened, hasLength(4));
+        expect(manager.core, same(opened[2]));
+        expect(manager.downloadDb, same(opened[3]));
+        await manager.close();
+      },
+    );
   });
 
   group('JoyDatabase core migration', () {
@@ -154,6 +224,43 @@ void main() {
     });
   });
 
+  test('core migration rolls back every schema change on failure', () {
+    db.execute('''
+      CREATE TABLE favorites (
+        comic_id TEXT NOT NULL,
+        source_key TEXT NOT NULL,
+        title TEXT,
+        cover_url TEXT,
+        favorited_at INTEGER NOT NULL,
+        PRIMARY KEY (comic_id, source_key)
+      )
+    ''');
+    db.execute(
+      'INSERT INTO favorites '
+      '(comic_id, source_key, title, cover_url, favorited_at) '
+      'VALUES (?, ?, ?, ?, ?)',
+      <Object?>['comic-1', 'jm', 'Legacy', 'cover', 10],
+    );
+
+    expect(
+      () => JoyDatabase.migrateCore(
+        db,
+        beforeCommit: () => throw StateError('injected failure'),
+      ),
+      throwsStateError,
+    );
+
+    expect(_columns(db, 'favorites'), isNot(contains('author')));
+    expect(
+      db.select("SELECT name FROM sqlite_master WHERE name = 'schema_meta'"),
+      isEmpty,
+    );
+    expect(db.select('SELECT title FROM favorites').single['title'], 'Legacy');
+
+    JoyDatabase.migrateCore(db);
+    expect(_columns(db, 'favorites'), contains('author'));
+  });
+
   group('FavoritesHelper', () {
     late FavoritesHelper helper;
 
@@ -227,6 +334,113 @@ void main() {
     });
   });
 
+  group('FavoritesHelper toggle injection', () {
+    setUp(() {
+      JoyDatabase.migrateCore(db);
+      FavoriteNotifier.instance.loadFromDb(db);
+      FavoriteNotifier.instance.consumeDirty();
+    });
+
+    test(
+      'successful toggle persists only through the injected database',
+      () async {
+        final calls = <bool>[];
+        final helper = FavoritesHelper(db, (source, comic, favorite) async {
+          calls.add(favorite);
+        });
+
+        expect(
+          await helper.toggleFavorite(
+            sourceKey: 'injected',
+            comicId: 'comic-1',
+            title: 'Title',
+            coverUrl: 'cover',
+          ),
+          isTrue,
+        );
+        expect(helper.get('injected', 'comic-1')?.title, 'Title');
+        expect(
+          FavoriteNotifier.instance.isFavorited('injected', 'comic-1'),
+          isTrue,
+        );
+
+        expect(
+          await helper.toggleFavorite(
+            sourceKey: 'injected',
+            comicId: 'comic-1',
+            title: 'Title',
+            coverUrl: 'cover',
+          ),
+          isFalse,
+        );
+        expect(helper.get('injected', 'comic-1'), isNull);
+        expect(
+          FavoriteNotifier.instance.isFavorited('injected', 'comic-1'),
+          isFalse,
+        );
+        expect(calls, <bool>[true, false]);
+      },
+    );
+
+    test(
+      'failed remote add leaves injected database and memory unchanged',
+      () async {
+        final helper = FavoritesHelper(db, (source, comic, favorite) async {
+          throw StateError('remote failed');
+        });
+        await expectLater(
+          helper.toggleFavorite(
+            sourceKey: 'injected',
+            comicId: 'comic-1',
+            title: 'Title',
+            coverUrl: 'cover',
+          ),
+          throwsStateError,
+        );
+        expect(helper.count(), 0);
+        expect(
+          FavoriteNotifier.instance.isFavorited('injected', 'comic-1'),
+          isFalse,
+        );
+      },
+    );
+
+    test(
+      'failed remote removal preserves injected database and memory',
+      () async {
+        final seed = FavoritesHelper(db);
+        seed.upsert(
+          const FavoriteRecord(
+            source: 'injected',
+            comic: 'comic-1',
+            title: 'Title',
+            cover: 'cover',
+            author: '',
+            favoritedAt: 10,
+          ),
+        );
+        FavoriteNotifier.instance.loadFromDb(db);
+        final helper = FavoritesHelper(db, (source, comic, favorite) async {
+          throw StateError('remote failed');
+        });
+        await expectLater(
+          helper.toggleFavorite(
+            sourceKey: 'injected',
+            comicId: 'comic-1',
+            title: 'Title',
+            coverUrl: 'cover',
+          ),
+          throwsStateError,
+        );
+        expect(helper.count(), 1);
+        expect(
+          FavoriteNotifier.instance.isFavorited('injected', 'comic-1'),
+          isTrue,
+        );
+      },
+    );
+  });
+
   group('FavoritesHelper clear', () {
     late FavoritesHelper helper;
 
@@ -297,12 +511,82 @@ void main() {
       expect(FavoriteNotifier.instance.isDirty, isFalse);
     });
   });
+  test('favorite identity and source filtering do not collide on colons', () {
+    JoyDatabase.migrateCore(db);
+    final helper = FavoritesHelper(db);
+    helper.upsert(
+      const FavoriteRecord(
+        source: 'a',
+        comic: 'b:c',
+        title: 'First',
+        cover: '',
+        author: '',
+        favoritedAt: 10,
+      ),
+    );
+    helper.upsert(
+      const FavoriteRecord(
+        source: 'a:b',
+        comic: 'c',
+        title: 'Second',
+        cover: '',
+        author: '',
+        favoritedAt: 20,
+      ),
+    );
+    FavoriteNotifier.instance.loadFromDb(db);
+
+    expect(FavoriteNotifier.instance.isFavorited('a', 'b:c'), isTrue);
+    expect(FavoriteNotifier.instance.isFavorited('a:b', 'c'), isTrue);
+    expect(helper.clear(sourceKey: 'a'), 1);
+    expect(FavoriteNotifier.instance.isFavorited('a', 'b:c'), isFalse);
+    expect(FavoriteNotifier.instance.isFavorited('a:b', 'c'), isTrue);
+  });
+
   group('ReadRecordHelper', () {
     late ReadRecordHelper helper;
 
     setUp(() {
       JoyDatabase.migrateCore(db);
       helper = ReadRecordHelper(db);
+    });
+
+    test('supports legacy and complete constructor names', () {
+      const legacy = ReadRecord(
+        sourceKey: 'legacy-source',
+        comicId: 'legacy-comic',
+        chapterId: 'chapter-1',
+        pageNo: 3,
+        updatedAt: 40,
+      );
+      const complete = ReadRecord(
+        source: 'new-source',
+        comic: 'new-comic',
+        title: 'Title',
+        cover: 'Cover',
+        author: 'Author',
+        chapterId: 'chapter-2',
+        chapterTitle: 'Chapter 2',
+        pageNo: 4,
+        pageCount: 30,
+        updatedAt: 50,
+      );
+
+      expect(legacy.source, 'legacy-source');
+      expect(legacy.comic, 'legacy-comic');
+      expect(legacy.title, '');
+      expect(legacy.cover, '');
+      expect(legacy.author, '');
+      expect(legacy.chapterTitle, '');
+      expect(legacy.pageCount, 0);
+      helper.upsert(legacy);
+      expect(
+        helper.get('legacy-source', 'legacy-comic')?.chapterId,
+        'chapter-1',
+      );
+      expect(complete.sourceKey, 'new-source');
+      expect(complete.comicId, 'new-comic');
+      expect(complete.title, 'Title');
     });
 
     test('upserts one complete resume point per comic', () {

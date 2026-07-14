@@ -6,6 +6,9 @@ import '../comic_source/comic_source.dart';
 import '../foundation/log.dart';
 import 'joy_database.dart';
 
+typedef FavoriteRemoteToggle =
+    Future<void> Function(String sourceKey, String comicId, bool favorite);
+
 /// 完整的本地收藏记录。
 class FavoriteRecord {
   final String source;
@@ -45,7 +48,7 @@ class FavoriteNotifier extends ChangeNotifier {
   FavoriteNotifier._();
   static final FavoriteNotifier instance = FavoriteNotifier._();
 
-  final Set<String> _favoritedIds = <String>{};
+  final Set<(String, String)> _favoritedIds = <(String, String)>{};
   bool _dirty = false;
   bool get isDirty => _dirty;
 
@@ -60,13 +63,19 @@ class FavoriteNotifier extends ChangeNotifier {
 
   void loadFromDb([Database? database]) {
     _favoritedIds.clear();
-    for (final favorite in FavoritesHelper(database).list()) {
-      _favoritedIds.add('${favorite.source}:${favorite.comic}');
+    final rows = (database ?? JoyDatabase.instance.core).select(
+      'SELECT source_key, comic_id FROM favorites',
+    );
+    for (final row in rows) {
+      _favoritedIds.add((
+        row['source_key'] as String,
+        row['comic_id'] as String,
+      ));
     }
   }
 
   bool isFavorited(String sourceKey, String comicId) {
-    return _favoritedIds.contains('$sourceKey:$comicId');
+    return _favoritedIds.contains((sourceKey, comicId));
   }
 
   void addLocal(
@@ -76,29 +85,20 @@ class FavoriteNotifier extends ChangeNotifier {
     String coverUrl, [
     String author = '',
   ]) {
-    _favoritedIds.add('$sourceKey:$comicId');
-    FavoritesHelper().upsert(
-      FavoriteRecord(
-        source: sourceKey,
-        comic: comicId,
-        title: title,
-        cover: coverUrl,
-        author: author,
-        favoritedAt: DateTime.now().millisecondsSinceEpoch,
-      ),
-    );
+    _favoritedIds.add((sourceKey, comicId));
+    markDirty();
   }
 
   void removeLocal(String sourceKey, String comicId) {
-    _favoritedIds.remove('$sourceKey:$comicId');
-    FavoritesHelper().delete(sourceKey, comicId);
+    _favoritedIds.remove((sourceKey, comicId));
+    markDirty();
   }
 
   void _favoritesCleared(String? sourceKey) {
     if (sourceKey == null) {
       _favoritedIds.clear();
     } else {
-      _favoritedIds.removeWhere((id) => id.startsWith('$sourceKey:'));
+      _favoritedIds.removeWhere((id) => id.$1 == sourceKey);
     }
     markDirty();
   }
@@ -106,9 +106,12 @@ class FavoriteNotifier extends ChangeNotifier {
 
 /// 收藏助手：管理本地记录，并协调远端收藏 API。
 class FavoritesHelper {
-  FavoritesHelper([Database? database]) : _database = database;
+  FavoritesHelper([Database? database, FavoriteRemoteToggle? remoteToggle])
+    : _database = database,
+      _remoteToggle = remoteToggle;
 
   final Database? _database;
+  final FavoriteRemoteToggle? _remoteToggle;
   Database get _db => _database ?? JoyDatabase.instance.core;
 
   /// 插入收藏；同一来源、同一漫画已存在时完整更新元数据。
@@ -201,24 +204,43 @@ class FavoritesHelper {
 
     if (wasFavorited) {
       await _removeFromSource(sourceKey, comicId);
+      delete(sourceKey, comicId);
       FavoriteNotifier.instance.removeLocal(sourceKey, comicId);
       Log.i('Favorite removed', '$sourceKey/$comicId');
       return false;
     }
 
     await _addToSource(sourceKey, comicId);
+    upsert(
+      FavoriteRecord(
+        source: sourceKey,
+        comic: comicId,
+        title: title,
+        cover: coverUrl,
+        author: '',
+        favoritedAt: DateTime.now().millisecondsSinceEpoch,
+      ),
+    );
     FavoriteNotifier.instance.addLocal(sourceKey, comicId, title, coverUrl);
     Log.i('Favorite added', '$sourceKey/$comicId');
     return true;
   }
 
   Future<void> _addToSource(String sourceKey, String comicId) async {
+    if (_remoteToggle != null) {
+      await _remoteToggle(sourceKey, comicId, true);
+      return;
+    }
     final source = ComicSource.find(sourceKey);
     if (source?.favoriteData?.addOrDelFavorite == null) return;
     await source!.favoriteData!.addOrDelFavorite!(comicId, '', true);
   }
 
   Future<void> _removeFromSource(String sourceKey, String comicId) async {
+    if (_remoteToggle != null) {
+      await _remoteToggle(sourceKey, comicId, false);
+      return;
+    }
     final source = ComicSource.find(sourceKey);
     if (source?.favoriteData?.addOrDelFavorite == null) return;
     await source!.favoriteData!.addOrDelFavorite!(comicId, '', false);

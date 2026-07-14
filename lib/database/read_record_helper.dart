@@ -17,17 +17,24 @@ class ReadRecord {
   final int updatedAt;
 
   const ReadRecord({
-    required this.source,
-    required this.comic,
-    required this.title,
-    required this.cover,
-    required this.author,
+    String? source,
+    String? comic,
+    String? sourceKey,
+    String? comicId,
+    this.title = '',
+    this.cover = '',
+    this.author = '',
     required this.chapterId,
-    required this.chapterTitle,
+    this.chapterTitle = '',
     required this.pageNo,
-    required this.pageCount,
+    this.pageCount = 0,
     required this.updatedAt,
-  });
+  }) : assert(source != null || sourceKey != null),
+       assert(comic != null || comicId != null),
+       assert(source == null || sourceKey == null || source == sourceKey),
+       assert(comic == null || comicId == null || comic == comicId),
+       source = source ?? sourceKey ?? '',
+       comic = comic ?? comicId ?? '';
 
   String get sourceKey => source;
   String get comicId => comic;

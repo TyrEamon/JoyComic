@@ -9,16 +9,40 @@ import 'package:sqlite3/sqlite3.dart';
 
 import '../foundation/log.dart';
 
+typedef DatabaseDirectoryProvider = Future<String> Function();
+typedef DatabaseOpener = Database Function(String path);
+typedef DatabaseMigrator = void Function(Database database);
+
 /// 数据库管理器（单例）。
 class JoyDatabase {
-  JoyDatabase._();
+  JoyDatabase._()
+    : _databaseDirectory = _defaultDatabaseDirectory,
+      _openDatabase = sqlite3.open,
+      _coreMigrator = migrateCore,
+      _downloadMigrator = _migrateDownloads;
+
+  JoyDatabase.forTesting({
+    required DatabaseDirectoryProvider databaseDirectory,
+    required DatabaseOpener openDatabase,
+    DatabaseMigrator coreMigrator = migrateCore,
+    DatabaseMigrator downloadMigrator = _migrateDownloads,
+  }) : _databaseDirectory = databaseDirectory,
+       _openDatabase = openDatabase,
+       _coreMigrator = coreMigrator,
+       _downloadMigrator = downloadMigrator;
 
   static final JoyDatabase instance = JoyDatabase._();
 
   /// 核心库当前 schema 版本。
   static const int coreSchemaVersion = 1;
 
+  final DatabaseDirectoryProvider _databaseDirectory;
+  final DatabaseOpener _openDatabase;
+  final DatabaseMigrator _coreMigrator;
+  final DatabaseMigrator _downloadMigrator;
+
   bool _initialized = false;
+  Future<void>? _initializeFuture;
   Database? _coreDb;
   Database? _downloadDb;
 
@@ -27,29 +51,60 @@ class JoyDatabase {
   Database get downloadDb =>
       _downloadDb ?? (throw StateError('JoyDatabase not initialized'));
 
-  /// 初始化数据库（应用启动时调用）。
-  Future<void> initialize() async {
-    if (_initialized) return;
+  /// 初始化数据库（应用启动时调用）。并发调用共享同一个 Future。
+  Future<void> initialize() {
+    if (_initialized) return Future<void>.value();
+    return _initializeFuture ??= _initializeOnce();
+  }
 
-    final dir = await getApplicationDocumentsDirectory();
-    final dbDir = Directory(p.join(dir.path, 'db'));
-    if (!await dbDir.exists()) {
-      await dbDir.create(recursive: true);
+  Future<void> _initializeOnce() async {
+    Database? coreDatabase;
+    Database? downloadDatabase;
+    try {
+      final directory = await _databaseDirectory();
+      coreDatabase = _openDatabase(p.join(directory, 'joycomic.db'));
+      downloadDatabase = _openDatabase(p.join(directory, 'downloads.db'));
+
+      _coreMigrator(coreDatabase);
+      _downloadMigrator(downloadDatabase);
+
+      _coreDb = coreDatabase;
+      _downloadDb = downloadDatabase;
+      _initialized = true;
+      Log.i('Database initialized', 'joycomic.db + downloads.db');
+    } catch (error, stackTrace) {
+      _coreDb = null;
+      _downloadDb = null;
+      _initialized = false;
+      try {
+        coreDatabase?.dispose();
+      } catch (_) {
+        // 继续释放另一条连接，并保留最初的初始化异常。
+      }
+      try {
+        downloadDatabase?.dispose();
+      } catch (_) {
+        // 保留最初的初始化异常。
+      }
+      Error.throwWithStackTrace(error, stackTrace);
+    } finally {
+      if (!_initialized) _initializeFuture = null;
     }
+  }
 
-    _coreDb = sqlite3.open(p.join(dbDir.path, 'joycomic.db'));
-    _downloadDb = sqlite3.open(p.join(dbDir.path, 'downloads.db'));
-
-    migrateCore(core);
-    _migrateDownloads(downloadDb);
-    _initialized = true;
-    Log.i('Database initialized', 'joycomic.db + downloads.db');
+  static Future<String> _defaultDatabaseDirectory() async {
+    final documents = await getApplicationDocumentsDirectory();
+    final directory = Directory(p.join(documents.path, 'db'));
+    if (!await directory.exists()) {
+      await directory.create(recursive: true);
+    }
+    return directory.path;
   }
 
   /// 对任意数据库连接执行核心库迁移，便于内存数据库测试。
   ///
   /// 所有结构变更都在同一事务内完成；发生异常时恢复迁移前状态。
-  static void migrateCore(Database db) {
+  static void migrateCore(Database db, {void Function()? beforeCommit}) {
     db.execute('BEGIN IMMEDIATE');
     try {
       db.execute('''
@@ -85,10 +140,15 @@ class JoyDatabase {
         'ON CONFLICT(id) DO UPDATE SET version = excluded.version',
         <Object?>[coreSchemaVersion],
       );
+      beforeCommit?.call();
       db.execute('COMMIT');
-    } catch (_) {
-      db.execute('ROLLBACK');
-      rethrow;
+    } catch (error, stackTrace) {
+      try {
+        db.execute('ROLLBACK');
+      } catch (_) {
+        // 保留最初的迁移异常。
+      }
+      Error.throwWithStackTrace(error, stackTrace);
     }
   }
 
@@ -368,10 +428,19 @@ class JoyDatabase {
 
   /// 关闭数据库连接。
   Future<void> close() async {
+    final initializing = _initializeFuture;
+    if (initializing != null && !_initialized) {
+      try {
+        await initializing;
+      } catch (_) {
+        // 初始化失败时连接已由初始化流程释放。
+      }
+    }
     _coreDb?.dispose();
     _downloadDb?.dispose();
     _coreDb = null;
     _downloadDb = null;
     _initialized = false;
+    _initializeFuture = null;
   }
 }
