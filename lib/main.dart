@@ -173,17 +173,16 @@ class JoyComicApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: AppData.instance.themeNotifier,
-      builder: (context, _) {
-        final isDark = AppData.instance.enableDarkMode;
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: AppData.instance.themeNotifier,
+      builder: (context, themeMode, _) {
         return MaterialApp.router(
           title: 'JoyComic',
           debugShowCheckedModeBanner: false,
           routerConfig: _router,
           theme: AppTheme.light(),
           darkTheme: AppTheme.dark(),
-          themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
+          themeMode: themeMode,
         );
       },
     );

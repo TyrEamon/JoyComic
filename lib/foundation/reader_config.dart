@@ -27,12 +27,10 @@ class ReaderConf {
 
   // ============================ 读取方在此之前应确保已 init ============================
 
-  bool _getBool(String key, bool fallback) =>
-      _prefs?.getBool(key) ?? fallback;
+  bool _getBool(String key, bool fallback) => _prefs?.getBool(key) ?? fallback;
   double _getDouble(String key, double fallback) =>
       _prefs?.getDouble(key) ?? fallback;
-  int _getInt(String key, int fallback) =>
-      _prefs?.getInt(key) ?? fallback;
+  int _getInt(String key, int fallback) => _prefs?.getInt(key) ?? fallback;
 
   void _setBool(String key, bool v) => _prefs?.setBool(key, v);
   void _setDouble(String key, double v) => _prefs?.setDouble(key, v);
@@ -99,6 +97,10 @@ class ReaderConf {
   /// 菜单是否已锁定（锁定后滚动不隐藏工具栏）。缺省 false。
   bool get menuLocked => _getBool('menuLocked', false);
   set menuLocked(bool v) => _setBool('menuLocked', v);
+
+  /// 工具栏是否自动隐藏，沿用 menuLocked 的反向持久化语义。
+  bool get autoHideToolbar => !menuLocked;
+  set autoHideToolbar(bool v) => menuLocked = !v;
 
   // ============================ 预加载 ============================
 
