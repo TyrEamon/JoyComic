@@ -25,6 +25,7 @@ import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 import '../../comic_source/comic_source.dart';
 import '../../database/read_record_helper.dart';
+import '../../network/res.dart';
 import 'providers/list_state_provider.dart';
 import 'providers/reader_provider.dart';
 import 'state/comic_state.dart';
@@ -80,6 +81,10 @@ class _ReaderState extends State<Reader> {
 
   ReaderImageLoader? _resolveImageLoader() {
     if (widget.imageLoader != null) return widget.imageLoader;
+    if (widget.comicState.type == ReaderType.local) {
+      final paths = widget.comicState.localPagePaths;
+      return (_, __) async => Res<List<String>>(paths);
+    }
     final source = ComicSource.find(widget.comicState.sourceKey);
     if (source?.loadComicPages == null) return null;
     return (String comicId, String? ep) => source!.loadComicPages!(comicId, ep);

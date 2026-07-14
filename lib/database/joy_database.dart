@@ -1,6 +1,7 @@
 // JoyComic 数据库基础设施。
 //
 // 多库隔离设计：每条数据线一个独立的 .db 文件，避免锁竞争。
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
@@ -19,13 +20,13 @@ class JoyDatabase {
     : _databaseDirectory = _defaultDatabaseDirectory,
       _openDatabase = sqlite3.open,
       _coreMigrator = migrateCore,
-      _downloadMigrator = _migrateDownloads;
+      _downloadMigrator = migrateDownloads;
 
   JoyDatabase.forTesting({
     required DatabaseDirectoryProvider databaseDirectory,
     required DatabaseOpener openDatabase,
     DatabaseMigrator coreMigrator = migrateCore,
-    DatabaseMigrator downloadMigrator = _migrateDownloads,
+    DatabaseMigrator downloadMigrator = migrateDownloads,
   }) : _databaseDirectory = databaseDirectory,
        _openDatabase = openDatabase,
        _coreMigrator = coreMigrator,
@@ -408,20 +409,153 @@ class JoyDatabase {
     columns.add(name);
   }
 
-  static void _migrateDownloads(Database db) {
+  /// Migrates the chapter download database from the legacy single-file table.
+  ///
+  /// Rebuilding is intentional: the legacy `url TEXT NOT NULL` column cannot be
+  /// removed with ALTER TABLE, while chapter tasks need an ordered URL list.
+  static void migrateDownloads(Database db) {
+    db.execute('BEGIN IMMEDIATE');
+    try {
+      const currentColumns = <String>{
+        'id',
+        'source_key',
+        'comic_id',
+        'chapter_id',
+        'title',
+        'cover_url',
+        'chapter_title',
+        'page_urls',
+        'completed_count',
+        'directory',
+        'error_message',
+        'status',
+        'created_at',
+        'updated_at',
+      };
+
+      if (!_tableExists(db, 'downloads')) {
+        _createDownloadsTable(db);
+      } else {
+        final columns = _columnNames(db, 'downloads');
+        if (!columns.containsAll(currentColumns)) {
+          final rows = db.select(
+            'SELECT * FROM downloads ORDER BY updated_at ASC, id ASC',
+          );
+          final latest = <(String, String, String), Row>{};
+          for (final row in rows) {
+            latest[(
+                  (row['source_key'] as String?) ?? '',
+                  (row['comic_id'] as String?) ?? '',
+                  (row['chapter_id'] as String?) ?? '',
+                )] =
+                row;
+          }
+
+          db.execute('DROP TABLE IF EXISTS downloads_migrated');
+          _createDownloadsTable(db, table: 'downloads_migrated');
+          for (final row in latest.values) {
+            final url = columns.contains('url')
+                ? (row['url'] as String?) ?? ''
+                : '';
+            final existingUrls = columns.contains('page_urls')
+                ? (row['page_urls'] as String?) ?? '[]'
+                : jsonEncode(url.isEmpty ? const <String>[] : <String>[url]);
+            final status = (row['status'] as String?) ?? 'pending';
+            final completed = columns.contains('completed_count')
+                ? (row['completed_count'] as int?) ?? 0
+                : status == 'completed' && url.isNotEmpty
+                ? 1
+                : 0;
+            var directory = columns.contains('directory')
+                ? (row['directory'] as String?) ?? ''
+                : '';
+            if (directory.isEmpty && columns.contains('file_path')) {
+              final filePath = (row['file_path'] as String?) ?? '';
+              if (filePath.isNotEmpty) directory = p.dirname(filePath);
+            }
+            db.execute(
+              '''
+              INSERT INTO downloads_migrated (
+                id, source_key, comic_id, chapter_id, title, cover_url,
+                chapter_title, page_urls, completed_count, directory,
+                error_message, status, created_at, updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ''',
+              <Object?>[
+                row['id'],
+                row['source_key'],
+                row['comic_id'],
+                row['chapter_id'],
+                columns.contains('title') ? row['title'] ?? '' : '',
+                columns.contains('cover_url') ? row['cover_url'] ?? '' : '',
+                columns.contains('chapter_title')
+                    ? row['chapter_title'] ?? ''
+                    : columns.contains('file_name')
+                    ? row['file_name'] ?? ''
+                    : '',
+                existingUrls,
+                completed,
+                directory,
+                columns.contains('error_message') ? row['error_message'] : null,
+                status,
+                row['created_at'],
+                row['updated_at'],
+              ],
+            );
+          }
+          db.execute('DROP TABLE downloads');
+          db.execute('ALTER TABLE downloads_migrated RENAME TO downloads');
+        } else {
+          db.execute('''
+            DELETE FROM downloads
+            WHERE id NOT IN (
+              SELECT id FROM (
+                SELECT id,
+                  ROW_NUMBER() OVER (
+                    PARTITION BY source_key, comic_id, chapter_id
+                    ORDER BY updated_at DESC, id DESC
+                  ) AS position
+                FROM downloads
+              ) WHERE position = 1
+            )
+          ''');
+        }
+      }
+
+      db.execute('''
+        CREATE UNIQUE INDEX IF NOT EXISTS downloads_chapter_identity
+        ON downloads (source_key, comic_id, chapter_id)
+      ''');
+      db.execute('COMMIT');
+    } catch (error, stackTrace) {
+      try {
+        db.execute('ROLLBACK');
+      } catch (_) {
+        // Preserve the original migration error.
+      }
+      Error.throwWithStackTrace(error, stackTrace);
+    }
+  }
+
+  static void _createDownloadsTable(Database db, {String table = 'downloads'}) {
     db.execute('''
-      CREATE TABLE IF NOT EXISTS downloads (
+      CREATE TABLE $table (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        comic_id TEXT NOT NULL,
         source_key TEXT NOT NULL,
+        comic_id TEXT NOT NULL,
         chapter_id TEXT NOT NULL,
-        url TEXT NOT NULL,
-        file_name TEXT,
-        file_path TEXT,
-        status TEXT NOT NULL DEFAULT 'pending',
-        progress REAL NOT NULL DEFAULT 0.0,
+        title TEXT NOT NULL DEFAULT '',
+        cover_url TEXT NOT NULL DEFAULT '',
+        chapter_title TEXT NOT NULL DEFAULT '',
+        page_urls TEXT NOT NULL DEFAULT '[]',
+        completed_count INTEGER NOT NULL DEFAULT 0,
+        directory TEXT NOT NULL DEFAULT '',
+        error_message TEXT,
+        status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (status IN ('pending', 'downloading', 'paused', 'completed', 'failed')),
         created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
+        updated_at INTEGER NOT NULL,
+        UNIQUE (source_key, comic_id, chapter_id)
       )
     ''');
   }

@@ -3,7 +3,7 @@
 /// 使用 [PhotoViewGallery] 实现单页或双页翻页阅读模式。
 /// 双页模式将图片两两分组（经 [ReaderProvider.multiPageImages]）后
 /// 以 [Row] 并排渲染，RTL 模式自动反转图片顺序。
-library horizontal_list;
+library;
 
 import 'dart:io';
 
@@ -147,7 +147,9 @@ class _HorizontalListState extends State<HorizontalList> {
               layoutWidth: constraints.maxWidth / 2,
               devicePixelRatio: dpr,
             );
-            final cacheWidth = readMode.isDoublePage ? doubleCacheWidth : singleCacheWidth;
+            final cacheWidth = readMode.isDoublePage
+                ? doubleCacheWidth
+                : singleCacheWidth;
             context.reader.updatePreloadCacheWidth(cacheWidth);
 
             // 构建 PhotoViewGallery 页面选项列表
@@ -183,7 +185,10 @@ class _HorizontalListState extends State<HorizontalList> {
                   child: CircularProgressIndicator(
                     value: value,
                     strokeWidth: 3,
-                    constraints: const BoxConstraints(maxWidth: 28, maxHeight: 28),
+                    constraints: const BoxConstraints(
+                      maxWidth: 28,
+                      maxHeight: 28,
+                    ),
                     strokeCap: StrokeCap.round,
                   ),
                 );
@@ -197,31 +202,38 @@ class _HorizontalListState extends State<HorizontalList> {
 
   // ============================ 单页选项 ============================
 
-  PhotoViewGalleryPageOptions _buildSinglePageOptions(ReaderImage item, int cacheWidth) {
+  PhotoViewGalleryPageOptions _buildSinglePageOptions(
+    ReaderImage item,
+    int cacheWidth,
+  ) {
     return PhotoViewGalleryPageOptions(
       minScale: PhotoViewComputedScale.contained * 1.0,
       maxScale: PhotoViewComputedScale.covered * 4.0,
       imageProvider: ResizeImage.resizeIfNeeded(
         cacheWidth,
         null,
-        CachedNetworkImageProvider(
-          item.url,
-          cacheManager: cacheManager,
-          cacheKey: item.cacheKey,
-        ),
+        _providerFor(item),
       ),
       filterQuality: FilterQuality.medium,
       errorBuilder: (context, error, stackTrace) {
         return Center(
-          child: IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {},
-          ),
+          child: IconButton(icon: const Icon(Icons.refresh), onPressed: () {}),
         );
       },
     );
   }
 
+  ImageProvider _providerFor(ReaderImage item) {
+    final scheme = Uri.tryParse(item.url)?.scheme.toLowerCase();
+    if (scheme == 'http' || scheme == 'https') {
+      return CachedNetworkImageProvider(
+        item.url,
+        cacheManager: cacheManager,
+        cacheKey: item.cacheKey,
+      );
+    }
+    return FileImage(File(item.url));
+  }
   // ============================ 双页选项 ============================
 
   PhotoViewGalleryPageOptions _buildDoublePageOptions(
@@ -257,9 +269,7 @@ class _HorizontalListState extends State<HorizontalList> {
             cacheWidth: cacheWidth,
             alignment: count == 1
                 ? Alignment.center
-                : (idx == 0
-                    ? Alignment.centerRight
-                    : Alignment.centerLeft),
+                : (idx == 0 ? Alignment.centerRight : Alignment.centerLeft),
           ),
         );
       }).toList(),
@@ -267,17 +277,6 @@ class _HorizontalListState extends State<HorizontalList> {
   }
 
   // ============================ 缓存清理 ============================
-
-  Future<void> _evictImage(ReaderImage item) async {
-    if (item.cacheKey != null) {
-      await cacheManager.removeFile(item.cacheKey!);
-    }
-    await CachedNetworkImageProvider(
-      item.url,
-      cacheManager: cacheManager,
-      cacheKey: item.cacheKey,
-    ).evict();
-  }
 
   // ============================ 页面变化 ============================
 

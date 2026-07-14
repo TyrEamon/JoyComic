@@ -1,92 +1,159 @@
-/// 下载队列数据库操作。
-library download_helper;
+/// SQLite persistence for chapter download tasks.
+library;
+
+import 'package:sqlite3/sqlite3.dart';
 
 import '../foundation/download_task.dart';
 import 'joy_database.dart';
 
 class DownloadHelper {
-  /// 插入下载任务。
-  int insert(DownloadItem item) {
-    final now = DateTime.now().millisecondsSinceEpoch;
-    JoyDatabase.instance.downloadDb.execute(
-      'INSERT INTO downloads (comic_id, source_key, chapter_id, url, file_name, status, progress, created_at, updated_at) '
-      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [
-        item.comicId,
-        item.sourceKey,
-        item.chapterId,
-        item.url,
-        item.fileName,
-        item.status.name,
-        item.progress,
-        now,
-        now,
+  DownloadHelper([Database? database]) : _database = database;
+
+  final Database? _database;
+  Database get _db => _database ?? JoyDatabase.instance.downloadDb;
+
+  /// Inserts a task once and returns the existing row on identity conflict.
+  DownloadTask enqueue(DownloadTask task) {
+    final row = task.toRow();
+    _db.execute(
+      '''
+      INSERT OR IGNORE INTO downloads (
+        source_key, comic_id, chapter_id, title, cover_url, chapter_title,
+        page_urls, completed_count, directory, error_message, status,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ''',
+      <Object?>[
+        row['source_key'],
+        row['comic_id'],
+        row['chapter_id'],
+        row['title'],
+        row['cover_url'],
+        row['chapter_title'],
+        row['page_urls'],
+        row['completed_count'],
+        row['directory'],
+        row['error_message'],
+        row['status'],
+        row['created_at'],
+        row['updated_at'],
       ],
     );
-    return JoyDatabase.instance.downloadDb.lastInsertRowId;
+    return find(task.identity) ??
+        (throw StateError('Download task was not persisted: ${task.identity}'));
   }
 
-  /// 更新任务状态。
-  void update(DownloadItem item) {
-    JoyDatabase.instance.downloadDb.execute(
-      'UPDATE downloads SET status = ?, progress = ?, file_path = ?, updated_at = ? WHERE id = ?',
-      [item.status.name, item.progress, item.filePath, DateTime.now().millisecondsSinceEpoch, item.id],
+  /// Compatibility alias for the old helper API.
+  int insert(DownloadTask task) => enqueue(task).id!;
+
+  void update(DownloadTask task) {
+    final id = task.id;
+    if (id == null) throw StateError('Cannot update an unsaved download task');
+    task.updatedAt = DateTime.now();
+    final row = task.toRow();
+    _db.execute(
+      '''
+      UPDATE downloads SET
+        title = ?, cover_url = ?, chapter_title = ?, page_urls = ?,
+        completed_count = ?, directory = ?, error_message = ?, status = ?,
+        updated_at = ?
+      WHERE id = ?
+      ''',
+      <Object?>[
+        row['title'],
+        row['cover_url'],
+        row['chapter_title'],
+        row['page_urls'],
+        row['completed_count'],
+        row['directory'],
+        row['error_message'],
+        row['status'],
+        row['updated_at'],
+        id,
+      ],
     );
   }
 
-  /// 获取所有任务。
-  List<DownloadItem> getAll() {
-    final result = JoyDatabase.instance.downloadDb.select(
-      'SELECT * FROM downloads ORDER BY created_at DESC',
+  DownloadTask? find(DownloadIdentity identity) {
+    final rows = _db.select(
+      '''
+      SELECT * FROM downloads
+      WHERE source_key = ? AND comic_id = ? AND chapter_id = ?
+      LIMIT 1
+      ''',
+      <Object?>[identity.sourceKey, identity.comicId, identity.chapterId],
     );
-    return result.map((r) => DownloadItem.fromRow({
-      'id': r['id'],
-      'comic_id': r['comic_id'],
-      'source_key': r['source_key'],
-      'chapter_id': r['chapter_id'],
-      'url': r['url'],
-      'file_name': r['file_name'],
-      'file_path': r['file_path'],
-      'status': r['status'],
-      'progress': r['progress'],
-      'created_at': r['created_at'],
-      'updated_at': r['updated_at'],
-    })).toList();
+    return rows.isEmpty ? null : _fromRow(rows.single);
   }
 
-  /// 获取指定状态的任务。
-  List<DownloadItem> getByStatus(String status) {
-    final result = JoyDatabase.instance.downloadDb.select(
-      'SELECT * FROM downloads WHERE status = ? ORDER BY created_at ASC',
-      [status],
+  DownloadTask? getById(int id) {
+    final rows = _db.select(
+      'SELECT * FROM downloads WHERE id = ? LIMIT 1',
+      <Object?>[id],
     );
-    return result.map((r) => DownloadItem.fromRow({
-      'id': r['id'],
-      'comic_id': r['comic_id'],
-      'source_key': r['source_key'],
-      'chapter_id': r['chapter_id'],
-      'url': r['url'],
-      'file_name': r['file_name'],
-      'file_path': r['file_path'],
-      'status': r['status'],
-      'progress': r['progress'],
-      'created_at': r['created_at'],
-      'updated_at': r['updated_at'],
-    })).toList();
+    return rows.isEmpty ? null : _fromRow(rows.single);
   }
 
-  /// 删除任务。
-  void delete(int id) {
-    JoyDatabase.instance.downloadDb.execute(
-      'DELETE FROM downloads WHERE id = ?',
-      [id],
-    );
+  List<DownloadTask> getAll() {
+    return _db
+        .select('SELECT * FROM downloads ORDER BY created_at DESC, id DESC')
+        .map(_fromRow)
+        .toList();
   }
 
-  /// 清空已完成。
-  void clearCompleted() {
-    JoyDatabase.instance.downloadDb.execute(
-      "DELETE FROM downloads WHERE status = 'completed'",
-    );
+  List<DownloadTask> getByStatus(String status) {
+    return _db
+        .select(
+          'SELECT * FROM downloads WHERE status = ? '
+          'ORDER BY created_at ASC, id ASC',
+          <Object?>[status],
+        )
+        .map(_fromRow)
+        .toList();
   }
+
+  /// A process killed during a transfer leaves downloading rows behind.
+  /// They become pending on startup and retain URL/page progress for resume.
+  int recoverInterrupted() {
+    _db.execute(
+      "UPDATE downloads SET status = 'pending', updated_at = ? "
+      "WHERE status = 'downloading'",
+      <Object?>[DateTime.now().millisecondsSinceEpoch],
+    );
+    return _changes();
+  }
+
+  int delete(int id) {
+    _db.execute('DELETE FROM downloads WHERE id = ?', <Object?>[id]);
+    return _changes();
+  }
+
+  int clearCompleted() {
+    _db.execute("DELETE FROM downloads WHERE status = 'completed'");
+    return _changes();
+  }
+
+  int count() =>
+      _db.select('SELECT COUNT(*) AS count FROM downloads').single['count']
+          as int;
+
+  int _changes() =>
+      _db.select('SELECT changes() AS count').single['count'] as int;
+
+  DownloadTask _fromRow(Row row) => DownloadTask.fromRow(<String, Object?>{
+    'id': row['id'],
+    'source_key': row['source_key'],
+    'comic_id': row['comic_id'],
+    'chapter_id': row['chapter_id'],
+    'title': row['title'],
+    'cover_url': row['cover_url'],
+    'chapter_title': row['chapter_title'],
+    'page_urls': row['page_urls'],
+    'completed_count': row['completed_count'],
+    'directory': row['directory'],
+    'error_message': row['error_message'],
+    'status': row['status'],
+    'created_at': row['created_at'],
+    'updated_at': row['updated_at'],
+  });
 }

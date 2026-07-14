@@ -1,18 +1,16 @@
-/// 下载管理页。
-///
-/// 顶部 2 Tab：下载中 / 已下载。
-/// 集成真实下载管理器（DownloadManager）。
-library download_page;
+/// Chapter download management and offline reading entry.
+library;
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:provider/provider.dart';
 
 import '../../foundation/download_manager.dart';
 import '../../foundation/download_task.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
+import '../common/widgets/comic_cover.dart';
+import '../reader/state/comic_state.dart';
 
 class DownloadPage extends StatefulWidget {
   const DownloadPage({super.key});
@@ -36,15 +34,13 @@ class _DownloadPageState extends State<DownloadPage>
     return ListenableBuilder(
       listenable: DownloadManager.instance,
       builder: (context, _) {
-        final mgr = DownloadManager.instance;
-        final downloading = mgr.tasks
-            .where((t) => t.status == DownloadStatus.pending ||
-                t.status == DownloadStatus.downloading)
+        final tasks = DownloadManager.instance.tasks;
+        final active = tasks
+            .where((task) => task.status != DownloadStatus.completed)
             .toList();
-        final completed = mgr.tasks
-            .where((t) => t.status == DownloadStatus.completed)
+        final completed = tasks
+            .where((task) => task.status == DownloadStatus.completed)
             .toList();
-
         return Scaffold(
           backgroundColor: AppColors.background,
           appBar: AppBar(
@@ -55,17 +51,17 @@ class _DownloadPageState extends State<DownloadPage>
               indicatorColor: AppColors.brandPink,
               labelColor: AppColors.textHigh,
               unselectedLabelColor: AppColors.textLow,
-              tabs: [
-                Tab(text: '下载中 (${downloading.length})'),
+              tabs: <Widget>[
+                Tab(text: '任务 (${active.length})'),
                 Tab(text: '已下载 (${completed.length})'),
               ],
             ),
           ),
           body: TabBarView(
             controller: _tab,
-            children: [
-              _DownloadingList(items: downloading),
-              _CompletedList(items: completed),
+            children: <Widget>[
+              _GroupedTaskList(tasks: active, completed: false),
+              _GroupedTaskList(tasks: completed, completed: true),
             ],
           ),
         );
@@ -74,130 +70,201 @@ class _DownloadPageState extends State<DownloadPage>
   }
 }
 
-class _DownloadingList extends StatelessWidget {
-  const _DownloadingList({required this.items});
-  final List<DownloadItem> items;
+class _GroupedTaskList extends StatelessWidget {
+  const _GroupedTaskList({required this.tasks, required this.completed});
+
+  final List<DownloadTask> tasks;
+  final bool completed;
 
   @override
   Widget build(BuildContext context) {
-    if (items.isEmpty) {
-      return const Center(
-        child: Text('暂无下载任务', style: TextStyle(color: AppColors.textLow)),
+    if (tasks.isEmpty) {
+      return Center(
+        child: Text(
+          completed ? '暂无已下载章节' : '暂无下载任务',
+          style: const TextStyle(color: AppColors.textLow),
+        ),
       );
     }
-    return ListView.builder(
+    final groups = <(String, String), List<DownloadTask>>{};
+    for (final task in tasks) {
+      groups
+          .putIfAbsent((task.sourceKey, task.comicId), () => <DownloadTask>[])
+          .add(task);
+    }
+    return ListView(
       padding: const EdgeInsets.all(AppSpacing.sm),
-      itemCount: items.length,
-      itemBuilder: (_, i) => _DownloadCard(item: items[i]),
+      children: <Widget>[
+        for (final group in groups.values) _ComicDownloadGroup(tasks: group),
+      ],
     );
   }
 }
 
-class _DownloadCard extends StatelessWidget {
-  const _DownloadCard({required this.item});
-  final DownloadItem item;
+class _ComicDownloadGroup extends StatelessWidget {
+  const _ComicDownloadGroup({required this.tasks});
+
+  final List<DownloadTask> tasks;
 
   @override
   Widget build(BuildContext context) {
-    final mgr = DownloadManager.instance;
-    final isActive = item.status == DownloadStatus.downloading;
-
+    final first = tasks.first;
     return Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-      padding: const EdgeInsets.all(AppSpacing.sm),
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: AppRadius.brMd,
+        border: Border.all(color: AppColors.border),
       ),
-      child: Row(
-        children: [
-          // 缩略封面占位
-          Container(
-            width: 48, height: 64,
-            decoration: BoxDecoration(
-              color: AppColors.surfaceElevated,
-              borderRadius: AppRadius.brSm,
-            ),
-            child: const Icon(Icons.image_outlined, color: AppColors.textLow),
+      child: ExpansionTile(
+        initiallyExpanded: true,
+        leading: ComicCover(
+          url: first.coverUrl,
+          width: 42,
+          radius: AppRadius.sm,
+          elevation: false,
+        ),
+        title: Text(
+          first.title.isEmpty ? first.comicId : first.title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(color: AppColors.textHigh),
+        ),
+        subtitle: Text(
+          '${tasks.length} 个章节 · ${first.sourceKey}',
+          style: const TextStyle(color: AppColors.textLow, fontSize: 12),
+        ),
+        children: <Widget>[for (final task in tasks) _TaskTile(task: task)],
+      ),
+    );
+  }
+}
+
+class _TaskTile extends StatelessWidget {
+  const _TaskTile({required this.task});
+
+  final DownloadTask task;
+
+  @override
+  Widget build(BuildContext context) {
+    final completed = task.status == DownloadStatus.completed;
+    return ListTile(
+      onTap: completed ? () => _openOffline(context) : null,
+      title: Text(
+        task.chapterTitle.isEmpty ? task.chapterId : task.chapterTitle,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(color: AppColors.textHigh, fontSize: 14),
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const SizedBox(height: 5),
+          LinearProgressIndicator(
+            value: task.progress,
+            minHeight: 3,
+            backgroundColor: AppColors.surfaceElevated,
+            color: completed ? AppColors.success : AppColors.brandPink,
           ),
-          const SizedBox(width: AppSpacing.sm),
-          // 信息
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(item.fileName ?? '图片',
-                    style: const TextStyle(
-                        fontSize: 13,
-                        color: AppColors.textHigh),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 4),
-                LinearProgressIndicator(
-                  value: item.progress,
-                  backgroundColor: AppColors.surfaceElevated,
-                  color: AppColors.brandPink,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${(item.progress * 100).toStringAsFixed(0)}%',
-                  style: const TextStyle(
-                      fontSize: 11, color: AppColors.textLow),
-                ),
-              ],
+          const SizedBox(height: 4),
+          Text(
+            _statusText(task),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: task.status == DownloadStatus.failed
+                  ? Colors.redAccent
+                  : AppColors.textLow,
+              fontSize: 11,
             ),
           ),
-          const SizedBox(width: AppSpacing.sm),
-          // 操作按钮
-          if (isActive)
+        ],
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          if (task.status == DownloadStatus.downloading)
             IconButton(
-              icon: const Icon(Icons.pause_rounded, size: 20),
-              color: AppColors.textMedium,
-              onPressed: () => mgr.pause(item.id!),
+              tooltip: '暂停',
+              onPressed: () => DownloadManager.instance.pause(task.id!),
+              icon: const Icon(Icons.pause_rounded),
             )
-          else if (item.status == DownloadStatus.paused)
+          else if (task.status == DownloadStatus.paused)
             IconButton(
-              icon: const Icon(Icons.play_arrow_rounded, size: 20),
-              color: AppColors.textMedium,
-              onPressed: () => mgr.resume(item.id!),
+              tooltip: '继续',
+              onPressed: () => DownloadManager.instance.resume(task.id!),
+              icon: const Icon(Icons.play_arrow_rounded),
             )
-          else if (item.status == DownloadStatus.failed)
+          else if (task.status == DownloadStatus.failed)
             IconButton(
-              icon: const Icon(Icons.refresh_rounded, size: 20),
-              color: Colors.redAccent,
-              onPressed: () => mgr.retry(item.id!),
-            ),
+              tooltip: '重试',
+              onPressed: () => DownloadManager.instance.retry(task.id!),
+              icon: const Icon(Icons.refresh_rounded, color: Colors.redAccent),
+            )
+          else if (completed)
+            const Icon(Icons.menu_book_rounded, color: AppColors.success),
+          IconButton(
+            tooltip: '删除',
+            onPressed: () => _showDeleteChoices(context),
+            icon: const Icon(Icons.more_vert_rounded, color: AppColors.textLow),
+          ),
         ],
       ),
     );
   }
-}
 
-class _CompletedList extends StatelessWidget {
-  const _CompletedList({required this.items});
-  final List<DownloadItem> items;
-
-  @override
-  Widget build(BuildContext context) {
-    if (items.isEmpty) {
-      return const Center(
-        child: Text('暂无已下载内容', style: TextStyle(color: AppColors.textLow)),
-      );
+  void _openOffline(BuildContext context) {
+    try {
+      context.push('/reader', extra: ComicState.fromDownload(task));
+    } on StateError catch (error) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message.toString())));
     }
-    return ListView.builder(
-      padding: const EdgeInsets.all(AppSpacing.sm),
-      itemCount: items.length,
-      itemBuilder: (_, i) => ListTile(
-        leading: Icon(Icons.check_circle, color: AppColors.success),
-        title: Text(items[i].fileName ?? '',
-            style: const TextStyle(color: AppColors.textHigh)),
-        subtitle: Text('${(items[i].progress * 100).toStringAsFixed(0)}%',
-            style: const TextStyle(color: AppColors.textLow)),
-        trailing: IconButton(
-          icon: const Icon(Icons.delete_outline, color: AppColors.textLow),
-          onPressed: () => DownloadManager.instance.delete(items[i].id!),
+  }
+
+  Future<void> _showDeleteChoices(BuildContext context) async {
+    final deleteFiles = await showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      builder: (context) => SafeArea(
+        child: Wrap(
+          children: <Widget>[
+            ListTile(
+              leading: const Icon(Icons.playlist_remove_rounded),
+              title: const Text('仅删除任务记录'),
+              subtitle: const Text('保留已下载或临时文件'),
+              onTap: () => Navigator.pop(context, false),
+            ),
+            ListTile(
+              leading: const Icon(
+                Icons.delete_forever_rounded,
+                color: Colors.redAccent,
+              ),
+              title: const Text('删除任务和文件'),
+              subtitle: const Text('本地章节文件将一并删除'),
+              onTap: () => Navigator.pop(context, true),
+            ),
+          ],
         ),
       ),
     );
+    if (deleteFiles == null) return;
+    if (deleteFiles) {
+      await DownloadManager.instance.deleteFiles(task.id!);
+    } else {
+      await DownloadManager.instance.deleteTask(task.id!);
+    }
+  }
+
+  static String _statusText(DownloadTask task) {
+    final count = '${task.completedCount}/${task.pageUrls.length} 页';
+    return switch (task.status) {
+      DownloadStatus.pending => '等待中',
+      DownloadStatus.downloading => '下载中 · $count',
+      DownloadStatus.paused => '已暂停 · $count',
+      DownloadStatus.completed => '已完成 · $count · 点击离线阅读',
+      DownloadStatus.failed => '失败 · $count · ${task.errorMessage ?? '未知错误'}',
+    };
   }
 }

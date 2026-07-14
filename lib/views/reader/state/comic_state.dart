@@ -2,6 +2,7 @@
 library;
 
 import '../../../database/read_record_helper.dart';
+import '../../../foundation/download_task.dart';
 
 /// 阅读器源类型：网络实时取图 vs 本地已下载图。
 enum ReaderType { network, local }
@@ -50,6 +51,7 @@ class ComicState {
   final int pageNo;
   final ReaderType type;
   final String sourceKey;
+  final List<String> localPagePaths;
 
   const ComicState({
     required this.id,
@@ -61,7 +63,32 @@ class ComicState {
     required this.pageNo,
     required this.sourceKey,
     this.type = ReaderType.network,
+    this.localPagePaths = const <String>[],
   });
+
+  /// Builds a one-chapter offline reader snapshot from a completed task.
+  factory ComicState.fromDownload(DownloadTask task) {
+    if (task.status != DownloadStatus.completed ||
+        task.localPagePaths.length != task.pageUrls.length) {
+      throw StateError('Only a completed download can be opened offline');
+    }
+    final chapter = ReaderChapter(
+      id: task.chapterId,
+      order: 1,
+      name: task.chapterTitle.isEmpty ? '当前章节' : task.chapterTitle,
+    );
+    return ComicState(
+      id: task.comicId,
+      title: task.title,
+      coverUrl: task.coverUrl,
+      chapters: <ReaderChapter>[chapter],
+      chapter: chapter,
+      pageNo: 0,
+      sourceKey: task.sourceKey,
+      type: ReaderType.local,
+      localPagePaths: List<String>.unmodifiable(task.localPagePaths),
+    );
+  }
 
   /// 从本地历史恢复阅读器。历史只持久化当前章节，因此恢复列表包含该章节。
   factory ComicState.fromReadRecord(ReadRecord record) {

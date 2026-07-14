@@ -1,11 +1,5 @@
-/// 下载管理器。
-///
-/// 功能：
-/// - 并发限流（默认最多 3 个同时下载）
-/// - 队列持久化（sqlite3）
-/// - 进度追踪
-/// - 错误重试
-library download_manager;
+/// Source-aware chapter download queue.
+library;
 
 import 'dart:async';
 import 'dart:io';
@@ -15,174 +9,454 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../comic_source/comic_source.dart';
 import '../database/download_helper.dart';
-import '../foundation/download_task.dart';
-import '../foundation/log.dart';
+import '../network/jm/jm_network.dart' show jmScrambleId;
+import 'download_task.dart';
+import 'jm_image_recombine.dart';
+import 'log.dart';
 
-/// 下载管理器单例，管理并发下载队列。
+typedef DownloadSourceResolver = ComicSource? Function(String sourceKey);
+
+/// Persists, schedules, pauses and resumes chapter-level downloads.
 class DownloadManager extends ChangeNotifier {
-  DownloadManager._();
+  DownloadManager._()
+    : _helper = DownloadHelper(),
+      _configuredDirectory = null,
+      _sourceResolver = ComicSource.find,
+      _dio = Dio(),
+      maxConcurrent = 3;
+
+  DownloadManager.forTesting({
+    required DownloadHelper helper,
+    required Directory downloadDirectory,
+    required DownloadSourceResolver sourceResolver,
+    Dio? dio,
+    this.maxConcurrent = 3,
+  }) : _helper = helper,
+       _configuredDirectory = downloadDirectory,
+       _sourceResolver = sourceResolver,
+       _dio = dio ?? Dio();
+
   static final DownloadManager instance = DownloadManager._();
 
-  final _helper = DownloadHelper();
+  final DownloadHelper _helper;
+  final Directory? _configuredDirectory;
+  final DownloadSourceResolver _sourceResolver;
+  final Dio _dio;
 
-  /// 并发上限。
-  int maxConcurrent = 3;
+  int maxConcurrent;
 
-  /// 全部任务列表（按创建时间倒序）。
-  List<DownloadItem> _tasks = [];
-  List<DownloadItem> get tasks => _tasks;
+  List<DownloadTask> _tasks = <DownloadTask>[];
+  List<DownloadTask> get tasks => List<DownloadTask>.unmodifiable(_tasks);
 
-  /// 正在执行的任务数。
-  int _activeCount = 0;
+  Directory? _downloadDirectory;
+  Future<void>? _initializeFuture;
+  bool _initialized = false;
+  bool _disposed = false;
+  final Set<int> _activeIds = <int>{};
+  final Set<int> _resumeRequested = <int>{};
+  final Map<int, CancelToken> _cancelTokens = <int, CancelToken>{};
 
-  /// 下载目录。
-  String? _downloadDir;
-
-  /// 初始化（应用启动时调用）。
-  Future<void> initialize() async {
-    final dir = await getApplicationDocumentsDirectory();
-    _downloadDir = p.join(dir.path, 'downloads');
-    await Directory(_downloadDir!).create(recursive: true);
-    _tasks = _helper.getAll();
-    Log.i('DownloadManager init', '${_tasks.length} tasks, dir: $_downloadDir');
+  Future<void> initialize() {
+    if (_initialized) return Future<void>.value();
+    return _initializeFuture ??= _initializeOnce();
   }
 
-  /// 添加下载任务（自动开始排队）。
-  Future<void> addTask({
+  Future<void> _initializeOnce() async {
+    try {
+      final directory =
+          _configuredDirectory ??
+          Directory(
+            p.join(
+              (await getApplicationDocumentsDirectory()).path,
+              'downloads',
+            ),
+          );
+      await directory.create(recursive: true);
+      _downloadDirectory = directory;
+      _helper.recoverInterrupted();
+      _tasks = _helper.getAll();
+      _initialized = true;
+      Log.i(
+        'DownloadManager init',
+        '${_tasks.length} tasks, dir: ${directory.path}',
+      );
+      _notify();
+      _processQueue();
+    } finally {
+      if (!_initialized) _initializeFuture = null;
+    }
+  }
+
+  DownloadTask? findTask(String sourceKey, String comicId, String chapterId) {
+    final identity = DownloadIdentity(sourceKey, comicId, chapterId);
+    return _tasks.firstWhereOrNull((task) => task.identity == identity);
+  }
+
+  Future<DownloadTask> enqueue({
+    required String sourceKey,
+    required String comicId,
+    required String chapterId,
+    required String title,
+    required String coverUrl,
+    required String chapterTitle,
+  }) async {
+    await initialize();
+    final identity = DownloadIdentity(sourceKey, comicId, chapterId);
+    final inMemory = _tasks.firstWhereOrNull(
+      (task) => task.identity == identity,
+    );
+    if (inMemory != null) return inMemory;
+
+    var saved = _helper.enqueue(
+      DownloadTask(
+        sourceKey: sourceKey,
+        comicId: comicId,
+        chapterId: chapterId,
+        title: title,
+        coverUrl: coverUrl,
+        chapterTitle: chapterTitle,
+      ),
+    );
+    final raced = _tasks.firstWhereOrNull((task) => task.identity == identity);
+    if (raced != null) return raced;
+
+    if (saved.directory == null || saved.directory!.isEmpty) {
+      saved.directory = p.join(
+        _downloadDirectory!.path,
+        _safeSegment(sourceKey),
+        _safeSegment(comicId),
+        '${_safeSegment(chapterId)}_${saved.id}',
+      );
+      _helper.update(saved);
+      saved = _helper.getById(saved.id!)!;
+    }
+    _tasks.insert(0, saved);
+    _notify();
+    _processQueue();
+    return saved;
+  }
+
+  /// Compatibility wrapper retained for old callers.
+  Future<DownloadTask> addTask({
     required String comicId,
     required String sourceKey,
     required String chapterId,
-    required String url,
+    String url = '',
     String? fileName,
-  }) async {
-    final item = DownloadItem(
-      comicId: comicId,
+  }) {
+    return enqueue(
       sourceKey: sourceKey,
+      comicId: comicId,
       chapterId: chapterId,
-      url: url,
-      fileName: fileName ?? p.basename(url),
+      title: comicId,
+      coverUrl: '',
+      chapterTitle: fileName ?? chapterId,
     );
-
-    final id = _helper.insert(item);
-    final saved = _helper.getByStatus('pending').where((t) => t.id == id).firstOrNull;
-    if (saved != null) {
-      _tasks.insert(0, saved); // 最新在前
-      notifyListeners();
-      _processQueue();
-    }
   }
 
-  /// 处理队列（调度并发下载）。
   void _processQueue() {
-    while (_activeCount < maxConcurrent) {
-      final next = _tasks.firstWhereOrNull(
-        (t) => t.status == DownloadStatus.pending,
-      );
+    if (!_initialized || _disposed) return;
+    while (_activeIds.length < maxConcurrent) {
+      final next = _tasks.firstWhereOrNull((task) {
+        final id = task.id;
+        if (id == null || _activeIds.contains(id)) return false;
+        if (task.status == DownloadStatus.pending) return true;
+        return _resumeRequested.contains(id) &&
+            (task.status == DownloadStatus.paused ||
+                task.status == DownloadStatus.failed);
+      });
       if (next == null) break;
-      _startDownload(next);
+      final id = next.id!;
+      _resumeRequested.remove(id);
+      _activeIds.add(id);
+      next.transitionTo(DownloadStatus.downloading);
+      next.errorMessage = null;
+      _helper.update(next);
+      _notify();
+      unawaited(_runTask(next));
     }
   }
 
-  Future<void> _startDownload(DownloadItem item) async {
-    if (_downloadDir == null) return;
-
-    _activeCount++;
-    item.status = DownloadStatus.downloading;
-    _helper.update(item);
-    notifyListeners();
-
+  Future<void> _runTask(DownloadTask task) async {
+    final id = task.id!;
     try {
-      final filePath = p.join(_downloadDir!, '${item.id}_${item.fileName ?? 'image'}');
-      final dio = Dio();
+      final source = _sourceResolver(task.sourceKey);
+      if (source == null) {
+        throw StateError('漫画源 ${task.sourceKey} 未启用');
+      }
+      final loadPages = source.loadComicPages;
+      if (loadPages == null) {
+        throw StateError('漫画源 ${source.name} 不支持章节下载');
+      }
 
-      await dio.download(
-        item.url,
-        filePath,
-        onReceiveProgress: (received, total) {
-          final progress = total > 0 ? received / total : 0.0;
-          item.progress = progress.clamp(0.0, 1.0);
-          _helper.update(item);
-          notifyListeners();
-        },
-      );
+      if (task.pageUrls.isEmpty) {
+        final result = await loadPages(task.comicId, task.chapterId);
+        if (result.error) {
+          throw StateError(result.errorMessage ?? '加载章节图片失败');
+        }
+        final urls = result.data;
+        if (urls.isEmpty) throw StateError('章节没有可下载图片');
+        task.pageUrls = List<String>.unmodifiable(urls);
+        task.completedCount = 0;
+        _helper.update(task);
+        _notify();
+      }
+      if (task.status != DownloadStatus.downloading) return;
 
-      item.status = DownloadStatus.completed;
-      item.filePath = filePath;
-      item.progress = 1.0;
-      _helper.update(item);
-      Log.i('Download complete', filePath);
-    } catch (e) {
-      item.status = DownloadStatus.failed;
-      Log.e('Download failed', error: '${item.url}: $e');
-      _helper.update(item);
+      final finalDirectory = Directory(task.directory!);
+      final partialDirectory = Directory('${task.directory}.part');
+      if (await finalDirectory.exists() && !await partialDirectory.exists()) {
+        final complete = await _hasAllPages(finalDirectory, task);
+        if (complete) {
+          task.completedCount = task.pageUrls.length;
+          task.transitionTo(DownloadStatus.completed);
+          _helper.update(task);
+          return;
+        }
+      }
+      await partialDirectory.create(recursive: true);
+      task.completedCount = await _contiguousPageCount(partialDirectory, task);
+      _helper.update(task);
+
+      for (
+        var index = task.completedCount;
+        index < task.pageUrls.length;
+        index++
+      ) {
+        if (task.status != DownloadStatus.downloading) return;
+        final url = task.pageUrls[index];
+        final filename = DownloadTask.pageFileName(index, url);
+        final target = File(p.join(partialDirectory.path, filename));
+        if (await target.exists()) {
+          task.completedCount = index + 1;
+          _helper.update(task);
+          continue;
+        }
+
+        final config = source.getImageLoadingConfig?.call(
+          url,
+          task.comicId,
+          task.chapterId,
+        );
+        final requestUrl = config?['url'] is String
+            ? config!['url'] as String
+            : url;
+        final method = config?['method'] is String
+            ? config!['method'] as String
+            : 'GET';
+        final headers = _extractHeaders(config);
+        final cancelToken = CancelToken();
+        _cancelTokens[id] = cancelToken;
+        final response = await _dio.request<List<int>>(
+          requestUrl,
+          options: Options(
+            method: method,
+            headers: headers,
+            responseType: ResponseType.bytes,
+          ),
+          cancelToken: cancelToken,
+        );
+        if (task.status != DownloadStatus.downloading) return;
+        final data = response.data;
+        if (data == null || data.isEmpty) {
+          throw StateError('图片 ${index + 1} 返回空数据');
+        }
+        var bytes = Uint8List.fromList(data);
+        if (task.sourceKey.toLowerCase() == 'jm') {
+          final imageName = p.basenameWithoutExtension(Uri.parse(url).path);
+          bytes = await JmRecombine.recombine(
+            bytes,
+            task.chapterId,
+            jmScrambleId,
+            imageName,
+          );
+        }
+        if (task.status != DownloadStatus.downloading) return;
+
+        final temporary = File('${target.path}.tmp');
+        await temporary.writeAsBytes(bytes, flush: true);
+        if (await target.exists()) await target.delete();
+        await temporary.rename(target.path);
+        task.completedCount = index + 1;
+        task.errorMessage = null;
+        _helper.update(task);
+        _notify();
+      }
+
+      if (task.status != DownloadStatus.downloading) return;
+      if (await finalDirectory.exists()) {
+        await finalDirectory.delete(recursive: true);
+      }
+      await partialDirectory.rename(finalDirectory.path);
+      task.completedCount = task.pageUrls.length;
+      task.transitionTo(DownloadStatus.completed);
+      _helper.update(task);
+      Log.i('Download complete', finalDirectory.path);
+    } catch (error, stackTrace) {
+      if (task.status == DownloadStatus.downloading &&
+          _tasks.any((candidate) => candidate.id == id)) {
+        task.errorMessage = error.toString();
+        task.transitionTo(DownloadStatus.failed);
+        _helper.update(task);
+        Log.e('Download failed', error: error, stackTrace: stackTrace);
+      }
     } finally {
-      _activeCount--;
-      notifyListeners();
+      _cancelTokens.remove(id);
+      _activeIds.remove(id);
+      _notify();
       _processQueue();
     }
   }
 
-  /// 暂停任务。
-  void pause(int id) {
-    final item = _tasks.firstWhereOrNull((t) => t.id == id);
-    if (item == null || item.status != DownloadStatus.downloading) return;
-    item.status = DownloadStatus.paused;
-    _helper.update(item);
-    notifyListeners();
+  Future<bool> pause(int id) async {
+    final task = _taskById(id);
+    if (task == null || task.status != DownloadStatus.downloading) return false;
+    task.transitionTo(DownloadStatus.paused);
+    _helper.update(task);
+    _cancelTokens[id]?.cancel('paused');
+    _notify();
+    return true;
   }
 
-  /// 恢复任务。
-  void resume(int id) {
-    final item = _tasks.firstWhereOrNull((t) => t.id == id);
-    if (item == null || item.status != DownloadStatus.paused) return;
-    item.status = DownloadStatus.pending;
-    _helper.update(item);
-    notifyListeners();
-    _processQueue();
-  }
-
-  /// 删除任务（同时删除本地文件）。
-  void delete(int id) {
-    final item = _tasks.firstWhereOrNull((t) => t.id == id);
-    if (item?.filePath != null) {
-      File(item!.filePath!).delete().ignore();
+  Future<bool> resume(int id) async {
+    final task = _taskById(id);
+    if (task == null ||
+        (task.status != DownloadStatus.paused &&
+            task.status != DownloadStatus.failed) ||
+        _resumeRequested.contains(id)) {
+      return false;
     }
-    _tasks.removeWhere((t) => t.id == id);
+    _resumeRequested.add(id);
+    _processQueue();
+    return true;
+  }
+
+  Future<bool> retry(int id) => resume(id);
+
+  /// Removes only queue metadata; downloaded/partial files are preserved.
+  Future<bool> deleteTask(int id) => _remove(id, deleteFiles: false);
+
+  /// Removes queue metadata and both final and partial chapter directories.
+  Future<bool> deleteFiles(int id) => _remove(id, deleteFiles: true);
+
+  /// Compatibility API: the old action deleted both record and file.
+  Future<bool> delete(int id) => deleteFiles(id);
+
+  Future<bool> _remove(int id, {required bool deleteFiles}) async {
+    final task = _taskById(id);
+    if (task == null) return false;
+    if (task.status == DownloadStatus.downloading) {
+      task.transitionTo(DownloadStatus.paused);
+      _cancelTokens[id]?.cancel('deleted');
+    }
+    _resumeRequested.remove(id);
+    _tasks.remove(task);
     _helper.delete(id);
-    notifyListeners();
-  }
+    _notify();
 
-  /// 重试失败任务。
-  void retry(int id) {
-    final item = _tasks.firstWhereOrNull((t) => t.id == id);
-    if (item == null || item.status != DownloadStatus.failed) return;
-    item.status = DownloadStatus.pending;
-    item.progress = 0.0;
-    _helper.update(item);
-    notifyListeners();
-    _processQueue();
-  }
-
-  /// 清空已完成。
-  void clearCompleted() {
-    for (final t in _tasks.where((t) => t.status == DownloadStatus.completed)) {
-      if (t.filePath != null) File(t.filePath!).delete().ignore();
+    while (_activeIds.contains(id)) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
     }
-    _tasks.removeWhere((t) => t.status == DownloadStatus.completed);
-    _helper.clearCompleted();
-    notifyListeners();
+    if (deleteFiles && task.directory != null && task.directory!.isNotEmpty) {
+      await _deleteDirectoryIfPresent(Directory(task.directory!));
+      await _deleteDirectoryIfPresent(Directory('${task.directory}.part'));
+    }
+    return true;
   }
 
-  /// 获取某漫画的下载状态。
-  List<DownloadItem> getByComic(String comicId) =>
-      _tasks.where((t) => t.comicId == comicId).toList();
+  /// Clears completed task records while deliberately preserving chapter files.
+  Future<void> clearCompleted() async {
+    final ids = _tasks
+        .where((task) => task.status == DownloadStatus.completed)
+        .map((task) => task.id!)
+        .toList();
+    for (final id in ids) {
+      await deleteTask(id);
+    }
+  }
+
+  Future<void> whenIdle({
+    Duration timeout = const Duration(seconds: 15),
+  }) async {
+    final deadline = DateTime.now().add(timeout);
+    while (_activeIds.isNotEmpty ||
+        _resumeRequested.isNotEmpty ||
+        _tasks.any((task) => task.status == DownloadStatus.pending)) {
+      if (DateTime.now().isAfter(deadline)) {
+        throw TimeoutException('DownloadManager did not become idle', timeout);
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+  }
+
+  DownloadTask? _taskById(int id) =>
+      _tasks.firstWhereOrNull((task) => task.id == id);
+
+  static Map<String, dynamic>? _extractHeaders(Map<String, dynamic>? config) {
+    if (config == null || config.isEmpty) return null;
+    final nested = config['headers'];
+    if (nested is Map) return Map<String, dynamic>.from(nested);
+    return <String, dynamic>{
+      for (final entry in config.entries)
+        if (entry.key != 'url' && entry.key != 'method') entry.key: entry.value,
+    };
+  }
+
+  static Future<int> _contiguousPageCount(
+    Directory directory,
+    DownloadTask task,
+  ) async {
+    var count = 0;
+    for (var index = 0; index < task.pageUrls.length; index++) {
+      final file = File(
+        p.join(
+          directory.path,
+          DownloadTask.pageFileName(index, task.pageUrls[index]),
+        ),
+      );
+      if (!await file.exists()) break;
+      count++;
+    }
+    return count;
+  }
+
+  static Future<bool> _hasAllPages(
+    Directory directory,
+    DownloadTask task,
+  ) async {
+    return await _contiguousPageCount(directory, task) == task.pageUrls.length;
+  }
+
+  static Future<void> _deleteDirectoryIfPresent(Directory directory) async {
+    if (await directory.exists()) await directory.delete(recursive: true);
+  }
+
+  static String _safeSegment(String value) {
+    final safe = value.replaceAll(RegExp(r'[<>:"/\\|?*\x00-\x1F]'), '_').trim();
+    return safe.isEmpty ? '_' : safe;
+  }
+
+  void _notify() {
+    if (!_disposed) notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    for (final token in _cancelTokens.values) {
+      token.cancel('disposed');
+    }
+    _cancelTokens.clear();
+    super.dispose();
+  }
 }
 
-extension _FirstWhereOrNull<T> on List<T> {
-  T? firstWhereOrNull(bool Function(T) test) {
-    for (final e in this) {
-      if (test(e)) return e;
+extension _FirstWhereOrNull<E> on Iterable<E> {
+  E? firstWhereOrNull(bool Function(E value) test) {
+    for (final value in this) {
+      if (test(value)) return value;
     }
     return null;
   }

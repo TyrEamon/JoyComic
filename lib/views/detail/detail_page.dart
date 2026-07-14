@@ -13,6 +13,8 @@ import 'package:provider/provider.dart';
 import 'package:collection/collection.dart';
 
 import '../../comic_source/comic_source.dart';
+import '../../foundation/download_manager.dart';
+import '../../foundation/download_task.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../reader/state/comic_state.dart';
@@ -215,6 +217,8 @@ class _Content extends StatelessWidget {
                     chapters: chapterEntries,
                     latestChapterName: latestName,
                     onSelect: (e) => _openReader(context, vm, e, chapters),
+                    onShowAll: () =>
+                        _showDownloadSheet(context, vm, chapterEntries),
                     palette: palette,
                     coverHeaders: vm.coverHeaders,
                   ),
@@ -266,6 +270,166 @@ class _Content extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  void _showDownloadSheet(
+    BuildContext context,
+    DetailViewModel vm,
+    List<ChapterEntry> chapters,
+  ) {
+    final manager = DownloadManager.instance;
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      builder: (sheetContext) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(sheetContext).height * 0.72,
+          child: Column(
+            children: <Widget>[
+              const Padding(
+                padding: EdgeInsets.fromLTRB(
+                  AppSpacing.md,
+                  AppSpacing.md,
+                  AppSpacing.md,
+                  AppSpacing.sm,
+                ),
+                child: Row(
+                  children: <Widget>[
+                    Icon(Icons.download_for_offline_rounded),
+                    SizedBox(width: AppSpacing.sm),
+                    Text(
+                      '选择下载章节',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: ListenableBuilder(
+                  listenable: manager,
+                  builder: (context, _) => ListView.builder(
+                    itemCount: chapters.length,
+                    itemBuilder: (context, index) {
+                      final chapter = chapters[index];
+                      final task = manager.findTask(
+                        vm.sourceKey,
+                        vm.data!.info.comicId,
+                        chapter.id,
+                      );
+                      return ListTile(
+                        title: Text(chapter.name),
+                        subtitle: task == null
+                            ? const Text('未加入队列')
+                            : Text(_downloadStatusLabel(task)),
+                        leading: Icon(
+                          task?.status == DownloadStatus.completed
+                              ? Icons.check_circle_rounded
+                              : task == null
+                              ? Icons.download_outlined
+                              : Icons.downloading_rounded,
+                          color: task?.status == DownloadStatus.completed
+                              ? AppColors.success
+                              : AppColors.brandPink,
+                        ),
+                        trailing: _downloadAction(context, vm, chapter, task),
+                        onTap: task?.status == DownloadStatus.completed
+                            ? () => context.push(
+                                '/reader',
+                                extra: ComicState.fromDownload(task!),
+                              )
+                            : null,
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _downloadAction(
+    BuildContext context,
+    DetailViewModel vm,
+    ChapterEntry chapter,
+    DownloadTask? task,
+  ) {
+    if (task == null) {
+      return IconButton(
+        tooltip: '加入下载',
+        icon: const Icon(Icons.add_circle_outline_rounded),
+        onPressed: () => _enqueueChapter(context, vm, chapter),
+      );
+    }
+    return switch (task.status) {
+      DownloadStatus.downloading => IconButton(
+        tooltip: '暂停',
+        icon: const Icon(Icons.pause_rounded),
+        onPressed: () => DownloadManager.instance.pause(task.id!),
+      ),
+      DownloadStatus.paused || DownloadStatus.failed => IconButton(
+        tooltip: task.status == DownloadStatus.failed ? '重试' : '继续',
+        icon: Icon(
+          task.status == DownloadStatus.failed
+              ? Icons.refresh_rounded
+              : Icons.play_arrow_rounded,
+        ),
+        onPressed: () => DownloadManager.instance.resume(task.id!),
+      ),
+      DownloadStatus.completed => const Icon(Icons.menu_book_rounded),
+      DownloadStatus.pending => const SizedBox(
+        width: 22,
+        height: 22,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      ),
+    };
+  }
+
+  Future<void> _enqueueChapter(
+    BuildContext context,
+    DetailViewModel vm,
+    ChapterEntry chapter,
+  ) async {
+    final source = ComicSource.find(vm.sourceKey);
+    if (source?.loadComicPages == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('当前漫画源不可用或不支持章节下载')));
+      return;
+    }
+    try {
+      await DownloadManager.instance.enqueue(
+        sourceKey: vm.sourceKey,
+        comicId: vm.data!.info.comicId,
+        chapterId: chapter.id,
+        title: vm.data!.info.title,
+        coverUrl: vm.data!.info.cover,
+        chapterTitle: chapter.name,
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('加入下载失败：$error')));
+    }
+  }
+
+  String _downloadStatusLabel(DownloadTask task) {
+    final pages = '${task.completedCount}/${task.pageUrls.length} 页';
+    return switch (task.status) {
+      DownloadStatus.pending => '等待下载',
+      DownloadStatus.downloading => '下载中 · $pages',
+      DownloadStatus.paused => '已暂停 · $pages',
+      DownloadStatus.completed => '已完成 · 点击离线阅读',
+      DownloadStatus.failed => '失败 · ${task.errorMessage ?? '可重试'}',
+    };
   }
 
   void _openReader(
