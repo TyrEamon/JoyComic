@@ -15,9 +15,9 @@
 library mine_page;
 
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../theme/app_colors.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
 
@@ -27,7 +27,7 @@ class MinePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.pageBackground,
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
@@ -36,25 +36,63 @@ class MinePage extends StatelessWidget {
             const SizedBox(height: AppSpacing.md),
             const _StatsRow(),
             const SizedBox(height: AppSpacing.lg),
-            const _MenuGroup(title: '内容管理', items: [
-              _MenuItem(icon: Icons.history_rounded, label: '历史记录', route: '/history'),
-              _MenuItem(icon: Icons.download_rounded, label: '下载管理', route: '/download'),
-              _MenuItem(icon: Icons.favorite_rounded, label: '我的收藏', route: '/favorites'),
-            ]),
+            const _MenuGroup(
+              title: '内容管理',
+              items: [
+                _MenuItem(
+                  icon: Icons.history_rounded,
+                  label: '历史记录',
+                  route: '/history',
+                ),
+                _MenuItem(
+                  icon: Icons.download_rounded,
+                  label: '下载管理',
+                  route: '/download',
+                ),
+                _MenuItem(
+                  icon: Icons.favorite_rounded,
+                  label: '我的收藏',
+                  route: '/favorites',
+                ),
+              ],
+            ),
             const SizedBox(height: AppSpacing.lg),
-            const _MenuGroup(title: '设置', items: [
-              _MenuItem(icon: Icons.source_outlined, label: '源管理 / 登录', route: '/login'),
-              _MenuItem(icon: Icons.menu_book_rounded, label: '阅读设置', route: '/settings/reader'),
-              _MenuItem(icon: Icons.tune_rounded, label: '应用设置', route: '/settings'),
-              _MenuItem(icon: Icons.info_outline_rounded, label: '关于', route: '/about'),
-            ]),
+            const _MenuGroup(
+              title: '设置',
+              items: [
+                _MenuItem(
+                  icon: Icons.source_outlined,
+                  label: '源管理 / 登录',
+                  route: '/login',
+                ),
+                _MenuItem(
+                  icon: Icons.menu_book_rounded,
+                  label: '阅读设置',
+                  route: '/settings/reader',
+                ),
+                _MenuItem(
+                  icon: Icons.tune_rounded,
+                  label: '应用设置',
+                  route: '/settings',
+                ),
+                _MenuItem(
+                  icon: Icons.info_outline_rounded,
+                  label: '关于',
+                  route: '/about',
+                ),
+              ],
+            ),
             const SizedBox(height: AppSpacing.xxl),
             Padding(
               padding: const EdgeInsets.all(AppSpacing.md),
               child: Center(
-                child: Text('JoyComic 0.1.0 · 阶段3 UI',
-                    style: const TextStyle(
-                        fontSize: 11, color: AppColors.textLow)),
+                child: Text(
+                  'JoyComic 0.1.0 · 阶段3 UI',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: context.tertiaryTextColor,
+                  ),
+                ),
               ),
             ),
           ],
@@ -82,7 +120,7 @@ class _UserCard extends StatelessWidget {
             colors: [Color(0x33FF7BA9), Color(0x33B967FF)],
           ),
           borderRadius: AppRadius.brLg,
-          border: Border.all(color: AppColors.border),
+          border: Border.all(color: context.borderColor),
         ),
         child: Row(
           children: [
@@ -91,9 +129,16 @@ class _UserCard extends StatelessWidget {
               height: 56,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                gradient: const LinearGradient(
-                    colors: [AppColors.brandPink, AppColors.brandViolet]),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 2),
+                gradient: LinearGradient(
+                  colors: [
+                    context.colorScheme.primary,
+                    context.colorScheme.secondary,
+                  ],
+                ),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.3),
+                  width: 2,
+                ),
               ),
               child: const Icon(Icons.person, color: Colors.white, size: 28),
             ),
@@ -104,21 +149,24 @@ class _UserCard extends StatelessWidget {
                 children: [
                   Text(
                     loggedIn ? '用户昵称' : '点击登录',
-                    style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textHigh),
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: context.primaryTextColor,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     loggedIn ? 'Lv.12 · 距下一级还需 320 经验' : '登录后同步收藏与阅读进度',
-                    style: const TextStyle(
-                        fontSize: 12, color: AppColors.textLow),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: context.tertiaryTextColor,
+                    ),
                   ),
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right_rounded, color: AppColors.textLow),
+            Icon(Icons.chevron_right_rounded, color: context.tertiaryTextColor),
           ],
         ),
       ),
@@ -156,21 +204,25 @@ class _StatCell extends StatelessWidget {
         margin: const EdgeInsets.symmetric(horizontal: AppSpacing.xxs),
         padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
         decoration: BoxDecoration(
-          color: AppColors.surface,
+          color: context.surfaceColor,
           borderRadius: AppRadius.brMd,
-          border: Border.all(color: AppColors.border),
+          border: Border.all(color: context.borderColor),
         ),
         child: Column(
           children: [
-            Text(count,
-                style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.textHigh)),
+            Text(
+              count,
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: context.primaryTextColor,
+              ),
+            ),
             const SizedBox(height: 2),
-            Text(label,
-                style: const TextStyle(
-                    fontSize: 11, color: AppColors.textLow)),
+            Text(
+              label,
+              style: TextStyle(fontSize: 11, color: context.tertiaryTextColor),
+            ),
           ],
         ),
       ),
@@ -190,26 +242,29 @@ class _MenuGroup extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-          child: Text(title,
-              style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textLow)),
+          child: Text(
+            title,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: context.tertiaryTextColor,
+            ),
+          ),
         ),
         const SizedBox(height: AppSpacing.xs),
         Container(
           margin: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
           decoration: BoxDecoration(
-            color: AppColors.surface,
+            color: context.surfaceColor,
             borderRadius: AppRadius.brLg,
-            border: Border.all(color: AppColors.border),
+            border: Border.all(color: context.borderColor),
           ),
           child: Column(
             children: [
               for (var i = 0; i < items.length; i++) ...[
                 items[i],
                 if (i != items.length - 1)
-                  const Divider(height: 1, indent: 56, color: AppColors.divider),
+                  Divider(height: 1, indent: 56, color: context.dividerColor),
               ],
             ],
           ),
@@ -220,7 +275,11 @@ class _MenuGroup extends StatelessWidget {
 }
 
 class _MenuItem extends StatelessWidget {
-  const _MenuItem({required this.icon, required this.label, required this.route});
+  const _MenuItem({
+    required this.icon,
+    required this.label,
+    required this.route,
+  });
   final IconData icon;
   final String label;
   final String route;
@@ -232,20 +291,28 @@ class _MenuItem extends StatelessWidget {
       borderRadius: BorderRadius.circular(12),
       child: Padding(
         padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.md, vertical: AppSpacing.sm + 2),
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.sm + 2,
+        ),
         child: Row(
           children: [
-            Icon(icon, size: 22, color: AppColors.brandPink),
+            Icon(icon, size: 22, color: context.colorScheme.primary),
             const SizedBox(width: AppSpacing.md),
             Expanded(
-              child: Text(label,
-                  style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w500,
-                      color: AppColors.textHigh)),
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  color: context.primaryTextColor,
+                ),
+              ),
             ),
-            const Icon(Icons.chevron_right_rounded,
-                size: 20, color: AppColors.textLow),
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 20,
+              color: context.tertiaryTextColor,
+            ),
           ],
         ),
       ),

@@ -9,8 +9,8 @@ library main_scaffold;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 
-import '../theme/app_colors.dart';
 import '../theme/app_radius.dart';
 import 'category/category_page.dart';
 import 'favorites/favorites_page.dart';
@@ -103,8 +103,8 @@ class _BottomBar extends StatelessWidget {
         filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
         child: Container(
           decoration: BoxDecoration(
-            color: AppColors.background.withValues(alpha: 0.92),
-            border: Border(top: BorderSide(color: AppColors.border)),
+            color: context.pageBackground.withValues(alpha: 0.92),
+            border: Border(top: BorderSide(color: context.borderColor)),
           ),
           child: SafeArea(
             top: false,
@@ -113,11 +113,13 @@ class _BottomBar extends StatelessWidget {
               child: Row(
                 children: [
                   for (var i = 0; i < tabs.length; i++)
-                    Expanded(child: _NavItem(
-                      tab: tabs[i],
-                      active: i == index,
-                      onTap: () => onTap(i),
-                    )),
+                    Expanded(
+                      child: _NavItem(
+                        tab: tabs[i],
+                        active: i == index,
+                        onTap: () => onTap(i),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -129,14 +131,20 @@ class _BottomBar extends StatelessWidget {
 }
 
 class _NavItem extends StatelessWidget {
-  const _NavItem({required this.tab, required this.active, required this.onTap});
+  const _NavItem({
+    required this.tab,
+    required this.active,
+    required this.onTap,
+  });
   final _Tab tab;
   final bool active;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final color = active ? AppColors.brandPink : AppColors.textLow;
+    final color = active
+        ? context.colorScheme.primary
+        : context.tertiaryTextColor;
     return InkWell(
       onTap: onTap,
       borderRadius: AppRadius.brMd,

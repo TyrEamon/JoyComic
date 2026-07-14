@@ -2,12 +2,12 @@
 library source_content_page;
 
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../comic_source/comic_source.dart';
 import '../../foundation/log.dart';
 import '../../network/base_comic.dart';
-import '../../theme/app_colors.dart';
 import 'source_content_models.dart' as models;
 import 'widgets/comic_grid.dart';
 import 'widgets/empty_state.dart';
@@ -238,10 +238,10 @@ class _SourceContentPageState extends State<SourceContentPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.pageBackground,
       appBar: AppBar(
         title: Text(_pageTitle),
-        backgroundColor: AppColors.background,
+        backgroundColor: context.pageBackground,
       ),
       body: Column(
         children: [
@@ -332,10 +332,10 @@ class _SourceContentPageState extends State<SourceContentPage> {
             ),
           )
         else if (_reachedEnd)
-          const _PageFooter(
+          _PageFooter(
             child: Text(
               '已经到底了',
-              style: TextStyle(color: AppColors.textLow, fontSize: 12),
+              style: TextStyle(color: context.tertiaryTextColor, fontSize: 12),
             ),
           ),
       ],

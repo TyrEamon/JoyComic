@@ -8,9 +8,9 @@
 library chapter_grid;
 
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 
 import '../../../foundation/palette_extractor.dart';
-import '../../../theme/app_colors.dart';
 import '../../../theme/app_radius.dart';
 import '../../../theme/app_spacing.dart';
 import '../../../theme/app_typography.dart';
@@ -41,7 +41,7 @@ class ChapterGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = palette?.accent ?? AppColors.brandPink;
+    final accent = palette?.accent ?? context.colorScheme.primary;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
       child: Column(
@@ -54,9 +54,14 @@ class ChapterGrid extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.sm),
           if (chapters.isEmpty)
-            const Padding(
+            Padding(
               padding: EdgeInsets.symmetric(vertical: AppSpacing.xl),
-              child: Center(child: Text('暂无章节', style: TextStyle(color: AppColors.textLow))),
+              child: Center(
+                child: Text(
+                  '暂无章节',
+                  style: TextStyle(color: context.tertiaryTextColor),
+                ),
+              ),
             )
           else
             GridView.builder(
@@ -91,7 +96,11 @@ class ChapterEntry {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.latest, required this.onShowAll, required this.accent});
+  const _Header({
+    required this.latest,
+    required this.onShowAll,
+    required this.accent,
+  });
   final String? latest;
   final VoidCallback? onShowAll;
   final Color accent;
@@ -123,7 +132,9 @@ class _Header extends StatelessWidget {
                 children: [
                   Text(
                     '全部',
-                    style: AppTypography.sectionAction(context).copyWith(color: accent),
+                    style: AppTypography.sectionAction(
+                      context,
+                    ).copyWith(color: accent),
                   ),
                   Icon(Icons.chevron_right_rounded, size: 18, color: accent),
                 ],
@@ -157,9 +168,9 @@ class _ChapterCard extends StatelessWidget {
       borderRadius: AppRadius.brMd,
       child: Container(
         decoration: BoxDecoration(
-          color: AppColors.surface,
+          color: context.surfaceColor,
           borderRadius: AppRadius.brMd,
-          border: Border.all(color: AppColors.border),
+          border: Border.all(color: context.borderColor),
         ),
         clipBehavior: Clip.antiAlias,
         child: Stack(
@@ -206,17 +217,17 @@ class _ChapterCard extends StatelessWidget {
                   fontWeight: FontWeight.w600,
                   color: Colors.white,
                   shadows: [
-                    Shadow(color: Colors.black54, blurRadius: 4, offset: Offset(0, 1)),
+                    Shadow(
+                      color: Colors.black54,
+                      blurRadius: 4,
+                      offset: Offset(0, 1),
+                    ),
                   ],
                 ),
               ),
             ),
             if (isNew)
-              Positioned(
-                top: 8,
-                right: 8,
-                child: _NewBadge(accent: accent),
-              ),
+              Positioned(top: 8, right: 8, child: _NewBadge(accent: accent)),
           ],
         ),
       ),
@@ -233,7 +244,9 @@ class _NewBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [accent, AppColors.brandViolet]),
+        gradient: LinearGradient(
+          colors: [accent, context.colorScheme.secondary],
+        ),
         borderRadius: BorderRadius.circular(4),
         boxShadow: [
           BoxShadow(color: accent.withValues(alpha: 0.5), blurRadius: 6),
@@ -255,9 +268,13 @@ class _NewBadge extends StatelessWidget {
 class _ChapterPlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ColoredBox(
-        color: AppColors.surfaceElevated,
-        child: const Center(
-          child: Icon(Icons.book_rounded, size: 22, color: AppColors.textDisabled),
-        ),
-      );
+    color: context.elevatedSurfaceColor,
+    child: Center(
+      child: Icon(
+        Icons.book_rounded,
+        size: 22,
+        color: context.disabledTextColor,
+      ),
+    ),
+  );
 }

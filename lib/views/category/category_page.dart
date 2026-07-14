@@ -2,10 +2,10 @@
 library category_page;
 
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../comic_source/comic_source.dart';
-import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../common/source_content_models.dart';
 import '../common/widgets/empty_state.dart';
@@ -66,8 +66,8 @@ class _CategoryPageState extends State<CategoryPage>
   @override
   Widget build(BuildContext context) {
     if (_sources.isEmpty) {
-      return const Scaffold(
-        backgroundColor: AppColors.background,
+      return Scaffold(
+        backgroundColor: context.pageBackground,
         body: SafeArea(
           child: EmptyState(
             icon: Icons.category_outlined,
@@ -79,10 +79,10 @@ class _CategoryPageState extends State<CategoryPage>
     }
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.pageBackground,
       appBar: AppBar(
         title: const Text('分类'),
-        backgroundColor: AppColors.background,
+        backgroundColor: context.pageBackground,
         bottom: TabBar(
           controller: _tabController,
           tabs: [
@@ -275,8 +275,8 @@ class _CategoryGroup extends StatelessWidget {
             contentPadding: EdgeInsets.zero,
             title: Text(
               parent.title,
-              style: const TextStyle(
-                color: AppColors.textHigh,
+              style: TextStyle(
+                color: context.primaryTextColor,
                 fontSize: 17,
                 fontWeight: FontWeight.w700,
               ),

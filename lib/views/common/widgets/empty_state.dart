@@ -5,8 +5,8 @@
 library empty_state;
 
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 
-import '../../../theme/app_colors.dart';
 import '../../../theme/app_spacing.dart';
 import '../../../theme/app_typography.dart';
 
@@ -38,15 +38,17 @@ class EmptyState extends StatelessWidget {
               width: 72,
               height: 72,
               decoration: BoxDecoration(
-                color: AppColors.surface,
+                color: context.surfaceColor,
                 shape: BoxShape.circle,
-                border: Border.all(color: AppColors.border),
+                border: Border.all(color: context.borderColor),
               ),
-              child: Icon(icon, size: 32, color: AppColors.textLow),
+              child: Icon(icon, size: 32, color: context.tertiaryTextColor),
             ),
             const SizedBox(height: AppSpacing.md),
-            Text(title,
-                style: AppTypography.section(context).copyWith(fontSize: 16)),
+            Text(
+              title,
+              style: AppTypography.section(context).copyWith(fontSize: 16),
+            ),
             if (subtitle != null) ...[
               const SizedBox(height: AppSpacing.xs),
               Text(
@@ -60,9 +62,12 @@ class EmptyState extends StatelessWidget {
               FilledButton(
                 onPressed: onAction,
                 style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.brandPink,
+                  backgroundColor: context.colorScheme.primary,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 10,
+                  ),
                 ),
                 child: Text(actionLabel!),
               ),

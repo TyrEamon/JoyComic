@@ -5,13 +5,12 @@
 library shimmer;
 
 import 'package:flutter/material.dart';
-
-import '../../../theme/app_colors.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 
 /// 带 shimmer 微光扫动效果的骨架块。
 ///
 /// 用法：用 [Shimmer] 包裹加载中的占位 widget，
-/// 子 widget 内部用 [AppColors.surfaceElevated] 等纯色块占位。
+/// 子 widget 内部用 [context.elevatedSurfaceColor] 等纯色块占位。
 class Shimmer extends StatefulWidget {
   const Shimmer({
     super.key,
@@ -30,8 +29,7 @@ class Shimmer extends StatefulWidget {
   State<Shimmer> createState() => _ShimmerState();
 }
 
-class _ShimmerState extends State<Shimmer>
-    with SingleTickerProviderStateMixin {
+class _ShimmerState extends State<Shimmer> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _animation;
 
@@ -53,9 +51,8 @@ class _ShimmerState extends State<Shimmer>
 
   @override
   Widget build(BuildContext context) {
-    final base = widget.baseColor ?? AppColors.surfaceElevated;
-    final highlight = widget.highlightColor ??
-        base.withValues(alpha: 0.3);
+    final base = widget.baseColor ?? context.elevatedSurfaceColor;
+    final highlight = widget.highlightColor ?? base.withValues(alpha: 0.3);
 
     return AnimatedBuilder(
       animation: _animation,
@@ -65,13 +62,7 @@ class _ShimmerState extends State<Shimmer>
             return LinearGradient(
               begin: Alignment.centerLeft,
               end: Alignment.centerRight,
-              colors: [
-                base,
-                base,
-                highlight,
-                base,
-                base,
-              ],
+              colors: [base, base, highlight, base, base],
               stops: [
                 0.0,
                 _animation.value - 0.3,

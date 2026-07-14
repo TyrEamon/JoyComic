@@ -7,12 +7,12 @@ library log_viewer;
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../foundation/log.dart';
-import '../../theme/app_colors.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
 
@@ -52,9 +52,9 @@ class _LogViewerPageState extends State<LogViewerPage> {
   Future<void> _clear() async {
     await Log.clear();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('日志已清除')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('日志已清除')));
     await _loadLogs();
   }
 
@@ -63,10 +63,7 @@ class _LogViewerPageState extends State<LogViewerPage> {
     await Clipboard.setData(ClipboardData(text: log.toString()));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('已复制'),
-        duration: Duration(seconds: 1),
-      ),
+      const SnackBar(content: Text('已复制'), duration: Duration(seconds: 1)),
     );
   }
 
@@ -98,48 +95,56 @@ class _LogViewerPageState extends State<LogViewerPage> {
 
     // 写入临时文件
     final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/joycomic_logs_${DateTime.now().millisecondsSinceEpoch}.txt');
+    final file = File(
+      '${dir.path}/joycomic_logs_${DateTime.now().millisecondsSinceEpoch}.txt',
+    );
     await file.writeAsString(buffer.toString());
 
     if (!mounted) return;
 
     // 分享文件
-    await Share.shareXFiles(
-      [XFile(file.path)],
-      text: 'JoyComic 诊断日志',
-    );
+    await Share.shareXFiles([XFile(file.path)], text: 'JoyComic 诊断日志');
   }
 
   Color _levelColor(String level) => switch (level) {
-        'error' || 'fatal' => Colors.redAccent,
-        'warn' || 'warning' => Colors.orangeAccent,
-        'info' => AppColors.brandPink,
-        _ => AppColors.textMedium,
-      };
+    'error' || 'fatal' => Colors.redAccent,
+    'warn' || 'warning' => Colors.orangeAccent,
+    'info' => context.colorScheme.primary,
+    _ => context.secondaryTextColor,
+  };
 
   @override
   Widget build(BuildContext context) {
     final filtered = _filtered;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.pageBackground,
       appBar: AppBar(
         title: const Text('诊断日志'),
-        backgroundColor: AppColors.background,
+        backgroundColor: context.pageBackground,
         actions: [
           if (_logs.isNotEmpty)
             IconButton(
-              icon: const Icon(Icons.file_upload_outlined, color: AppColors.textMedium),
+              icon: Icon(
+                Icons.file_upload_outlined,
+                color: context.secondaryTextColor,
+              ),
               onPressed: _exportLogs,
               tooltip: '导出日志',
             ),
           IconButton(
-            icon: const Icon(Icons.refresh_rounded, color: AppColors.textMedium),
+            icon: Icon(
+              Icons.refresh_rounded,
+              color: context.secondaryTextColor,
+            ),
             onPressed: _loadLogs,
             tooltip: '刷新',
           ),
           IconButton(
-            icon: const Icon(Icons.delete_outline_rounded, color: AppColors.textMedium),
+            icon: Icon(
+              Icons.delete_outline_rounded,
+              color: context.secondaryTextColor,
+            ),
             onPressed: filtered.isNotEmpty ? _clear : null,
             tooltip: '清除日志',
           ),
@@ -150,56 +155,68 @@ class _LogViewerPageState extends State<LogViewerPage> {
           // 级别筛选栏
           Padding(
             padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.md, vertical: AppSpacing.xs),
+              horizontal: AppSpacing.md,
+              vertical: AppSpacing.xs,
+            ),
             child: Row(
               children: [
                 _LevelChip(
-                    label: '全部',
-                    active: _levelFilter == null,
-                    onTap: () => setState(() => _levelFilter = null)),
+                  label: '全部',
+                  active: _levelFilter == null,
+                  onTap: () => setState(() => _levelFilter = null),
+                ),
                 const SizedBox(width: 6),
                 _LevelChip(
-                    label: '错误',
-                    active: _levelFilter == 'error',
-                    onTap: () => setState(() => _levelFilter = 'error')),
+                  label: '错误',
+                  active: _levelFilter == 'error',
+                  onTap: () => setState(() => _levelFilter = 'error'),
+                ),
                 const SizedBox(width: 6),
                 _LevelChip(
-                    label: '警告',
-                    active: _levelFilter == 'warn',
-                    onTap: () => setState(() => _levelFilter = 'warn')),
+                  label: '警告',
+                  active: _levelFilter == 'warn',
+                  onTap: () => setState(() => _levelFilter = 'warn'),
+                ),
                 const SizedBox(width: 6),
                 _LevelChip(
-                    label: '信息',
-                    active: _levelFilter == 'info',
-                    onTap: () => setState(() => _levelFilter = 'info')),
+                  label: '信息',
+                  active: _levelFilter == 'info',
+                  onTap: () => setState(() => _levelFilter = 'info'),
+                ),
               ],
             ),
           ),
-          const Divider(height: 1, color: AppColors.border),
+          Divider(height: 1, color: context.borderColor),
           // 日志列表
           Expanded(
             child: _loading
-                ? const Center(
+                ? Center(
                     child: CircularProgressIndicator(
-                        color: AppColors.brandPink, strokeWidth: 2.5))
+                      color: context.colorScheme.primary,
+                      strokeWidth: 2.5,
+                    ),
+                  )
                 : filtered.isEmpty
-                    ? const Center(
-                        child: Text('暂无日志',
-                            style: TextStyle(color: AppColors.textLow)))
-                    : ListView.separated(
-                        padding: const EdgeInsets.all(AppSpacing.sm),
-                        itemCount: filtered.length,
-                        separatorBuilder: (_, __) =>
-                            const SizedBox(height: AppSpacing.xs),
-                        itemBuilder: (_, i) {
-                          final log = filtered[i];
-                          return _LogCard(
-                            log: log,
-                            color: _levelColor(log.level),
-                            onCopy: () => _copyLog(log),
-                          );
-                        },
-                      ),
+                ? Center(
+                    child: Text(
+                      '暂无日志',
+                      style: TextStyle(color: context.tertiaryTextColor),
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.all(AppSpacing.sm),
+                    itemCount: filtered.length,
+                    separatorBuilder: (_, __) =>
+                        const SizedBox(height: AppSpacing.xs),
+                    itemBuilder: (_, i) {
+                      final log = filtered[i];
+                      return _LogCard(
+                        log: log,
+                        color: _levelColor(log.level),
+                        onCopy: () => _copyLog(log),
+                      );
+                    },
+                  ),
           ),
         ],
       ),
@@ -208,8 +225,11 @@ class _LogViewerPageState extends State<LogViewerPage> {
 }
 
 class _LevelChip extends StatelessWidget {
-  const _LevelChip(
-      {required this.label, required this.active, required this.onTap});
+  const _LevelChip({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
   final String label;
   final bool active;
   final VoidCallback onTap;
@@ -222,16 +242,20 @@ class _LevelChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
-          color: active ? AppColors.brandPink : AppColors.surface,
+          color: active ? context.colorScheme.primary : context.surfaceColor,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-              color: active ? Colors.transparent : AppColors.border),
+            color: active ? Colors.transparent : context.borderColor,
+          ),
         ),
-        child: Text(label,
-            style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: active ? Colors.white : AppColors.textMedium)),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: active ? Colors.white : context.secondaryTextColor,
+          ),
+        ),
       ),
     );
   }
@@ -252,7 +276,7 @@ class _LogCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.sm),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.surfaceColor,
         borderRadius: AppRadius.brSm,
         border: Border(left: BorderSide(color: color, width: 3)),
       ),
@@ -262,47 +286,62 @@ class _LogCard extends StatelessWidget {
           Row(
             children: [
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.2),
                   borderRadius: AppRadius.brSm,
                 ),
-                child: Text(log.level.toUpperCase(),
-                    style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: color)),
+                child: Text(
+                  log.level.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: color,
+                  ),
+                ),
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(log.time,
-                    style: const TextStyle(
-                        fontSize: 11, color: AppColors.textLow)),
+                child: Text(
+                  log.time,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: context.tertiaryTextColor,
+                  ),
+                ),
               ),
               InkWell(
                 onTap: onCopy,
-                child: const Padding(
+                child: Padding(
                   padding: EdgeInsets.all(4),
-                  child: Icon(Icons.copy_rounded,
-                      size: 16, color: AppColors.textLow),
+                  child: Icon(
+                    Icons.copy_rounded,
+                    size: 16,
+                    color: context.tertiaryTextColor,
+                  ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 6),
-          Text(log.message,
-              style: const TextStyle(
-                  fontSize: 12,
-                  color: AppColors.textHigh,
-                  fontFamily: 'monospace')),
+          Text(
+            log.message,
+            style: TextStyle(
+              fontSize: 12,
+              color: context.primaryTextColor,
+              fontFamily: 'monospace',
+            ),
+          ),
           if (log.error != null && log.error!.isNotEmpty) ...[
             const SizedBox(height: 4),
-            Text(log.error!,
-                style: const TextStyle(
-                    fontSize: 11,
-                    color: Colors.redAccent,
-                    fontFamily: 'monospace')),
+            Text(
+              log.error!,
+              style: const TextStyle(
+                fontSize: 11,
+                color: Colors.redAccent,
+                fontFamily: 'monospace',
+              ),
+            ),
           ],
         ],
       ),

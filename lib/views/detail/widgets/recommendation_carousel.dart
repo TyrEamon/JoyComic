@@ -5,9 +5,9 @@
 library recommendation_carousel;
 
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 
 import '../../../foundation/palette_extractor.dart';
-import '../../../theme/app_colors.dart';
 import '../../../theme/app_spacing.dart';
 import '../../../theme/app_typography.dart';
 import '../../common/widgets/comic_card.dart';
@@ -30,7 +30,7 @@ class RecommendationCarousel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = palette?.accent ?? AppColors.brandPink;
+    final accent = palette?.accent ?? context.colorScheme.primary;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -45,10 +45,18 @@ class RecommendationCarousel extends StatelessWidget {
                   onTap: onRefresh,
                   borderRadius: BorderRadius.circular(20),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 4,
+                    ),
                     child: Row(
                       children: [
-                        Text('换一换', style: AppTypography.sectionAction(context).copyWith(color: accent)),
+                        Text(
+                          '换一换',
+                          style: AppTypography.sectionAction(
+                            context,
+                          ).copyWith(color: accent),
+                        ),
                         const SizedBox(width: 2),
                         Icon(Icons.refresh_rounded, size: 16, color: accent),
                       ],
@@ -68,9 +76,14 @@ class RecommendationCarousel extends StatelessWidget {
             separatorBuilder: (_, __) => const SizedBox(width: AppSpacing.sm),
             itemBuilder: (context, i) {
               if (items.isEmpty) {
-                return const SizedBox(
+                return SizedBox(
                   width: 220,
-                  child: Center(child: Text('暂无推荐', style: TextStyle(color: AppColors.textLow))),
+                  child: Center(
+                    child: Text(
+                      '暂无推荐',
+                      style: TextStyle(color: context.tertiaryTextColor),
+                    ),
+                  ),
                 );
               }
               final e = items[i];

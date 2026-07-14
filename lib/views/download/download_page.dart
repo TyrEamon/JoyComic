@@ -2,6 +2,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../foundation/download_manager.dart';
@@ -42,15 +43,15 @@ class _DownloadPageState extends State<DownloadPage>
             .where((task) => task.status == DownloadStatus.completed)
             .toList();
         return Scaffold(
-          backgroundColor: AppColors.background,
+          backgroundColor: context.pageBackground,
           appBar: AppBar(
             title: const Text('下载'),
-            backgroundColor: AppColors.background,
+            backgroundColor: context.pageBackground,
             bottom: TabBar(
               controller: _tab,
-              indicatorColor: AppColors.brandPink,
-              labelColor: AppColors.textHigh,
-              unselectedLabelColor: AppColors.textLow,
+              indicatorColor: context.colorScheme.primary,
+              labelColor: context.primaryTextColor,
+              unselectedLabelColor: context.tertiaryTextColor,
               tabs: <Widget>[
                 Tab(text: '任务 (${active.length})'),
                 Tab(text: '已下载 (${completed.length})'),
@@ -82,7 +83,7 @@ class _GroupedTaskList extends StatelessWidget {
       return Center(
         child: Text(
           completed ? '暂无已下载章节' : '暂无下载任务',
-          style: const TextStyle(color: AppColors.textLow),
+          style: TextStyle(color: context.tertiaryTextColor),
         ),
       );
     }
@@ -112,9 +113,9 @@ class _ComicDownloadGroup extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.surfaceColor,
         borderRadius: AppRadius.brMd,
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: context.borderColor),
       ),
       child: ExpansionTile(
         initiallyExpanded: true,
@@ -128,11 +129,11 @@ class _ComicDownloadGroup extends StatelessWidget {
           first.title.isEmpty ? first.comicId : first.title,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(color: AppColors.textHigh),
+          style: TextStyle(color: context.primaryTextColor),
         ),
         subtitle: Text(
           '${tasks.length} 个章节 · ${first.sourceKey}',
-          style: const TextStyle(color: AppColors.textLow, fontSize: 12),
+          style: TextStyle(color: context.tertiaryTextColor, fontSize: 12),
         ),
         children: <Widget>[for (final task in tasks) _TaskTile(task: task)],
       ),
@@ -154,7 +155,7 @@ class _TaskTile extends StatelessWidget {
         task.chapterTitle.isEmpty ? task.chapterId : task.chapterTitle,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: const TextStyle(color: AppColors.textHigh, fontSize: 14),
+        style: TextStyle(color: context.primaryTextColor, fontSize: 14),
       ),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -163,8 +164,8 @@ class _TaskTile extends StatelessWidget {
           LinearProgressIndicator(
             value: task.progress,
             minHeight: 3,
-            backgroundColor: AppColors.surfaceElevated,
-            color: completed ? AppColors.success : AppColors.brandPink,
+            backgroundColor: context.elevatedSurfaceColor,
+            color: completed ? AppColors.success : context.colorScheme.primary,
           ),
           const SizedBox(height: 4),
           Text(
@@ -174,7 +175,7 @@ class _TaskTile extends StatelessWidget {
             style: TextStyle(
               color: task.status == DownloadStatus.failed
                   ? Colors.redAccent
-                  : AppColors.textLow,
+                  : context.tertiaryTextColor,
               fontSize: 11,
             ),
           ),
@@ -206,7 +207,10 @@ class _TaskTile extends StatelessWidget {
           IconButton(
             tooltip: '删除',
             onPressed: () => _showDeleteChoices(context),
-            icon: const Icon(Icons.more_vert_rounded, color: AppColors.textLow),
+            icon: Icon(
+              Icons.more_vert_rounded,
+              color: context.tertiaryTextColor,
+            ),
           ),
         ],
       ),
@@ -226,7 +230,7 @@ class _TaskTile extends StatelessWidget {
   Future<void> _showDeleteChoices(BuildContext context) async {
     final deleteFiles = await showModalBottomSheet<bool>(
       context: context,
-      backgroundColor: AppColors.surface,
+      backgroundColor: context.surfaceColor,
       builder: (context) => SafeArea(
         child: Wrap(
           children: <Widget>[

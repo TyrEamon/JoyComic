@@ -14,11 +14,11 @@
 library settings_page;
 
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../foundation/app_data.dart';
 import '../../foundation/reader_config.dart';
-import '../../theme/app_colors.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
 
@@ -30,13 +30,18 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
+  Future<void> _openReaderSettings() async {
+    await context.push('/settings/reader');
+    if (mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.pageBackground,
       appBar: AppBar(
         title: const Text('设置'),
-        backgroundColor: AppColors.background,
+        backgroundColor: context.pageBackground,
       ),
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
@@ -70,7 +75,7 @@ class _SettingsPageState extends State<SettingsPage> {
               _SettingsItem(
                 icon: Icons.menu_book_rounded,
                 label: '阅读设置',
-                route: '/settings/reader',
+                onTap: _openReaderSettings,
               ),
               _SettingsItem(
                 icon: Icons.swap_horiz_rounded,
@@ -141,30 +146,26 @@ class _SettingsGroup extends StatelessWidget {
           ),
           child: Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: AppColors.textLow,
+              color: context.tertiaryTextColor,
             ),
           ),
         ),
         Container(
           margin: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
           decoration: BoxDecoration(
-            color: AppColors.surface,
+            color: context.surfaceColor,
             borderRadius: AppRadius.brLg,
-            border: Border.all(color: AppColors.border),
+            border: Border.all(color: context.borderColor),
           ),
           child: Column(
             children: [
               for (var i = 0; i < items.length; i++) ...[
                 items[i],
                 if (i != items.length - 1)
-                  const Divider(
-                    height: 1,
-                    indent: 56,
-                    color: AppColors.divider,
-                  ),
+                  Divider(height: 1, indent: 56, color: context.dividerColor),
               ],
             ],
           ),
@@ -180,16 +181,18 @@ class _SettingsItem extends StatelessWidget {
     required this.label,
     this.value,
     this.route,
+    this.onTap,
   });
   final IconData icon;
   final String label;
   final String? value;
   final String? route;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: route == null ? null : () => context.push(route!),
+      onTap: onTap ?? (route == null ? null : () => context.push(route!)),
       borderRadius: BorderRadius.circular(12),
       child: Padding(
         padding: const EdgeInsets.symmetric(
@@ -198,25 +201,28 @@ class _SettingsItem extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(icon, size: 22, color: AppColors.brandPink),
+            Icon(icon, size: 22, color: context.colorScheme.primary),
             const SizedBox(width: AppSpacing.md),
             Expanded(
               child: Text(
                 label,
-                style: const TextStyle(fontSize: 15, color: AppColors.textHigh),
+                style: TextStyle(fontSize: 15, color: context.primaryTextColor),
               ),
             ),
             if (value != null)
               Text(
                 value!,
-                style: const TextStyle(fontSize: 13, color: AppColors.textLow),
+                style: TextStyle(
+                  fontSize: 13,
+                  color: context.tertiaryTextColor,
+                ),
               ),
             const SizedBox(width: AppSpacing.xxs),
             if (route != null)
-              const Icon(
+              Icon(
                 Icons.chevron_right_rounded,
                 size: 20,
-                color: AppColors.textLow,
+                color: context.tertiaryTextColor,
               ),
           ],
         ),
@@ -250,23 +256,26 @@ class _ThemeModeItem extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.palette_outlined,
                     size: 22,
-                    color: AppColors.brandPink,
+                    color: context.colorScheme.primary,
                   ),
                   const SizedBox(width: AppSpacing.md),
-                  const Expanded(
+                  Expanded(
                     child: Text(
                       '主题模式',
-                      style: TextStyle(fontSize: 15, color: AppColors.textHigh),
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: context.primaryTextColor,
+                      ),
                     ),
                   ),
                   Text(
                     '当前：${_label(mode)}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
-                      color: AppColors.textLow,
+                      color: context.tertiaryTextColor,
                     ),
                   ),
                 ],
@@ -282,8 +291,8 @@ class _ThemeModeItem extends StatelessWidget {
                     ButtonSegment(value: ThemeMode.dark, label: Text('深色')),
                   ],
                   selected: {mode},
-                  onSelectionChanged: (selection) {
-                    appData.themeMode = selection.single;
+                  onSelectionChanged: (selection) async {
+                    await appData.setThemeMode(selection.single);
                   },
                 ),
               ),

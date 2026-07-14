@@ -16,6 +16,7 @@
 library source_settings_page;
 
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 
 import '../../comic_source/comic_source.dart';
 import '../../network/jm/jm_network.dart';
@@ -53,10 +54,10 @@ class _SourceSettingsPageState extends State<SourceSettingsPage> {
   Widget build(BuildContext context) {
     final isJm = widget.sourceKey == 'jm';
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.pageBackground,
       appBar: AppBar(
         title: Text(isJm ? '禁漫图床测速' : '哔咔接入域名'),
-        backgroundColor: AppColors.background,
+        backgroundColor: context.pageBackground,
       ),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.md),
@@ -81,7 +82,7 @@ class _SourceSettingsPageState extends State<SourceSettingsPage> {
                   : const Icon(Icons.speed_rounded, size: 18),
               label: Text(_testing ? '测速中…' : '开始测速'),
               style: FilledButton.styleFrom(
-                backgroundColor: AppColors.brandPink,
+                backgroundColor: context.colorScheme.primary,
                 minimumSize: const Size.fromHeight(48),
               ),
             ),
@@ -166,10 +167,10 @@ class _SectionLabel extends StatelessWidget {
       padding: const EdgeInsets.only(
           top: AppSpacing.sm, bottom: AppSpacing.xs, left: AppSpacing.xxs),
       child: Text(label,
-          style: const TextStyle(
+          style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: AppColors.textLow)),
+              color: context.tertiaryTextColor)),
     );
   }
 }
@@ -200,10 +201,10 @@ class _ShuntTile extends StatelessWidget {
         padding: const EdgeInsets.symmetric(
             horizontal: AppSpacing.md, vertical: AppSpacing.sm + 2),
         decoration: BoxDecoration(
-          color: AppColors.surface,
+          color: context.surfaceColor,
           borderRadius: AppRadius.brMd,
           border: Border.all(
-            color: selected ? AppColors.brandPink : AppColors.border,
+            color: selected ? context.colorScheme.primary : context.borderColor,
             width: selected ? 1.5 : 1,
           ),
         ),
@@ -214,14 +215,14 @@ class _ShuntTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(title,
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
-                          color: AppColors.textHigh)),
+                          color: context.primaryTextColor)),
                   const SizedBox(height: 2),
                   Text(subtitle,
-                      style: const TextStyle(
-                          fontSize: 12, color: AppColors.textLow)),
+                      style: TextStyle(
+                          fontSize: 12, color: context.tertiaryTextColor)),
                 ],
               ),
             ),
@@ -248,10 +249,10 @@ class _ShuntTile extends StatelessWidget {
                 ),
               ),
             if (selected)
-              const Padding(
+              Padding(
                 padding: EdgeInsets.only(left: AppSpacing.xs),
                 child: Icon(Icons.check_circle_rounded,
-                    color: AppColors.brandPink, size: 20),
+                    color: context.colorScheme.primary, size: 20),
               ),
           ],
         ),
@@ -272,16 +273,16 @@ class _DomainTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.md, vertical: AppSpacing.sm),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.surfaceColor,
         borderRadius: AppRadius.brSm,
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: context.borderColor),
       ),
       child: Row(
         children: [
           Expanded(
             child: Text(title,
-                style: const TextStyle(
-                    fontSize: 13, color: AppColors.textMedium)),
+                style: TextStyle(
+                    fontSize: 13, color: context.secondaryTextColor)),
           ),
           if (latency != null)
             Text(latency! < 0 ? '失败' : '${latency}ms',
@@ -317,10 +318,10 @@ class _RadioTile extends StatelessWidget {
         padding: const EdgeInsets.symmetric(
             horizontal: AppSpacing.md, vertical: AppSpacing.sm + 2),
         decoration: BoxDecoration(
-          color: AppColors.surface,
+          color: context.surfaceColor,
           borderRadius: AppRadius.brMd,
           border: Border.all(
-            color: selected ? AppColors.brandPink : AppColors.border,
+            color: selected ? context.colorScheme.primary : context.borderColor,
             width: selected ? 1.5 : 1,
           ),
         ),
@@ -331,20 +332,20 @@ class _RadioTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(title,
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
-                          color: AppColors.textHigh)),
+                          color: context.primaryTextColor)),
                   const SizedBox(height: 2),
                   Text(subtitle,
-                      style: const TextStyle(
-                          fontSize: 12, color: AppColors.textLow)),
+                      style: TextStyle(
+                          fontSize: 12, color: context.tertiaryTextColor)),
                 ],
               ),
             ),
             Icon(
               selected ? Icons.radio_button_checked : Icons.radio_button_off,
-              color: selected ? AppColors.brandPink : AppColors.textLow,
+              color: selected ? context.colorScheme.primary : context.tertiaryTextColor,
               size: 22,
             ),
           ],

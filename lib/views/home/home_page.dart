@@ -2,12 +2,12 @@
 library home_page;
 
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../comic_source/comic_source.dart';
 import '../../foundation/log.dart';
 import '../../network/res.dart';
-import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../common/source_content_models.dart';
 import '../common/widgets/comic_grid.dart';
@@ -126,9 +126,9 @@ class _HomePageState extends State<HomePage> {
   Map<String, dynamic>? _coverHeaders(ComicGridItem item) {
     final cover = item.coverUrl;
     if (cover == null || cover.isEmpty || item.sourceKey == null) return null;
-    return ComicSource.find(item.sourceKey!)
-        ?.getThumbnailLoadingConfig
-        ?.call(cover);
+    return ComicSource.find(
+      item.sourceKey!,
+    )?.getThumbnailLoadingConfig?.call(cover);
   }
 
   @override
@@ -136,10 +136,10 @@ class _HomePageState extends State<HomePage> {
     final content = _content;
     final featured = _featuredSection(content.sections);
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.pageBackground,
       body: SafeArea(
         child: RefreshIndicator(
-          color: AppColors.brandPink,
+          color: context.colorScheme.primary,
           onRefresh: _loadHome,
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
@@ -151,11 +151,11 @@ class _HomePageState extends State<HomePage> {
               ),
               const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.lg)),
               if (_loading && content.sections.isEmpty)
-                const SliverFillRemaining(
+                SliverFillRemaining(
                   hasScrollBody: false,
                   child: Center(
                     child: CircularProgressIndicator(
-                      color: AppColors.brandPink,
+                      color: context.colorScheme.primary,
                       strokeWidth: 2.5,
                     ),
                   ),
@@ -183,9 +183,9 @@ class _HomePageState extends State<HomePage> {
                             tag: comic.subTitle,
                             badge: featured.sourceName,
                             sourceKey: featured.sourceKey,
-                            headers: ComicSource.find(featured.sourceKey)
-                                ?.getThumbnailLoadingConfig
-                                ?.call(comic.cover),
+                            headers: ComicSource.find(
+                              featured.sourceKey,
+                            )?.getThumbnailLoadingConfig?.call(comic.cover),
                           ),
                       ],
                       onTap: (item) => context.push(
@@ -267,9 +267,8 @@ class _HomePageState extends State<HomePage> {
     ).toString();
   }
 
-  String _detailLocation(String? sourceKey, String comicId) => Uri(
-        pathSegments: ['', 'detail', sourceKey ?? 'jm', comicId],
-      ).toString();
+  String _detailLocation(String? sourceKey, String comicId) =>
+      Uri(pathSegments: ['', 'detail', sourceKey ?? 'jm', comicId]).toString();
 }
 
 class _SourceErrors extends StatelessWidget {
@@ -299,16 +298,16 @@ class _SourceErrors extends StatelessWidget {
                 vertical: AppSpacing.xs,
               ),
               decoration: BoxDecoration(
-                color: AppColors.surface,
+                color: context.surfaceColor,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.border),
+                border: Border.all(color: context.borderColor),
               ),
               child: Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.error_outline_rounded,
                     size: 18,
-                    color: AppColors.danger,
+                    color: context.colorScheme.error,
                   ),
                   const SizedBox(width: AppSpacing.xs),
                   Expanded(
@@ -316,8 +315,8 @@ class _SourceErrors extends StatelessWidget {
                       '${error.sourceName}：${error.message}',
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.textMedium,
+                      style: TextStyle(
+                        color: context.secondaryTextColor,
                         fontSize: 12,
                       ),
                     ),
@@ -325,14 +324,14 @@ class _SourceErrors extends StatelessWidget {
                   TextButton(
                     onPressed:
                         loading || retryingSources.contains(error.sourceKey)
-                            ? null
-                            : () => onRetry(error.sourceKey),
+                        ? null
+                        : () => onRetry(error.sourceKey),
                     child: Text(
                       loading
                           ? '刷新中'
                           : retryingSources.contains(error.sourceKey)
-                              ? '重试中'
-                              : '重试',
+                          ? '重试中'
+                          : '重试',
                     ),
                   ),
                 ],
@@ -357,8 +356,11 @@ class _TopBar extends StatelessWidget {
       child: Row(
         children: [
           ShaderMask(
-            shaderCallback: (bounds) => const LinearGradient(
-              colors: [AppColors.brandPink, AppColors.brandViolet],
+            shaderCallback: (bounds) => LinearGradient(
+              colors: [
+                context.colorScheme.primary,
+                context.colorScheme.secondary,
+              ],
             ).createShader(bounds),
             blendMode: BlendMode.srcIn,
             child: const Text(
@@ -378,13 +380,13 @@ class _TopBar extends StatelessWidget {
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: AppColors.surface,
+                color: context.surfaceColor,
                 shape: BoxShape.circle,
-                border: Border.all(color: AppColors.border),
+                border: Border.all(color: context.borderColor),
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.search,
-                color: AppColors.textHigh,
+                color: context.primaryTextColor,
                 size: 22,
               ),
             ),

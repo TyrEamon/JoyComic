@@ -7,6 +7,7 @@
 library sticky_action_bar;
 
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 
 import '../../../foundation/palette_extractor.dart';
 import '../../../theme/app_colors.dart';
@@ -37,8 +38,8 @@ class StickyActionBar extends StatelessWidget {
       color: Colors.transparent,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: AppColors.background.withValues(alpha: 0.94),
-          border: Border(top: BorderSide(color: AppColors.border)),
+          color: context.pageBackground.withValues(alpha: 0.94),
+          border: Border(top: BorderSide(color: context.borderColor)),
           boxShadow: AppShadows.actionBar,
         ),
         child: SafeArea(
@@ -50,10 +51,7 @@ class StickyActionBar extends StatelessWidget {
             ),
             child: Row(
               children: [
-                _FavoriteButton(
-                  isFavorite: isFavorite,
-                  onTap: onFavorite,
-                ),
+                _FavoriteButton(isFavorite: isFavorite, onTap: onFavorite),
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: _ReadButton(
@@ -78,7 +76,7 @@ class _FavoriteButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = isFavorite ? AppColors.hotAccent : AppColors.textMedium;
+    final color = isFavorite ? AppColors.hotAccent : context.secondaryTextColor;
     return InkWell(
       onTap: onTap,
       borderRadius: AppRadius.brLg,
@@ -86,25 +84,26 @@ class _FavoriteButton extends StatelessWidget {
         width: 92,
         padding: const EdgeInsets.symmetric(vertical: 14),
         decoration: BoxDecoration(
-          color: AppColors.surfaceElevated,
+          color: context.elevatedSurfaceColor,
           borderRadius: AppRadius.brLg,
-          border: Border.all(color: AppColors.border),
+          border: Border.all(color: context.borderColor),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+              isFavorite
+                  ? Icons.favorite_rounded
+                  : Icons.favorite_border_rounded,
               size: 20,
               color: color,
             ),
             const SizedBox(height: 3),
             Text(
               isFavorite ? '已收藏' : '收藏',
-              style: AppTypography.buttonSecondary.copyWith(
-                fontSize: 12,
-                color: color,
-              ),
+              style: AppTypography.buttonSecondary(
+                context,
+              ).copyWith(fontSize: 12, color: color),
             ),
           ],
         ),

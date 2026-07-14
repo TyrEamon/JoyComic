@@ -5,8 +5,7 @@
 library detail_app_bar;
 
 import 'package:flutter/material.dart';
-
-import '../../../theme/app_colors.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 
 class DetailAppBar extends StatelessWidget {
   const DetailAppBar({
@@ -31,7 +30,12 @@ class DetailAppBar extends StatelessWidget {
       right: 0,
       child: SafeArea(
         bottom: false,
-        child: _Bar(scrolledUnder: scrolledUnder, onBack: onBack, onShare: onShare, onMore: onMore),
+        child: _Bar(
+          scrolledUnder: scrolledUnder,
+          onBack: onBack,
+          onShare: onShare,
+          onMore: onMore,
+        ),
       ),
     );
   }
@@ -58,7 +62,10 @@ class _Bar extends StatelessWidget {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: scrolledUnder
-              ? [AppColors.background, AppColors.background.withValues(alpha: 0.0)]
+              ? [
+                  context.pageBackground,
+                  context.pageBackground.withValues(alpha: 0.0),
+                ]
               : [const Color(0x66000000), const Color(0x00000000)],
         ),
       ),

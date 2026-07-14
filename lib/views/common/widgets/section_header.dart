@@ -9,8 +9,8 @@
 library section_header;
 
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 
-import '../../../theme/app_colors.dart';
 import '../../../theme/app_spacing.dart';
 import '../../../theme/app_typography.dart';
 
@@ -33,9 +33,12 @@ class SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: padding ??
+      padding:
+          padding ??
           const EdgeInsets.symmetric(
-              horizontal: AppSpacing.md, vertical: AppSpacing.xs),
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.xs,
+          ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.baseline,
         textBaseline: TextBaseline.alphabetic,
@@ -52,14 +55,21 @@ class SectionHeader extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
               child: Padding(
                 padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.xxs, vertical: AppSpacing.xxs),
+                  horizontal: AppSpacing.xxs,
+                  vertical: AppSpacing.xxs,
+                ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(actionLabel!,
-                        style: AppTypography.sectionAction(context)),
-                    const Icon(Icons.chevron_right_rounded,
-                        size: 18, color: AppColors.textLow),
+                    Text(
+                      actionLabel!,
+                      style: AppTypography.sectionAction(context),
+                    ),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      size: 18,
+                      color: context.tertiaryTextColor,
+                    ),
                   ],
                 ),
               ),

@@ -9,8 +9,8 @@ import 'dart:io';
 
 import 'package:cached_network_image_ce/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 
-import '../../../theme/app_colors.dart';
 import '../../../theme/app_radius.dart';
 import '../../../theme/app_shadows.dart';
 
@@ -57,9 +57,12 @@ class ComicCover extends StatelessWidget {
         borderRadius: BorderRadius.all(Radius.circular(radius)),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: AppColors.surfaceElevated,
+            color: context.elevatedSurfaceColor,
             border: border
-                ? Border.all(color: Colors.white.withValues(alpha: 0.10), width: 0.8)
+                ? Border.all(
+                    color: Colors.white.withValues(alpha: 0.10),
+                    width: 0.8,
+                  )
                 : null,
           ),
           child: _image(height),
@@ -103,10 +106,13 @@ class _Skeleton extends StatelessWidget {
     return Container(
       width: double.infinity,
       height: height,
-      color: AppColors.surfaceElevated,
+      color: context.elevatedSurfaceColor,
       child: Center(
-        child: Icon(Icons.broken_image_outlined,
-            size: 24, color: AppColors.textDisabled),
+        child: Icon(
+          Icons.broken_image_outlined,
+          size: 24,
+          color: context.disabledTextColor,
+        ),
       ),
     );
   }
@@ -121,10 +127,13 @@ class _Fallback extends StatelessWidget {
     return Container(
       width: double.infinity,
       height: height,
-      color: AppColors.surface,
+      color: context.surfaceColor,
       child: Center(
-        child: Icon(Icons.image_not_supported_outlined,
-            size: 24, color: AppColors.textDisabled),
+        child: Icon(
+          Icons.image_not_supported_outlined,
+          size: 24,
+          color: context.disabledTextColor,
+        ),
       ),
     );
   }

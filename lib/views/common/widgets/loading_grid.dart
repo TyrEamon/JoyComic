@@ -5,8 +5,8 @@
 library loading_grid;
 
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 
-import '../../../theme/app_colors.dart';
 import '../../../theme/app_radius.dart';
 import '../../../theme/app_spacing.dart';
 import 'shimmer.dart';
@@ -27,7 +27,9 @@ class LoadingGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     return GridView.builder(
       padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.sm,
+      ),
       physics: const NeverScrollableScrollPhysics(),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: crossAxisCount,
@@ -36,9 +38,7 @@ class LoadingGrid extends StatelessWidget {
         childAspectRatio: childAspectRatio,
       ),
       itemCount: itemCount,
-      itemBuilder: (_, __) => const Shimmer(
-        child: _SkeletonCard(),
-      ),
+      itemBuilder: (_, __) => const Shimmer(child: _SkeletonCard()),
     );
   }
 }
@@ -54,7 +54,7 @@ class _SkeletonCard extends StatelessWidget {
         Expanded(
           child: ClipRRect(
             borderRadius: AppRadius.brMd,
-            child: Container(color: AppColors.surfaceElevated),
+            child: Container(color: context.elevatedSurfaceColor),
           ),
         ),
         const SizedBox(height: AppSpacing.xs),
@@ -62,7 +62,7 @@ class _SkeletonCard extends StatelessWidget {
           height: 12,
           width: double.infinity,
           decoration: BoxDecoration(
-            color: AppColors.surfaceElevated,
+            color: context.elevatedSurfaceColor,
             borderRadius: AppRadius.brSm,
           ),
         ),
@@ -71,7 +71,7 @@ class _SkeletonCard extends StatelessWidget {
           height: 10,
           width: 60,
           decoration: BoxDecoration(
-            color: AppColors.surfaceElevated,
+            color: context.elevatedSurfaceColor,
             borderRadius: AppRadius.brSm,
           ),
         ),

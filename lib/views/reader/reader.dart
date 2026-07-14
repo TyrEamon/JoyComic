@@ -181,7 +181,7 @@ class _ReaderContent extends StatelessWidget {
     );
 
     return Scaffold(
-      backgroundColor: context.colorScheme.surfaceContainerLowest,
+      backgroundColor: Colors.black,
       body: Stack(
         children: [
           Positioned.fill(

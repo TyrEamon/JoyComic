@@ -6,8 +6,8 @@
 library synopsis_block;
 
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 
-import '../../../theme/app_colors.dart';
 import '../../../theme/app_spacing.dart';
 import '../../../theme/app_typography.dart';
 import '../../../foundation/palette_extractor.dart';
@@ -36,7 +36,7 @@ class _SynopsisBlockState extends State<SynopsisBlock>
   @override
   Widget build(BuildContext context) {
     final text = (widget.text ?? '').trim();
-    final accent = widget.palette?.accent ?? AppColors.brandPink;
+    final accent = widget.palette?.accent ?? context.colorScheme.primary;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
       child: Column(
@@ -127,11 +127,11 @@ class _ToggleLink extends StatelessWidget {
     // 给文字按钮加个渐变底，避免压住正文末字不可读。
     return Container(
       padding: const EdgeInsets.only(left: 24),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
-          colors: [Color(0x000E0B14), AppColors.background],
+          colors: [Color(0x000E0B14), context.pageBackground],
         ),
       ),
       child: Material(

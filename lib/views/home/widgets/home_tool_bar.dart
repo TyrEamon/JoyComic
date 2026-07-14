@@ -13,8 +13,8 @@
 library home_tool_bar;
 
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 
-import '../../../theme/app_colors.dart';
 import '../../../theme/app_radius.dart';
 import '../../../theme/app_spacing.dart';
 
@@ -25,49 +25,49 @@ class HomeToolBar extends StatelessWidget {
 
   /// 默认入口配置（功能集成时替换 onTap 为真实 push）。
   static List<ToolEntry> defaults(BuildContext context) => [
-        ToolEntry(
-          label: '最新',
-          icon: Icons.new_releases_outlined,
-          gradientStart: AppColors.brandPink,
-          gradientEnd: AppColors.brandViolet,
-          onTap: () {}, // → push /ranking?tab=latest
-        ),
-        ToolEntry(
-          label: '热门排行',
-          icon: Icons.local_fire_department_outlined,
-          gradientStart: const Color(0xFFFF8A65),
-          gradientEnd: const Color(0xFFFF6FA5),
-          onTap: () {}, // → push /ranking?tab=hot
-        ),
-        ToolEntry(
-          label: '影视',
-          icon: Icons.movie_outlined,
-          gradientStart: const Color(0xFF7B9EFF),
-          gradientEnd: const Color(0xFF9D7BFF),
-          onTap: () {}, // → push /video
-        ),
-        ToolEntry(
-          label: '以图搜图',
-          icon: Icons.image_search_outlined,
-          gradientStart: const Color(0xFF6FE0A8),
-          gradientEnd: const Color(0xFFB967FF),
-          onTap: () {}, // → push /image-search
-        ),
-        ToolEntry(
-          label: '收藏库',
-          icon: Icons.favorite_border_rounded,
-          gradientStart: const Color(0xFFFF7BA9),
-          gradientEnd: const Color(0xFFFF6B6B),
-          onTap: () {}, // → 切到收藏 Tab 或 push /favorites
-        ),
-        ToolEntry(
-          label: '下载',
-          icon: Icons.download_outlined,
-          gradientStart: const Color(0xFF9D7BFF),
-          gradientEnd: const Color(0xFF7B9EFF),
-          onTap: () {}, // → push /download
-        ),
-      ];
+    ToolEntry(
+      label: '最新',
+      icon: Icons.new_releases_outlined,
+      gradientStart: context.colorScheme.primary,
+      gradientEnd: context.colorScheme.secondary,
+      onTap: () {}, // → push /ranking?tab=latest
+    ),
+    ToolEntry(
+      label: '热门排行',
+      icon: Icons.local_fire_department_outlined,
+      gradientStart: const Color(0xFFFF8A65),
+      gradientEnd: const Color(0xFFFF6FA5),
+      onTap: () {}, // → push /ranking?tab=hot
+    ),
+    ToolEntry(
+      label: '影视',
+      icon: Icons.movie_outlined,
+      gradientStart: const Color(0xFF7B9EFF),
+      gradientEnd: const Color(0xFF9D7BFF),
+      onTap: () {}, // → push /video
+    ),
+    ToolEntry(
+      label: '以图搜图',
+      icon: Icons.image_search_outlined,
+      gradientStart: const Color(0xFF6FE0A8),
+      gradientEnd: const Color(0xFFB967FF),
+      onTap: () {}, // → push /image-search
+    ),
+    ToolEntry(
+      label: '收藏库',
+      icon: Icons.favorite_border_rounded,
+      gradientStart: const Color(0xFFFF7BA9),
+      gradientEnd: const Color(0xFFFF6B6B),
+      onTap: () {}, // → 切到收藏 Tab 或 push /favorites
+    ),
+    ToolEntry(
+      label: '下载',
+      icon: Icons.download_outlined,
+      gradientStart: const Color(0xFF9D7BFF),
+      gradientEnd: const Color(0xFF7B9EFF),
+      onTap: () {}, // → push /download
+    ),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -139,10 +139,10 @@ class _ToolItem extends StatelessWidget {
               entry.label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w500,
-                color: AppColors.textMedium,
+                color: context.secondaryTextColor,
               ),
             ),
           ],

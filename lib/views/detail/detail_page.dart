@@ -8,6 +8,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:collection/collection.dart';
@@ -61,7 +62,7 @@ class _DetailScaffold extends StatelessWidget {
   Widget build(BuildContext context) {
     final vm = context.watch<DetailViewModel>();
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.pageBackground,
       extendBodyBehindAppBar: true,
       body: Stack(
         children: [
@@ -91,10 +92,10 @@ class _Loading extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: AppColors.background,
-      child: const Center(
+      color: context.pageBackground,
+      child: Center(
         child: CircularProgressIndicator(
-          color: AppColors.brandPink,
+          color: context.colorScheme.primary,
           strokeWidth: 2.5,
         ),
       ),
@@ -110,22 +111,22 @@ class _Error extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: AppColors.background,
+      color: context.pageBackground,
       padding: const EdgeInsets.all(AppSpacing.xl),
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
+            Icon(
               Icons.error_outline_rounded,
               size: 48,
-              color: AppColors.textLow,
+              color: context.tertiaryTextColor,
             ),
             const SizedBox(height: AppSpacing.sm),
             Text(
               message,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: AppColors.textMedium),
+              style: TextStyle(color: context.secondaryTextColor),
             ),
             const SizedBox(height: AppSpacing.md),
             FilledButton.icon(
@@ -281,7 +282,7 @@ class _Content extends StatelessWidget {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppColors.surface,
+      backgroundColor: context.surfaceColor,
       builder: (sheetContext) => SafeArea(
         child: SizedBox(
           height: MediaQuery.sizeOf(sheetContext).height * 0.72,
@@ -334,7 +335,7 @@ class _Content extends StatelessWidget {
                               : Icons.downloading_rounded,
                           color: task?.status == DownloadStatus.completed
                               ? AppColors.success
-                              : AppColors.brandPink,
+                              : context.colorScheme.primary,
                         ),
                         trailing: _downloadAction(context, vm, chapter, task),
                         onTap: task?.status == DownloadStatus.completed

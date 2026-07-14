@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../comic_source/comic_source.dart';
+import '../../network/base_comic.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../common/widgets/comic_card.dart';
@@ -97,11 +98,18 @@ class _TempSearchPageState extends State<TempSearchPage> {
                     decoration: InputDecoration(
                       hintText: '输入关键词，如：星屑',
                       hintStyle: const TextStyle(color: AppColors.textLow),
-                      prefixIcon: const Icon(Icons.search, color: AppColors.textLow),
+                      prefixIcon: const Icon(
+                        Icons.search,
+                        color: AppColors.textLow,
+                      ),
                       suffixIcon: _controller.text.isEmpty
                           ? null
                           : IconButton(
-                              icon: const Icon(Icons.close, size: 18, color: AppColors.textLow),
+                              icon: const Icon(
+                                Icons.close,
+                                size: 18,
+                                color: AppColors.textLow,
+                              ),
                               onPressed: () {
                                 _controller.clear();
                                 setState(() => _results = const []);
@@ -127,15 +135,21 @@ class _TempSearchPageState extends State<TempSearchPage> {
   Widget _buildBody() {
     if (_loading) {
       return const Center(
-        child: CircularProgressIndicator(color: AppColors.brandPink, strokeWidth: 2.5),
+        child: CircularProgressIndicator(
+          color: AppColors.brandPink,
+          strokeWidth: 2.5,
+        ),
       );
     }
     if (_error != null) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.xl),
-          child: Text(_error!, textAlign: TextAlign.center,
-              style: const TextStyle(color: AppColors.textMedium)),
+          child: Text(
+            _error!,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: AppColors.textMedium),
+          ),
         ),
       );
     }
@@ -145,13 +159,16 @@ class _TempSearchPageState extends State<TempSearchPage> {
       );
     }
     // 计算 3 列网格的单元宽度，传给 ComicCard.poster 的固定 width 参数。
-    final cellWidth = (MediaQuery.of(context).size.width -
+    final cellWidth =
+        (MediaQuery.of(context).size.width -
             AppSpacing.md * 2 -
             AppSpacing.sm * 2) /
         3;
     return GridView.builder(
       padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.sm,
+      ),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
         mainAxisSpacing: AppSpacing.md,

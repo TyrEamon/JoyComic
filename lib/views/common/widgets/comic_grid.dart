@@ -9,9 +9,8 @@ import 'comic_card.dart';
 import 'empty_state.dart';
 import 'loading_grid.dart';
 
-typedef ComicCoverHeadersBuilder = Map<String, dynamic>? Function(
-  ComicGridItem item,
-);
+typedef ComicCoverHeadersBuilder =
+    Map<String, dynamic>? Function(ComicGridItem item);
 
 class ComicGrid extends StatefulWidget {
   const ComicGrid({
@@ -62,13 +61,15 @@ class _ComicGridState extends State<ComicGrid> {
       return EmptyState(title: widget.emptyTitle);
     }
 
-    final cellWidth = (MediaQuery.of(context).size.width -
+    final cellWidth =
+        (MediaQuery.of(context).size.width -
             AppSpacing.md * 2 -
             AppSpacing.sm * (widget.crossAxisCount - 1)) /
         widget.crossAxisCount;
     Widget grid = GridView.builder(
       shrinkWrap: widget.shrinkWrap,
-      physics: widget.physics ??
+      physics:
+          widget.physics ??
           (widget.onRefresh == null
               ? null
               : const AlwaysScrollableScrollPhysics()),
@@ -102,7 +103,8 @@ class _ComicGridState extends State<ComicGrid> {
           subtitle: item.subtitle,
           rating: item.rating,
           width: cellWidth,
-          headers: widget.coverHeadersBuilder?.call(item) ?? widget.coverHeaders,
+          headers:
+              widget.coverHeadersBuilder?.call(item) ?? widget.coverHeaders,
           sourceKey: item.sourceKey,
           onTap: widget.onItemTap == null
               ? null

@@ -18,6 +18,7 @@ import '../../../../foundation/reader_config.dart';
 import '../../providers/list_state_provider.dart';
 import '../../providers/reader_provider.dart';
 import '../../state/read_mode.dart';
+import '../../utils/image_preload_controller.dart';
 import '../../utils/reader_utils.dart';
 import '../retry_for_image.dart';
 import '../reader_image.dart' as img_widget;
@@ -31,6 +32,27 @@ class HorizontalList extends StatefulWidget {
 }
 
 class _HorizontalListState extends State<HorizontalList> {
+  ImagePreloadController? _preloadController;
+
+  @override
+  void initState() {
+    super.initState();
+    final reader = context.reader;
+    _preloadController = ImagePreloadController(
+      context: context,
+      items: reader.images,
+      type: reader.readerType,
+      maxPreloadCount: ReaderConf.instance.preloadImageCount,
+    );
+    reader.initPreloadController(_preloadController!);
+  }
+
+  @override
+  void dispose() {
+    _preloadController?.dispose();
+    super.dispose();
+  }
+
   /// 当前章节 ID，用于图片缓存清理。
   String get cid => context.reader.id;
 

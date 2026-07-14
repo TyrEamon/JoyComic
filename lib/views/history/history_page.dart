@@ -2,11 +2,11 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../comic_source/comic_source.dart';
 import '../../database/read_record_helper.dart';
-import '../../theme/app_colors.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
 import '../common/utils/source_login_guard.dart';
@@ -109,10 +109,10 @@ class _HistoryPageState extends State<HistoryPage> {
   Widget build(BuildContext context) {
     final records = _controller.records;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.pageBackground,
       appBar: AppBar(
         title: Text('阅读历史 ${records.length}'),
-        backgroundColor: AppColors.background,
+        backgroundColor: context.pageBackground,
         actions: [
           IconButton(
             tooltip: '清空历史',
@@ -191,15 +191,15 @@ class _HistoryCard extends StatelessWidget {
       background: Container(
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: AppSpacing.lg),
-        decoration: const BoxDecoration(
-          color: AppColors.danger,
+        decoration: BoxDecoration(
+          color: context.colorScheme.error,
           borderRadius: AppRadius.brLg,
         ),
         child: const Icon(Icons.delete_outline_rounded, color: Colors.white),
       ),
       onDismissed: (_) => onDelete(),
       child: Material(
-        color: AppColors.surface,
+        color: context.surfaceColor,
         borderRadius: AppRadius.brLg,
         child: InkWell(
           borderRadius: AppRadius.brLg,
@@ -224,10 +224,10 @@ class _HistoryCard extends StatelessWidget {
                         record.title.isEmpty ? record.comic : record.title,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w700,
-                          color: AppColors.textHigh,
+                          color: context.primaryTextColor,
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -235,13 +235,13 @@ class _HistoryCard extends StatelessWidget {
                         '$sourceName · $chapter',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: AppColors.textMedium),
+                        style: TextStyle(color: context.secondaryTextColor),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         '$pageText · ${_formatUpdatedAt(record.updatedAt)}',
-                        style: const TextStyle(
-                          color: AppColors.textLow,
+                        style: TextStyle(
+                          color: context.tertiaryTextColor,
                           fontSize: 12,
                         ),
                       ),

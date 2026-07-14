@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../comic_source/built_in/registrar.dart';
 import '../comic_source/comic_source.dart';
+import 'preferences_store.dart';
 import 'reader_config.dart';
 
 class AppData {
@@ -17,9 +18,11 @@ class AppData {
   static const _legacyDarkModeKey = 'enableDarkMode';
 
   late SharedPreferences prefs;
+  late PreferencesStore _preferenceStore;
   late String dataPath;
+  ThemeMode _themeMode = ThemeMode.system;
 
-  /// 当前主题及其即时变更通知。
+  /// 当前主题及其持久化成功后的变更通知。
   final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier<ThemeMode>(
     ThemeMode.system,
   );
@@ -33,26 +36,28 @@ class AppData {
   bool get enableDynamicColor => prefs.getBool('enableDynamicColor') ?? true;
   set enableDynamicColor(bool v) => prefs.setBool('enableDynamicColor', v);
 
-  ThemeMode get themeMode {
-    final name = prefs.getString(_themeModeKey);
-    return ThemeMode.values.firstWhere(
-      (mode) => mode.name == name,
-      orElse: () => ThemeMode.system,
+  ThemeMode get themeMode => _themeMode;
+
+  /// Persists [mode] before publishing it to listeners.
+  Future<bool> setThemeMode(ThemeMode mode) async {
+    final persisted = await _safeWrite(
+      () => _preferenceStore.setString(_themeModeKey, mode.name),
     );
+    if (!persisted) return false;
+    _setRuntimeThemeMode(mode);
+    return true;
   }
 
-  set themeMode(ThemeMode mode) {
-    prefs.setString(_themeModeKey, mode.name);
-    themeNotifier.value = mode;
-  }
-
-  /// 旧布尔接口兼容层；system 在布尔语义下视为非强制深色。
+  /// 旧布尔读取接口兼容层；system 在布尔语义下视为非强制深色。
   bool get enableDarkMode => themeMode == ThemeMode.dark;
-  set enableDarkMode(bool value) =>
-      themeMode = value ? ThemeMode.dark : ThemeMode.light;
 
-  Future<void> init() async {
+  /// 旧布尔写入语义的异步兼容入口。
+  Future<bool> setDarkMode(bool value) =>
+      setThemeMode(value ? ThemeMode.dark : ThemeMode.light);
+
+  Future<void> init({PreferencesStore? preferenceStore}) async {
     prefs = await SharedPreferences.getInstance();
+    _preferenceStore = preferenceStore ?? SharedPreferencesStore(prefs);
     await _restoreThemeMode();
     final dir = await getApplicationSupportDirectory();
     dataPath = dir.path;
@@ -62,17 +67,39 @@ class AppData {
 
   Future<void> _restoreThemeMode() async {
     ThemeMode mode;
-    if (prefs.containsKey(_themeModeKey)) {
-      mode = themeMode;
-    } else if (prefs.containsKey(_legacyDarkModeKey)) {
-      mode = prefs.getBool(_legacyDarkModeKey) == true
+    if (_preferenceStore.containsKey(_themeModeKey)) {
+      mode = _modeFromName(_preferenceStore.getString(_themeModeKey));
+    } else if (_preferenceStore.containsKey(_legacyDarkModeKey)) {
+      mode = _preferenceStore.getBool(_legacyDarkModeKey) == true
           ? ThemeMode.dark
           : ThemeMode.light;
-      await prefs.setString(_themeModeKey, mode.name);
-      await prefs.remove(_legacyDarkModeKey);
+      final migrated = await _safeWrite(
+        () => _preferenceStore.setString(_themeModeKey, mode.name),
+      );
+      if (migrated) {
+        await _safeWrite(() => _preferenceStore.remove(_legacyDarkModeKey));
+      }
     } else {
       mode = ThemeMode.system;
     }
+    _setRuntimeThemeMode(mode);
+  }
+
+  ThemeMode _modeFromName(String? name) => ThemeMode.values.firstWhere(
+    (mode) => mode.name == name,
+    orElse: () => ThemeMode.system,
+  );
+
+  void _setRuntimeThemeMode(ThemeMode mode) {
+    _themeMode = mode;
     themeNotifier.value = mode;
+  }
+
+  Future<bool> _safeWrite(Future<bool> Function() write) async {
+    try {
+      return await write();
+    } catch (_) {
+      return false;
+    }
   }
 }

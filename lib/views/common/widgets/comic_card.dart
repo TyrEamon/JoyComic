@@ -2,11 +2,12 @@
 /// - [ComicCard.poster]：竖版海报 3:4，列表页网格 + 详情页相关推荐横滑用
 /// - [ComicCard.horizontal]：横向卡片（封面 + 标题 + 元数据），首页/探索横滑用
 ///
-/// 文字统一用 [AppTypography]，卡片用 [AppColors.surface] 暖紫黑面 +
+/// 文字统一用 [AppTypography]，卡片用 [context.surfaceColor] 暖紫黑面 +
 /// [AppShadows.card] 下沉暗影，整体深色基调一致。
 library comic_card;
 
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 
 import '../../../theme/app_colors.dart';
 import '../../../theme/app_radius.dart';
@@ -26,9 +27,9 @@ class ComicCard extends StatelessWidget {
     this.headers,
     this.onTap,
     this.sourceKey,
-  })  : _layout = _Layout.poster,
-        badge = null,
-        tags = null;
+  }) : _layout = _Layout.poster,
+       badge = null,
+       tags = null;
 
   const ComicCard.horizontal({
     super.key,
@@ -41,8 +42,8 @@ class ComicCard extends StatelessWidget {
     this.headers,
     this.onTap,
     this.sourceKey,
-  })  : _layout = _Layout.horizontal,
-        badge = null;
+  }) : _layout = _Layout.horizontal,
+       badge = null;
 
   /// 带角标的网格卡（章节卡 / 收藏卡等扩展用）。
   const ComicCard.grid({
@@ -56,8 +57,8 @@ class ComicCard extends StatelessWidget {
     this.headers,
     this.onTap,
     this.sourceKey,
-  })  : _layout = _Layout.grid,
-        tags = null;
+  }) : _layout = _Layout.grid,
+       tags = null;
 
   final String title;
   final String? coverUrl;
@@ -181,7 +182,11 @@ class _Poster extends StatelessWidget {
               const SizedBox(height: 2),
               Row(
                 children: [
-                  Icon(Icons.star_rounded, size: 13, color: AppColors.ratingStar),
+                  Icon(
+                    Icons.star_rounded,
+                    size: 13,
+                    color: AppColors.ratingStar,
+                  ),
                   const SizedBox(width: 2),
                   Text(
                     rating!.toStringAsFixed(1),
@@ -233,9 +238,9 @@ class _Horizontal extends StatelessWidget {
       child: Container(
         width: width,
         decoration: BoxDecoration(
-          color: AppColors.surface,
+          color: context.surfaceColor,
           borderRadius: AppRadius.brMd,
-          border: Border.all(color: AppColors.border),
+          border: Border.all(color: context.borderColor),
           boxShadow: AppShadows.card,
         ),
         clipBehavior: Clip.antiAlias,
@@ -287,7 +292,10 @@ class _Horizontal extends StatelessWidget {
                       Wrap(
                         spacing: 4,
                         runSpacing: 4,
-                        children: tags!.take(3).map(_miniTag).toList(),
+                        children: tags!
+                            .take(3)
+                            .map((tag) => _miniTag(context, tag))
+                            .toList(),
                       ),
                     ],
                   ],
@@ -300,21 +308,21 @@ class _Horizontal extends StatelessWidget {
     );
   }
 
-  Widget _miniTag(String t) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-        decoration: BoxDecoration(
-          color: AppColors.brandPink.withValues(alpha: 0.12),
-          borderRadius: AppRadius.brSm,
-        ),
-        child: Text(
-          t,
-          style: TextStyle(
-            fontSize: 10,
-            color: AppColors.brandPink,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      );
+  Widget _miniTag(BuildContext context, String t) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+    decoration: BoxDecoration(
+      color: context.colorScheme.primary.withValues(alpha: 0.12),
+      borderRadius: AppRadius.brSm,
+    ),
+    child: Text(
+      t,
+      style: TextStyle(
+        fontSize: 10,
+        color: context.colorScheme.primary,
+        fontWeight: FontWeight.w600,
+      ),
+    ),
+  );
 }
 
 // ============================ 网格卡（带角标） ============================
@@ -359,8 +367,7 @@ class _Grid extends StatelessWidget {
                   top: 6,
                   child: _SourceBadge(sourceKey: sourceKey!),
                 ),
-              if (badge != null)
-                Positioned(top: 8, right: 8, child: badge!),
+              if (badge != null) Positioned(top: 8, right: 8, child: badge!),
             ],
           ),
           const SizedBox(height: AppSpacing.xs),

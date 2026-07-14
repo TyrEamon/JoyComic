@@ -7,8 +7,8 @@ library comment_section;
 
 import 'package:cached_network_image_ce/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 
-import '../../../theme/app_colors.dart';
 import '../../../theme/app_radius.dart';
 import '../../../theme/app_shadows.dart';
 import '../../../theme/app_spacing.dart';
@@ -62,7 +62,7 @@ class CommentSection extends StatelessWidget {
                 Text(
                   '($total)',
                   style: AppTypography.section(context).copyWith(
-                    color: AppColors.textLow,
+                    color: context.tertiaryTextColor,
                     fontWeight: FontWeight.w400,
                   ),
                 ),
@@ -73,11 +73,21 @@ class CommentSection extends StatelessWidget {
                   onTap: onShowAll,
                   borderRadius: AppRadius.brSm,
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 4,
+                    ),
                     child: Row(
                       children: [
-                        Text('更多评论', style: AppTypography.sectionAction(context)),
-                        const Icon(Icons.chevron_right_rounded, size: 18, color: AppColors.textLow),
+                        Text(
+                          '更多评论',
+                          style: AppTypography.sectionAction(context),
+                        ),
+                        Icon(
+                          Icons.chevron_right_rounded,
+                          size: 18,
+                          color: context.tertiaryTextColor,
+                        ),
                       ],
                     ),
                   ),
@@ -86,9 +96,14 @@ class CommentSection extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.sm),
           if (comments.isEmpty)
-            const Padding(
+            Padding(
               padding: EdgeInsets.symmetric(vertical: AppSpacing.lg),
-              child: Center(child: Text('还没有评论', style: TextStyle(color: AppColors.textLow))),
+              child: Center(
+                child: Text(
+                  '还没有评论',
+                  style: TextStyle(color: context.tertiaryTextColor),
+                ),
+              ),
             )
           else
             ...comments.map((c) => _CommentCard(c)),
@@ -108,9 +123,9 @@ class _CommentCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
       padding: const EdgeInsets.all(AppSpacing.sm),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.surfaceColor,
         borderRadius: AppRadius.brMd,
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: context.borderColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -130,7 +145,9 @@ class _CommentCard extends StatelessWidget {
                             c.userName,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: AppTypography.cardTitle(context).copyWith(fontSize: 13),
+                            style: AppTypography.cardTitle(
+                              context,
+                            ).copyWith(fontSize: 13),
                           ),
                         ),
                         if (c.level != null) ...[
@@ -153,7 +170,9 @@ class _CommentCard extends StatelessWidget {
             c.content,
             maxLines: 4,
             overflow: TextOverflow.ellipsis,
-            style: AppTypography.body(context).copyWith(fontSize: 14, height: 1.5),
+            style: AppTypography.body(
+              context,
+            ).copyWith(fontSize: 14, height: 1.5),
           ),
           const SizedBox(height: AppSpacing.xs),
           Row(
@@ -161,7 +180,11 @@ class _CommentCard extends StatelessWidget {
               if (c.time != null)
                 Text(c.time!, style: AppTypography.ratingCount(context)),
               const Spacer(),
-              Icon(Icons.favorite_border_rounded, size: 14, color: AppColors.textLow),
+              Icon(
+                Icons.favorite_border_rounded,
+                size: 14,
+                color: context.tertiaryTextColor,
+              ),
               const SizedBox(width: 4),
               Text(
                 c.likes != null ? '${c.likes}' : '0',
@@ -186,17 +209,24 @@ class _Avatar extends StatelessWidget {
       height: 32,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: AppColors.surfaceElevated,
+        color: context.elevatedSurfaceColor,
         boxShadow: AppShadows.card,
       ),
       clipBehavior: Clip.antiAlias,
       child: url == null
-          ? const Icon(Icons.person, size: 18, color: AppColors.textDisabled)
+          ? Icon(Icons.person, size: 18, color: context.disabledTextColor)
           : CachedNetworkImage(
               imageUrl: url!,
               fit: BoxFit.cover,
-              placeholder: (_, __) => const ColoredBox(color: AppColors.surfaceElevated, child: SizedBox.expand()),
-              errorWidget: (_, __, ___) => const Icon(Icons.person, size: 18, color: AppColors.textDisabled),
+              placeholder: (_, __) => ColoredBox(
+                color: context.elevatedSurfaceColor,
+                child: SizedBox.expand(),
+              ),
+              errorWidget: (_, __, ___) => Icon(
+                Icons.person,
+                size: 18,
+                color: context.disabledTextColor,
+              ),
             ),
     );
   }
@@ -211,8 +241,8 @@ class _LevelBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [AppColors.brandPink, AppColors.brandViolet],
+        gradient: LinearGradient(
+          colors: [context.colorScheme.primary, context.colorScheme.secondary],
         ),
         borderRadius: BorderRadius.circular(3),
       ),

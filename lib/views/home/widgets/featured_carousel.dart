@@ -2,17 +2,14 @@
 library featured_carousel;
 
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 
 import '../../../theme/app_colors.dart';
 import '../../../theme/app_radius.dart';
 import '../../../theme/app_spacing.dart';
 
 class FeaturedCarousel extends StatelessWidget {
-  const FeaturedCarousel({
-    super.key,
-    required this.items,
-    this.onTap,
-  });
+  const FeaturedCarousel({super.key, required this.items, this.onTap});
 
   final List<FeaturedItem> items;
   final void Function(FeaturedItem item)? onTap;
@@ -82,7 +79,7 @@ class _FeaturedCard extends StatelessWidget {
               fit: BoxFit.cover,
               headers: item.headers?.cast<String, String>(),
               colorBlendMode: BlendMode.dstATop,
-              color: AppColors.surface,
+              color: context.surfaceColor,
               errorBuilder: (_, __, ___) => Container(
                 decoration: const BoxDecoration(
                   gradient: AppColors.brandGradient,
@@ -117,8 +114,11 @@ class _FeaturedCard extends StatelessWidget {
                     vertical: 3,
                   ),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [AppColors.brandPink, AppColors.brandViolet],
+                    gradient: LinearGradient(
+                      colors: [
+                        context.colorScheme.primary,
+                        context.colorScheme.secondary,
+                      ],
                     ),
                     borderRadius: BorderRadius.circular(4),
                   ),
@@ -143,9 +143,9 @@ class _FeaturedCard extends StatelessWidget {
                   if (item.tag?.isNotEmpty == true)
                     Text(
                       item.tag!,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
-                        color: AppColors.brandPink,
+                        color: context.colorScheme.primary,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -172,8 +172,8 @@ class _FeaturedCard extends StatelessWidget {
   }
 
   String _sourceLabel(String sourceKey) => switch (sourceKey) {
-        'jm' => 'JM',
-        'picacg' => 'Pica',
-        _ => sourceKey,
-      };
+    'jm' => 'JM',
+    'picacg' => 'Pica',
+    _ => sourceKey,
+  };
 }

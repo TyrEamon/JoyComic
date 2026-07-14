@@ -5,12 +5,12 @@ import 'dart:math' as math;
 
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../comic_source/comic_source.dart';
 import '../../database/favorites_helper.dart';
 import '../../foundation/log.dart';
-import '../../theme/app_colors.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
 import '../common/utils/source_login_guard.dart';
@@ -373,7 +373,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
         .toList();
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.pageBackground,
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -409,17 +409,17 @@ class _FavoritesPageState extends State<FavoritesPage> {
                 ),
                 child: Text(
                   '${_failedSources.map(_sourceName).join('、')} 同步失败，已显示本地收藏',
-                  style: const TextStyle(
-                    color: AppColors.textLow,
+                  style: TextStyle(
+                    color: context.tertiaryTextColor,
                     fontSize: 12,
                   ),
                 ),
               ),
             Expanded(
               child: _loading && visibleItems.isEmpty
-                  ? const Center(
+                  ? Center(
                       child: CircularProgressIndicator(
-                        color: AppColors.brandPink,
+                        color: context.colorScheme.primary,
                         strokeWidth: 2.5,
                       ),
                     )
@@ -473,18 +473,18 @@ class _TopBar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Text(
+          Text(
             '收藏',
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.w800,
-              color: AppColors.textHigh,
+              color: context.primaryTextColor,
             ),
           ),
           const SizedBox(width: AppSpacing.xs),
           Text(
             '$count',
-            style: const TextStyle(fontSize: 14, color: AppColors.textLow),
+            style: TextStyle(fontSize: 14, color: context.tertiaryTextColor),
           ),
           const Spacer(),
           IconButton(
@@ -553,9 +553,9 @@ class _LoginHint extends StatelessWidget {
         vertical: AppSpacing.xs,
       ),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.surfaceColor,
         borderRadius: AppRadius.brMd,
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: context.borderColor),
       ),
       child: Row(
         children: [
@@ -598,7 +598,7 @@ class _FavoritesGrid extends StatelessWidget {
             (constraints.maxWidth - AppSpacing.md * 2 - AppSpacing.sm * 2) /
             columns;
         return RefreshIndicator(
-          color: AppColors.brandPink,
+          color: context.colorScheme.primary,
           onRefresh: onRefresh,
           child: GridView.builder(
             physics: const AlwaysScrollableScrollPhysics(),
@@ -651,7 +651,7 @@ class _FavoritesGrid extends StatelessWidget {
                         tooltip: busy ? '取消收藏中' : '取消收藏',
                         visualDensity: VisualDensity.compact,
                         iconSize: 18,
-                        color: AppColors.brandPink,
+                        color: context.colorScheme.primary,
                         onPressed: busy ? null : () => onRemove(item),
                         icon: busy
                             ? SizedBox.square(
@@ -659,9 +659,9 @@ class _FavoritesGrid extends StatelessWidget {
                                   'favorite-busy:${item.sourceKey}:${item.comicId}',
                                 ),
                                 dimension: 16,
-                                child: const CircularProgressIndicator(
+                                child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  color: AppColors.brandPink,
+                                  color: context.colorScheme.primary,
                                 ),
                               )
                             : const Icon(Icons.favorite_rounded),

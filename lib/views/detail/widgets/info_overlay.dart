@@ -7,7 +7,6 @@
 /// - 评分复合组件：大号数字 + 五星 + 评价人数
 library info_overlay;
 
-import 'package:cached_network_image_ce/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../../foundation/palette_extractor.dart';
@@ -128,22 +127,23 @@ class _RatingChip extends StatelessWidget {
       children: [
         Text(
           rating.toStringAsFixed(1),
-          style: AppTypography.ratingNumber(context).copyWith(
-            color: palette.accent,
-          ),
+          style: AppTypography.ratingNumber(
+            context,
+          ).copyWith(color: palette.accent),
         ),
         const SizedBox(width: 6),
         Padding(
           padding: const EdgeInsets.only(bottom: 3),
-          child: RatingStars(rating: rating / 2, color: palette.accent, size: 13),
+          child: RatingStars(
+            rating: rating / 2,
+            color: palette.accent,
+            size: 13,
+          ),
         ),
         const SizedBox(width: 6),
         Padding(
           padding: const EdgeInsets.only(bottom: 4),
-          child: Text(
-            '$count 人评价',
-            style: AppTypography.ratingCount(context),
-          ),
+          child: Text('$count 人评价', style: AppTypography.ratingCount(context)),
         ),
       ],
     );

@@ -79,10 +79,7 @@ class _StarPainter extends CustomPainter {
     final path = _starPath(size);
 
     // 背景（空星）。
-    canvas.drawPath(
-      path,
-      Paint()..color = color.withValues(alpha: 0.18),
-    );
+    canvas.drawPath(path, Paint()..color = color.withValues(alpha: 0.18));
 
     // 前景（按 fill 比例裁剪）。
     if (fill > 0) {

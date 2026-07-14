@@ -2,9 +2,9 @@
 library reader_settings_page;
 
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 
 import '../../foundation/reader_config.dart';
-import '../../theme/app_colors.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
 import '../reader/state/read_mode.dart';
@@ -46,13 +46,20 @@ class _ReaderSettingsPageState extends State<ReaderSettingsPage> {
     _autoHideToolbar = _conf.autoHideToolbar;
   }
 
+  Future<void> _persist(VoidCallback write, VoidCallback update) async {
+    write();
+    final persisted = await _conf.flushPendingWrites();
+    if (!mounted || !persisted) return;
+    setState(update);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.pageBackground,
       appBar: AppBar(
         title: const Text('阅读设置'),
-        backgroundColor: AppColors.background,
+        backgroundColor: context.pageBackground,
       ),
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
@@ -66,9 +73,11 @@ class _ReaderSettingsPageState extends State<ReaderSettingsPage> {
                   subtitle: item.$3,
                   selected: _mode == item.$1,
                   iconKey: Key('reader-mode-${item.$1.name}'),
-                  onTap: () {
-                    _conf.readMode = item.$1;
-                    setState(() => _mode = item.$1);
+                  onTap: () async {
+                    await _persist(
+                      () => _conf.readMode = item.$1,
+                      () => _mode = item.$1,
+                    );
                   },
                 ),
             ],
@@ -81,9 +90,11 @@ class _ReaderSettingsPageState extends State<ReaderSettingsPage> {
                 icon: Icons.swipe_rounded,
                 title: '手势翻页',
                 value: _enableGesture,
-                onChanged: (value) {
-                  _conf.enableGesture = value;
-                  setState(() => _enableGesture = value);
+                onChanged: (value) async {
+                  await _persist(
+                    () => _conf.enableGesture = value,
+                    () => _enableGesture = value,
+                  );
                 },
               ),
               _SwitchRow(
@@ -91,9 +102,11 @@ class _ReaderSettingsPageState extends State<ReaderSettingsPage> {
                 icon: Icons.animation_rounded,
                 title: '翻页动画',
                 value: _enablePageAnimation,
-                onChanged: (value) {
-                  _conf.enablePageAnimation = value;
-                  setState(() => _enablePageAnimation = value);
+                onChanged: (value) async {
+                  await _persist(
+                    () => _conf.enablePageAnimation = value,
+                    () => _enablePageAnimation = value,
+                  );
                 },
               ),
             ],
@@ -106,10 +119,12 @@ class _ReaderSettingsPageState extends State<ReaderSettingsPage> {
                 options: _preloadOptions,
                 selected: _preloadOptions.indexOf('$_preload'),
                 keyPrefix: 'reader-preload',
-                onChanged: (index) {
+                onChanged: (index) async {
                   final value = int.parse(_preloadOptions[index]);
-                  _conf.preloadImageCount = value;
-                  setState(() => _preload = value);
+                  await _persist(
+                    () => _conf.preloadImageCount = value,
+                    () => _preload = value,
+                  );
                 },
               ),
             ],
@@ -122,9 +137,11 @@ class _ReaderSettingsPageState extends State<ReaderSettingsPage> {
                 icon: Icons.looks_rounded,
                 title: '页码角标',
                 value: _showPageNumbers,
-                onChanged: (value) {
-                  _conf.showPageNumbers = value;
-                  setState(() => _showPageNumbers = value);
+                onChanged: (value) async {
+                  await _persist(
+                    () => _conf.showPageNumbers = value,
+                    () => _showPageNumbers = value,
+                  );
                 },
               ),
               _SwitchRow(
@@ -132,9 +149,11 @@ class _ReaderSettingsPageState extends State<ReaderSettingsPage> {
                 icon: Icons.visibility_off_outlined,
                 title: '工具栏自动隐藏',
                 value: _autoHideToolbar,
-                onChanged: (value) {
-                  _conf.autoHideToolbar = value;
-                  setState(() => _autoHideToolbar = value);
+                onChanged: (value) async {
+                  await _persist(
+                    () => _conf.autoHideToolbar = value,
+                    () => _autoHideToolbar = value,
+                  );
                 },
               ),
             ],
@@ -165,19 +184,19 @@ class _Group extends StatelessWidget {
           ),
           child: Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: AppColors.textLow,
+              color: context.tertiaryTextColor,
             ),
           ),
         ),
         Container(
           margin: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
           decoration: BoxDecoration(
-            color: AppColors.surface,
+            color: context.surfaceColor,
             borderRadius: AppRadius.brLg,
-            border: Border.all(color: AppColors.border),
+            border: Border.all(color: context.borderColor),
           ),
           child: Column(children: children),
         ),
@@ -218,18 +237,18 @@ class _RadioRow extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w500,
-                      color: AppColors.textHigh,
+                      color: context.primaryTextColor,
                     ),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     subtitle,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
-                      color: AppColors.textLow,
+                      color: context.tertiaryTextColor,
                     ),
                   ),
                 ],
@@ -238,7 +257,9 @@ class _RadioRow extends StatelessWidget {
             Icon(
               key: iconKey,
               selected ? Icons.radio_button_checked : Icons.radio_button_off,
-              color: selected ? AppColors.brandPink : AppColors.textLow,
+              color: selected
+                  ? context.colorScheme.primary
+                  : context.tertiaryTextColor,
               size: 22,
             ),
           ],
@@ -272,18 +293,18 @@ class _SwitchRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(icon, size: 20, color: AppColors.brandPink),
+          Icon(icon, size: 20, color: context.colorScheme.primary),
           const SizedBox(width: AppSpacing.md),
           Expanded(
             child: Text(
               title,
-              style: const TextStyle(fontSize: 15, color: AppColors.textHigh),
+              style: TextStyle(fontSize: 15, color: context.primaryTextColor),
             ),
           ),
           Switch.adaptive(
             key: switchKey,
             value: value,
-            activeTrackColor: AppColors.brandPink,
+            activeTrackColor: context.colorScheme.primary,
             onChanged: onChanged,
           ),
         ],
@@ -318,13 +339,13 @@ class _SegmentRow extends StatelessWidget {
         children: [
           Text(
             label,
-            style: const TextStyle(fontSize: 15, color: AppColors.textHigh),
+            style: TextStyle(fontSize: 15, color: context.primaryTextColor),
           ),
           const Spacer(),
           Container(
             padding: const EdgeInsets.all(2),
             decoration: BoxDecoration(
-              color: AppColors.surfaceElevated,
+              color: context.elevatedSurfaceColor,
               borderRadius: BorderRadius.circular(10),
             ),
             child: Row(
@@ -342,10 +363,10 @@ class _SegmentRow extends StatelessWidget {
                       ),
                       decoration: BoxDecoration(
                         gradient: i == selected
-                            ? const LinearGradient(
+                            ? LinearGradient(
                                 colors: [
-                                  AppColors.brandPink,
-                                  AppColors.brandViolet,
+                                  context.colorScheme.primary,
+                                  context.colorScheme.secondary,
                                 ],
                               )
                             : null,
@@ -358,7 +379,7 @@ class _SegmentRow extends StatelessWidget {
                           fontWeight: FontWeight.w600,
                           color: i == selected
                               ? Colors.white
-                              : AppColors.textMedium,
+                              : context.secondaryTextColor,
                         ),
                       ),
                     ),

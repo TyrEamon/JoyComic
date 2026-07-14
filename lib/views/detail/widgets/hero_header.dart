@@ -66,7 +66,8 @@ class HeroHeader extends StatelessWidget {
                 httpHeaders: coverHeaders?.cast<String, String>(),
                 fit: BoxFit.cover,
                 placeholder: (_, __) => _SolidBG(color: AppColors.heroBase),
-                errorWidget: (_, __, ___) => _SolidBG(color: AppColors.heroBase),
+                errorWidget: (_, __, ___) =>
+                    _SolidBG(color: AppColors.heroBase),
               ),
             ),
             // 2a. 顶部暗化蒙版（导航可读性）。
@@ -75,7 +76,11 @@ class HeroHeader extends StatelessWidget {
               left: 0,
               right: 0,
               height: 120,
-              child: const IgnorePointer(child: DecoratedBox(decoration: BoxDecoration(gradient: AppColors.heroTopMask))),
+              child: const IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(gradient: AppColors.heroTopMask),
+                ),
+              ),
             ),
             // 2b. 取色染色的氛围光（顶部一抹封面主色，增强沉浸）。
             Positioned(
@@ -104,7 +109,11 @@ class HeroHeader extends StatelessWidget {
               right: 0,
               bottom: 0,
               height: _height * 0.72,
-              child: const IgnorePointer(child: DecoratedBox(decoration: BoxDecoration(gradient: AppColors.heroBottomMask))),
+              child: const IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(gradient: AppColors.heroBottomMask),
+                ),
+              ),
             ),
             // 3 + 4. 前景封面 + 信息叠加层。
             Positioned(
@@ -141,8 +150,6 @@ class _SolidBG extends StatelessWidget {
   final Color color;
 
   @override
-  Widget build(BuildContext context) => ColoredBox(
-        color: color,
-        child: const SizedBox.expand(),
-      );
+  Widget build(BuildContext context) =>
+      ColoredBox(color: color, child: const SizedBox.expand());
 }

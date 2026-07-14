@@ -2,6 +2,7 @@
 library webdav_settings_page;
 
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 
 import '../../foundation/log.dart';
 import '../../foundation/webdav_client.dart';
@@ -93,18 +94,18 @@ class _WebDavSettingsPageState extends State<WebDavSettingsPage> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: const Text('恢复数据', style: TextStyle(color: AppColors.textHigh)),
-        content: const Text('将从 WebDAV 下载最新备份并覆盖本地数据，继续吗？',
-            style: TextStyle(color: AppColors.textMedium)),
+        backgroundColor: context.surfaceColor,
+        title: Text('恢复数据', style: TextStyle(color: context.primaryTextColor)),
+        content: Text('将从 WebDAV 下载最新备份并覆盖本地数据，继续吗？',
+            style: TextStyle(color: context.secondaryTextColor)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消', style: TextStyle(color: AppColors.textLow)),
+            child: Text('取消', style: TextStyle(color: context.tertiaryTextColor)),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(backgroundColor: AppColors.brandPink),
+            style: FilledButton.styleFrom(backgroundColor: context.colorScheme.primary),
             child: const Text('恢复'),
           ),
         ],
@@ -139,38 +140,38 @@ class _WebDavSettingsPageState extends State<WebDavSettingsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.pageBackground,
       appBar: AppBar(
         title: const Text('WebDAV 同步'),
-        backgroundColor: AppColors.background,
+        backgroundColor: context.pageBackground,
       ),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.md),
         children: [
-          const Text('服务器地址',
+          Text('服务器地址',
               style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.textHigh)),
+                  color: context.primaryTextColor)),
           const SizedBox(height: 8),
           TextField(
             controller: _urlCtrl,
             decoration: _input('https://nextcloud.example.com/remote.php/dav/files/用户名/'),
           ),
           const SizedBox(height: AppSpacing.md),
-          const Text('用户名',
+          Text('用户名',
               style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.textHigh)),
+                  color: context.primaryTextColor)),
           const SizedBox(height: 8),
           TextField(controller: _userCtrl, decoration: _input('用户名')),
           const SizedBox(height: AppSpacing.md),
-          const Text('密码',
+          Text('密码',
               style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.textHigh)),
+                  color: context.primaryTextColor)),
           const SizedBox(height: 8),
           TextField(
             controller: _passCtrl,
@@ -214,7 +215,7 @@ class _WebDavSettingsPageState extends State<WebDavSettingsPage> {
                   icon: const Icon(Icons.cloud_upload_outlined),
                   label: const Text('备份'),
                   style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.brandPink,
+                    backgroundColor: context.colorScheme.primary,
                   ),
                 ),
               ),
@@ -236,12 +237,12 @@ class _WebDavSettingsPageState extends State<WebDavSettingsPage> {
                 padding: const EdgeInsets.only(bottom: 8),
                 child: LinearProgressIndicator(
                   value: _syncProgress,
-                  backgroundColor: AppColors.surfaceElevated,
-                  color: AppColors.brandPink,
+                  backgroundColor: context.elevatedSurfaceColor,
+                  color: context.colorScheme.primary,
                 ),
               ),
             Text(_syncMessage!,
-                style: const TextStyle(color: AppColors.textMedium)),
+                style: TextStyle(color: context.secondaryTextColor)),
           ],
         ],
       ),
@@ -250,9 +251,9 @@ class _WebDavSettingsPageState extends State<WebDavSettingsPage> {
 
   InputDecoration _input(String hint) => InputDecoration(
         hintText: hint,
-        hintStyle: const TextStyle(color: AppColors.textLow, fontSize: 13),
+        hintStyle: TextStyle(color: context.tertiaryTextColor, fontSize: 13),
         filled: true,
-        fillColor: AppColors.surface,
+        fillColor: context.surfaceColor,
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),

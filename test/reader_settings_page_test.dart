@@ -1,8 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:joycomic/foundation/preferences_store.dart';
 import 'package:joycomic/foundation/reader_config.dart';
 import 'package:joycomic/views/reader/state/read_mode.dart';
 import 'package:joycomic/views/settings/reader_settings_page.dart';
+import 'package:joycomic/views/settings/settings_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -34,7 +39,28 @@ void main() {
     expect(conf.menuLocked, isTrue);
   });
 
-  test('ReaderConf writes supported settings immediately', () async {
+  test('ReaderConf flush waits until pending writes reach storage', () async {
+    final store = _DelayedPreferencesStore();
+    final conf = ReaderConf.instance..injectStore(store);
+
+    conf.preloadImageCount = 8;
+    var flushed = false;
+    final flush = conf.flushPendingWrites().then((value) {
+      flushed = true;
+      return value;
+    });
+    await Future<void>.delayed(Duration.zero);
+
+    expect(flushed, isFalse);
+    expect(store.getInt('preloadImageCount'), isNull);
+
+    store.completeWrites();
+
+    expect(await flush, isTrue);
+    expect(store.getInt('preloadImageCount'), 8);
+  });
+
+  test('ReaderConf writes supported settings and can flush them', () async {
     final prefs = await injectReaderConf({});
     final conf = ReaderConf.instance;
 
@@ -45,6 +71,7 @@ void main() {
     conf.showPageNumbers = false;
     conf.menuLocked = true;
 
+    expect(await conf.flushPendingWrites(), isTrue);
     expect(prefs.getString('readMode'), ReadMode.doubleRightToLeft.name);
     expect(prefs.getBool('enableGesture'), isFalse);
     expect(prefs.getBool('enablePageAnimation'), isFalse);
@@ -100,28 +127,98 @@ void main() {
     expect(find.text('图片质量'), findsNothing);
   });
 
-  testWidgets('reader settings persist changes as soon as controls change', (
+  testWidgets('reader settings await persistence before updating controls', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(800, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    final prefs = await injectReaderConf({});
+    final store = _DelayedPreferencesStore();
+    ReaderConf.instance.injectStore(store);
 
     await tester.pumpWidget(const MaterialApp(home: ReaderSettingsPage()));
-
-    await tester.tap(find.text('双页 右→左'));
     await tester.tap(find.byKey(const Key('reader-preload-8')));
-    await tester.tap(find.byKey(const Key('reader-enable-gesture')));
-    await tester.tap(find.byKey(const Key('reader-page-animation')));
-    await tester.tap(find.byKey(const Key('reader-show-page-numbers')));
-    await tester.tap(find.byKey(const Key('reader-auto-hide-toolbar')));
     await tester.pump();
 
-    expect(prefs.getString('readMode'), ReadMode.doubleRightToLeft.name);
-    expect(prefs.getInt('preloadImageCount'), 8);
-    expect(prefs.getBool('enableGesture'), isFalse);
-    expect(prefs.getBool('enablePageAnimation'), isFalse);
-    expect(prefs.getBool('showPageNumbers'), isFalse);
-    expect(prefs.getBool('menuLocked'), isTrue);
+    expect(store.getInt('preloadImageCount'), isNull);
+    store.completeWrites();
+    await tester.pumpAndSettle();
+
+    expect(store.getInt('preloadImageCount'), 8);
   });
+
+  testWidgets('settings refreshes reader mode summary after returning', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await injectReaderConf({});
+    final router = GoRouter(
+      initialLocation: '/settings',
+      routes: [
+        GoRoute(path: '/settings', builder: (_, _) => const SettingsPage()),
+        GoRoute(
+          path: '/settings/reader',
+          builder: (_, _) => const ReaderSettingsPage(),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.tap(find.text('阅读设置'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('双页 右→左'));
+    await tester.pumpAndSettle();
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    expect(find.text('双页从右到左'), findsOneWidget);
+  });
+}
+
+class _DelayedPreferencesStore implements PreferencesStore {
+  final Map<String, Object> _values = <String, Object>{};
+  final List<({String key, Object value, Completer<bool> completer})> _pending =
+      [];
+
+  void completeWrites() {
+    for (final write in List.of(_pending)) {
+      _values[write.key] = write.value;
+      write.completer.complete(true);
+      _pending.remove(write);
+    }
+  }
+
+  Future<bool> _delay(String key, Object value) {
+    final completer = Completer<bool>();
+    _pending.add((key: key, value: value, completer: completer));
+    return completer.future;
+  }
+
+  @override
+  bool containsKey(String key) => _values.containsKey(key);
+  @override
+  bool? getBool(String key) => _values[key] as bool?;
+  @override
+  double? getDouble(String key) => _values[key] as double?;
+  @override
+  int? getInt(String key) => _values[key] as int?;
+  @override
+  String? getString(String key) => _values[key] as String?;
+  @override
+  List<String>? getStringList(String key) =>
+      (_values[key] as List<String>?)?.toList();
+  @override
+  Future<bool> remove(String key) => _delay(key, Object());
+  @override
+  Future<bool> setBool(String key, bool value) => _delay(key, value);
+  @override
+  Future<bool> setDouble(String key, double value) => _delay(key, value);
+  @override
+  Future<bool> setInt(String key, int value) => _delay(key, value);
+  @override
+  Future<bool> setString(String key, String value) => _delay(key, value);
+  @override
+  Future<bool> setStringList(String key, List<String> value) =>
+      _delay(key, List<String>.of(value));
 }
