@@ -18,18 +18,112 @@ import 'package:joycomic/theme/app_theme_context.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../foundation/app_data.dart';
+import '../../foundation/cache_manager.dart';
+import '../../foundation/download_manager.dart';
 import '../../foundation/reader_config.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
 
 class SettingsPage extends StatefulWidget {
-  const SettingsPage({super.key});
+  const SettingsPage({super.key, this.cacheManager});
+
+  final CacheManager? cacheManager;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
 }
 
 class _SettingsPageState extends State<SettingsPage> {
+  late Future<CacheManager> _cacheManager;
+  CacheSize? _cacheSize;
+  bool _loadingCache = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _cacheManager = widget.cacheManager == null
+        ? CacheManager.create(
+            onClearCompletedDownloads: () =>
+                DownloadManager.instance.clearCompletedSafely(),
+          )
+        : Future.value(widget.cacheManager!);
+    _refreshCacheSize();
+  }
+
+  Future<void> _refreshCacheSize() async {
+    try {
+      final manager = await _cacheManager;
+      final size = await manager.calculateSize();
+      if (!mounted) return;
+      setState(() => _cacheSize = size);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _cacheSize = const CacheSize(diskBytes: 0, imageCacheBytes: 0));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('读取缓存大小失败：$error')),
+      );
+    }
+  }
+
+  Future<void> _clearCaches() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('清除缓存？'),
+        content: const Text('只会删除网络图片缓存、临时文件、日志和未完成下载临时文件，不会删除数据库、账号、收藏、历史或已完成下载。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('清除')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _loadingCache = true);
+    try {
+      final manager = await _cacheManager;
+      await manager.clearSafeCaches();
+      await _refreshCacheSize();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('缓存已清除')));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('清除缓存失败：$error')));
+    } finally {
+      if (mounted) setState(() => _loadingCache = false);
+    }
+  }
+
+  Future<void> _clearCompletedDownloads() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除已完成下载？'),
+        content: const Text('这是危险操作，将删除所有已完成的离线章节及其下载记录，且无法恢复。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('删除已完成下载'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _loadingCache = true);
+    try {
+      final manager = await _cacheManager;
+      await manager.clearCompletedDownloads();
+      await _refreshCacheSize();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已完成下载已删除')));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('删除已完成下载失败：$error')));
+    } finally {
+      if (mounted) setState(() => _loadingCache = false);
+    }
+  }
   Future<void> _openReaderSettings() async {
     await context.push('/settings/reader');
     if (mounted) setState(() {});
@@ -97,7 +191,20 @@ class _SettingsPageState extends State<SettingsPage> {
               _SettingsItem(
                 icon: Icons.cleaning_services_outlined,
                 label: '清除缓存',
-                value: '128 MB',
+                value: _loadingCache
+                    ? '处理中…'
+                    : _cacheSize == null
+                        ? '读取中…'
+                        : formatCacheBytes(_cacheSize!.totalBytes),
+                onTap: _loadingCache ? null : _clearCaches,
+                loading: _loadingCache,
+              ),
+              _SettingsItem(
+                icon: Icons.delete_sweep_outlined,
+                label: '删除已完成下载',
+                value: '危险操作',
+                onTap: _loadingCache ? null : _clearCompletedDownloads,
+                iconColor: context.colorScheme.error,
               ),
             ],
           ),
@@ -182,17 +289,22 @@ class _SettingsItem extends StatelessWidget {
     this.value,
     this.route,
     this.onTap,
+    this.loading = false,
+    this.iconColor,
   });
   final IconData icon;
   final String label;
   final String? value;
   final String? route;
   final VoidCallback? onTap;
+  final bool loading;
+  final Color? iconColor;
 
   @override
   Widget build(BuildContext context) {
+    final action = onTap ?? (route == null ? null : () => context.push(route!));
     return InkWell(
-      onTap: onTap ?? (route == null ? null : () => context.push(route!)),
+      onTap: action,
       borderRadius: BorderRadius.circular(12),
       child: Padding(
         padding: const EdgeInsets.symmetric(
@@ -201,7 +313,7 @@ class _SettingsItem extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(icon, size: 22, color: context.colorScheme.primary),
+            Icon(icon, size: 22, color: iconColor ?? context.colorScheme.primary),
             const SizedBox(width: AppSpacing.md),
             Expanded(
               child: Text(
@@ -209,7 +321,13 @@ class _SettingsItem extends StatelessWidget {
                 style: TextStyle(fontSize: 15, color: context.primaryTextColor),
               ),
             ),
-            if (value != null)
+            if (loading)
+              const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            else if (value != null)
               Text(
                 value!,
                 style: TextStyle(
@@ -218,7 +336,7 @@ class _SettingsItem extends StatelessWidget {
                 ),
               ),
             const SizedBox(width: AppSpacing.xxs),
-            if (route != null)
+            if (action != null && !loading)
               Icon(
                 Icons.chevron_right_rounded,
                 size: 20,

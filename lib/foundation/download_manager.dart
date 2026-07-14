@@ -556,6 +556,19 @@ class DownloadManager extends ChangeNotifier {
     }
   }
 
+  /// Deletes completed downloads and their partial files through the existing
+  /// managed-path checks. This explicit API is intentionally separate from
+  /// [clearCompleted], which only removes queue metadata.
+  Future<void> clearCompletedSafely() async {
+    final ids = _tasks
+        .where((task) => task.status == DownloadStatus.completed)
+        .map((task) => task.id!)
+        .toList();
+    for (final id in ids) {
+      await deleteFiles(id);
+    }
+  }
+
   Future<void> whenIdle({
     Duration timeout = const Duration(seconds: 15),
   }) async {

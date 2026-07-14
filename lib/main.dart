@@ -23,6 +23,7 @@ import 'views/reader/state/comic_state.dart';
 import 'views/search/search_page.dart';
 import 'views/settings/reader_settings_page.dart';
 import 'views/settings/settings_page.dart';
+import 'views/settings/about_page.dart';
 import 'views/settings/source_settings_page.dart';
 import 'views/settings/webdav_settings_page.dart';
 import 'views/settings/log_viewer_page.dart';
@@ -40,7 +41,7 @@ Future<void> main() async {
   runApp(const JoyComicApp());
 }
 
-final _router = GoRouter(
+final appRouter = GoRouter(
   initialLocation: '/',
   routes: [
     GoRoute(path: '/', builder: (context, state) => const MainScaffold()),
@@ -91,6 +92,10 @@ final _router = GoRouter(
     GoRoute(
       path: '/settings',
       builder: (context, state) => const SettingsPage(),
+    ),
+    GoRoute(
+      path: '/about',
+      builder: (context, state) => const AboutPage(),
     ),
     GoRoute(
       path: '/settings/source',
@@ -179,7 +184,7 @@ class JoyComicApp extends StatelessWidget {
         return MaterialApp.router(
           title: 'JoyComic',
           debugShowCheckedModeBanner: false,
-          routerConfig: _router,
+          routerConfig: appRouter,
           theme: AppTheme.light(),
           darkTheme: AppTheme.dark(),
           themeMode: themeMode,
