@@ -32,3 +32,6 @@ Thumbs.db
 *.swp
 *.swo
 clone/
+
+# Local Git worktrees
+.worktrees/
