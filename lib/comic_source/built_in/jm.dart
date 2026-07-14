@@ -148,27 +148,7 @@ ComicSource buildJmSource() {
     loadSourceCategories: () async {
       final res = await JmNetwork().getCategories();
       if (res.error) return Res(null, errorMessage: res.errorMessage);
-      final categories = <SourceCategory>[];
-      for (final category in res.data) {
-        categories.add(SourceCategory(
-          key: category.slug,
-          title: category.name,
-          param: category.slug,
-          sortOptions: _jmSortOptions,
-        ));
-        for (final subCategory in category.subCategories) {
-          categories.add(SourceCategory(
-            key: subCategory.cid,
-            title: subCategory.name,
-            parentKey: category.slug,
-            param: subCategory.slug.isEmpty
-                ? subCategory.cid
-                : subCategory.slug,
-            sortOptions: _jmSortOptions,
-          ));
-        }
-      }
-      return Res(normalizeCategories(categories));
+      return Res(adaptJmSourceCategories(res.data));
     },
     loadSourceContent: (query) async {
       final res = await JmNetwork().getCategoryComics(
@@ -272,6 +252,37 @@ ComicSource buildJmSource() {
   return source;
 }
 
+List<SourceCategory> adaptJmSourceCategories(
+  Iterable<JmCategory> sourceCategories,
+) {
+  final categories = <SourceCategory>[];
+  for (final category in sourceCategories) {
+    final parentKey = category.slug.trim();
+    final parentTitle = category.name.trim();
+    if (parentKey.isEmpty || parentTitle.isEmpty) continue;
+
+    categories.add(SourceCategory(
+      key: parentKey,
+      title: parentTitle,
+      param: parentKey,
+      sortOptions: _jmSortOptions,
+    ));
+    for (final subCategory in category.subCategories) {
+      final childKey = subCategory.cid.trim();
+      final childTitle = subCategory.name.trim();
+      if (childKey.isEmpty || childTitle.isEmpty) continue;
+      final childParam = subCategory.slug.trim();
+      categories.add(SourceCategory(
+        key: childKey,
+        title: childTitle,
+        parentKey: parentKey,
+        param: childParam.isEmpty ? childKey : childParam,
+        sortOptions: _jmSortOptions,
+      ));
+    }
+  }
+  return normalizeCategories(categories);
+}
 const _jmSortOptions = <SourceSortOption>[
   SourceSortOption(key: 'latest', title: '最新'),
   SourceSortOption(key: 'popular', title: '总排行'),

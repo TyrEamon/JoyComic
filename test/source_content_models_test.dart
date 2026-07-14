@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:joycomic/comic_source/built_in/jm.dart';
 import 'package:joycomic/network/jm/jm_network.dart';
 import 'package:joycomic/views/common/source_content_models.dart';
 
@@ -126,6 +127,15 @@ void main() {
     expect(visible.map((category) => category.key), ['9']);
   });
 
+  test('discards an orphan JM subcategory with a real CID', () {
+    final categories = adaptJmSourceCategories([
+      JmCategory('缺少父标识', '', const [
+        JmSubCategory('42', '孤儿子分类', 'child-slug'),
+      ]),
+    ]);
+
+    expect(categories, isEmpty);
+  });
   group('jmCategoryMaxPage', () {
     test('uses the stable protocol page size for a partial final page', () {
       expect(
