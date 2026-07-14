@@ -88,6 +88,7 @@ class JmComicInfo extends BaseComic {
 
   /// 章节标题列表（与 series 按 order 对齐）。
   final List<String> epNames;
+  @override
   final List<String> tags;
   final List<String> works;
   final List<String> actors;
@@ -148,9 +149,6 @@ class JmComicInfo extends BaseComic {
 
   @override
   String get description => _description;
-
-  @override
-  List<String> get tags => tags;
 }
 
 /// 禁漫分类（一级分类 + 子分类）。
