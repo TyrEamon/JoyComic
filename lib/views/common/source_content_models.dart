@@ -1,11 +1,13 @@
 /// Source-neutral discovery models shared by built-in sources and discovery UI.
 library source_content_models;
 
+import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../network/base_comic.dart';
-import '../../network/json_value.dart';
 import '../../network/res.dart';
+
+const _deepCollectionEquality = DeepCollectionEquality();
 
 @immutable
 class SourceSortOption {
@@ -13,6 +15,14 @@ class SourceSortOption {
   final String title;
 
   const SourceSortOption({required this.key, required this.title});
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SourceSortOption && key == other.key && title == other.title;
+
+  @override
+  int get hashCode => Object.hash(key, title);
 }
 
 @immutable
@@ -28,7 +38,7 @@ class SourceCategory {
   final bool webOnly;
   final List<SourceSortOption> sortOptions;
 
-  const SourceCategory({
+  SourceCategory({
     required this.key,
     required this.title,
     this.parentKey,
@@ -36,32 +46,33 @@ class SourceCategory {
     this.icon,
     this.cover,
     this.webOnly = false,
-    this.sortOptions = const [],
-  });
-
-  /// Adapts common remote category shapes without assuming scalar types.
-  factory SourceCategory.fromJson(
-    Object? value, {
-    Object? parentKey,
-    Object? param,
-    Object? icon,
-    Object? cover,
     List<SourceSortOption> sortOptions = const [],
-  }) {
-    final json = jsonMap(value);
-    return SourceCategory(
-      key: _scalarString(
-        json['key'] ?? json['_id'] ?? json['id'] ?? json['CID'] ?? json['slug'],
-      ),
-      title: _scalarString(json['title'] ?? json['name']),
-      parentKey: _optionalScalarString(parentKey ?? json['parentKey']),
-      param: _optionalScalarString(param ?? json['param']),
-      icon: _optionalScalarString(icon ?? json['icon']),
-      cover: _optionalScalarString(cover ?? json['cover'] ?? json['thumb']),
-      webOnly: jsonBool(json['webOnly'] ?? json['isWeb']),
-      sortOptions: sortOptions,
-    );
-  }
+  }) : sortOptions = List<SourceSortOption>.unmodifiable(sortOptions);
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SourceCategory &&
+          key == other.key &&
+          title == other.title &&
+          parentKey == other.parentKey &&
+          param == other.param &&
+          icon == other.icon &&
+          cover == other.cover &&
+          webOnly == other.webOnly &&
+          _deepCollectionEquality.equals(sortOptions, other.sortOptions);
+
+  @override
+  int get hashCode => Object.hash(
+        key,
+        title,
+        parentKey,
+        param,
+        icon,
+        cover,
+        webOnly,
+        _deepCollectionEquality.hash(sortOptions),
+      );
 }
 
 /// Removes entries that cannot be routed or displayed, web-only entries, and
@@ -93,6 +104,18 @@ class SourceContentQuery {
     this.page = 1,
     this.sort,
   });
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SourceContentQuery &&
+          categoryKey == other.categoryKey &&
+          param == other.param &&
+          page == other.page &&
+          sort == other.sort;
+
+  @override
+  int get hashCode => Object.hash(categoryKey, param, page, sort);
 }
 
 @immutable
@@ -101,16 +124,31 @@ class SourceContentPage {
   final List<BaseComic> comics;
   final int? maxPage;
 
-  const SourceContentPage({
+  SourceContentPage({
     required this.query,
-    required this.comics,
+    required List<BaseComic> comics,
     this.maxPage,
-  });
+  }) : comics = List<BaseComic>.unmodifiable(comics);
 
   bool get hasMore {
     final lastPage = maxPage;
     return lastPage == null || query.page < lastPage;
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SourceContentPage &&
+          query == other.query &&
+          maxPage == other.maxPage &&
+          _deepCollectionEquality.equals(comics, other.comics);
+
+  @override
+  int get hashCode => Object.hash(
+        query,
+        maxPage,
+        _deepCollectionEquality.hash(comics),
+      );
 }
 
 @immutable
@@ -120,12 +158,29 @@ class SourceContentSection {
   final List<BaseComic> comics;
   final SourceContentQuery? moreQuery;
 
-  const SourceContentSection({
+  SourceContentSection({
     required this.key,
     required this.title,
-    required this.comics,
+    required List<BaseComic> comics,
     this.moreQuery,
-  });
+  }) : comics = List<BaseComic>.unmodifiable(comics);
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SourceContentSection &&
+          key == other.key &&
+          title == other.title &&
+          moreQuery == other.moreQuery &&
+          _deepCollectionEquality.equals(comics, other.comics);
+
+  @override
+  int get hashCode => Object.hash(
+        key,
+        title,
+        moreQuery,
+        _deepCollectionEquality.hash(comics),
+      );
 }
 
 typedef LoadSourceCategories = Future<Res<List<SourceCategory>>> Function();
@@ -133,13 +188,3 @@ typedef LoadSourceContent = Future<Res<SourceContentPage>> Function(
   SourceContentQuery query,
 );
 typedef LoadHomeSections = Future<Res<List<SourceContentSection>>> Function();
-
-String _scalarString(Object? value) {
-  if (value is! String && value is! num && value is! bool) return '';
-  return jsonString(value).trim();
-}
-
-String? _optionalScalarString(Object? value) {
-  final text = _scalarString(value);
-  return text.isEmpty ? null : text;
-}

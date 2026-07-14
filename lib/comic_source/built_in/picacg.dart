@@ -106,7 +106,7 @@ ComicSource buildPicacgSource() {
       return Res(SourceContentPage(
         query: query,
         comics: <BaseComic>[...res.data],
-        maxPage: jsonInt(res.subData, fallback: query.page),
+        maxPage: _optionalPageCount(res.subData),
       ));
     },
     loadHomeSections: () async {
@@ -210,6 +210,8 @@ String _picacgSort(String? sort) {
   }
   return sort;
 }
+
+int? _optionalPageCount(Object? value) => value is int ? value : null;
 
 List<String>? _storedAccount(Object? value) {
   final account = jsonStringList(value);

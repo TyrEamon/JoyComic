@@ -54,14 +54,6 @@ class Profile {
       );
 }
 
-/// 哔咔分类（首页分类标签）。
-@immutable
-class CategoryItem {
-  final String title;
-  final String path;
-  const CategoryItem(this.title, this.path);
-}
-
 /// 哔咔漫画列表项（搜索/分类/收藏/排行榜共用）。
 @immutable
 class ComicItemBrief extends BaseComic {

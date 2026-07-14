@@ -179,7 +179,7 @@ class JmCategory {
   final List<JmSubCategory> subCategories;
 
   JmCategory(this.name, this.slug, this.subCategories);
-  // 注意：slug 为空时外层调用方应自行转 '0'，此处不移除 final 以保持不可变性
+  // slug 为空表示服务端未提供可路由标识，由源适配层丢弃整组分类。
 }
 
 @immutable

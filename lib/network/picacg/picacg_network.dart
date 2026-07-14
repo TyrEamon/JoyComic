@@ -48,6 +48,63 @@ class PicacgCategory {
   });
 }
 
+/// Parses a categories response into routable, non-web category records.
+List<PicacgCategory> parsePicacgCategories(Object? value) {
+  final root = jsonMap(value);
+  final data = jsonMap(root['data']);
+  if (data['categories'] is! List) return const [];
+  final categories = <PicacgCategory>[];
+  for (final rawCategory in jsonList(data['categories'])) {
+    if (rawCategory is! Map) continue;
+    final category = jsonMap(rawCategory);
+    if (jsonBool(category['isWeb'])) continue;
+    final title = jsonString(category['title']).trim();
+    final key = jsonString(
+      category['_id'] ?? category['id'] ?? category['title'],
+    ).trim();
+    if (key.isEmpty || title.isEmpty) continue;
+    categories.add(PicacgCategory(
+      key: key,
+      title: title,
+      param: title,
+      cover: _picacgMediaUrl(category['thumb']),
+    ));
+  }
+  return categories;
+}
+
+/// Resolves max page only from explicit metadata or an unambiguous empty page.
+int? picacgMaxPage({
+  required int currentPage,
+  required int itemCount,
+  int? pageCount,
+  int? total,
+  int? pageSize,
+}) {
+  final page = currentPage < 1 ? 1 : currentPage;
+  if (pageCount != null && pageCount > 0) {
+    return pageCount < page ? page : pageCount;
+  }
+  if (itemCount == 0) return page;
+  if (total == null || total <= 0 || pageSize == null || pageSize <= 0) {
+    return null;
+  }
+  final calculated = (total + pageSize - 1) ~/ pageSize;
+  return calculated < page ? page : calculated;
+}
+
+String? _picacgMediaUrl(Object? value) {
+  if (value is String) {
+    final url = value.trim();
+    return url.isEmpty ? null : url;
+  }
+  final media = jsonMap(value);
+  final fileServer = jsonString(media['fileServer']).trim();
+  final path = jsonString(media['path']).trim();
+  if (fileServer.isEmpty || path.isEmpty) return null;
+  return '$fileServer/static/$path';
+}
+
 /// 哔咔网络请求类。
 class PicacgNetwork {
   PicacgNetwork._create();
@@ -169,14 +226,8 @@ class PicacgNetwork {
     return e.message ?? e.toString().split('\n').first;
   }
 
-  String _mediaUrl(Object? value, {String fallback = ''}) {
-    if (value is String) return value;
-    final media = jsonMap(value);
-    final fileServer = jsonString(media['fileServer']);
-    final path = jsonString(media['path']);
-    if (fileServer.isEmpty || path.isEmpty) return fallback;
-    return '$fileServer/static/$path';
-  }
+  String _mediaUrl(Object? value, {String fallback = ''}) =>
+      _picacgMediaUrl(value) ?? fallback;
 
   // ============================ 业务端点 ============================
 
@@ -229,29 +280,11 @@ class PicacgNetwork {
   Future<Res<List<PicacgCategory>>> getCategories() async {
     final response = await get('${apiUrl}/categories');
     if (response.error) return Res(null, errorMessage: response.errorMessage);
-    final items = <PicacgCategory>[];
     final data = jsonMap(response.data['data']);
     if (data['categories'] is! List) {
       return const Res(null, errorMessage: '分类解析失败');
     }
-    for (final rawCategory in jsonList(data['categories'])) {
-      if (rawCategory is! Map) continue;
-      final category = jsonMap(rawCategory);
-      if (jsonBool(category['isWeb'])) continue;
-      final title = jsonString(category['title']).trim();
-      final key = jsonString(
-        category['_id'] ?? category['id'] ?? category['title'],
-      ).trim();
-      if (key.isEmpty || title.isEmpty) continue;
-      final cover = _mediaUrl(category['thumb']);
-      items.add(PicacgCategory(
-        key: key,
-        title: title,
-        param: title,
-        cover: cover.isEmpty ? null : cover,
-      ));
-    }
-    return Res(items);
+    return Res(parsePicacgCategories(response.data));
   }
 
   /// 获取分类漫画；category 为空时返回全站漫画，可用于首页分区。
@@ -271,16 +304,31 @@ class PicacgNetwork {
     if (comicsData.isEmpty) {
       return const Res(null, errorMessage: '分类漫画解析失败');
     }
+    final docs = jsonList(comicsData['docs']);
     final comics = <ComicItemBrief>[];
-    for (final rawComic in jsonList(comicsData['docs'])) {
+    for (final rawComic in docs) {
       if (rawComic is! Map) continue;
       final comic = ComicItemBrief.fromJson(jsonMap(rawComic));
       if (comic.id.isEmpty) continue;
       comics.add(comic);
     }
+    final rawPageCount = jsonInt(
+      comicsData['pages'] ?? comicsData['page_count'] ??
+          comicsData['total_page'],
+    );
+    final rawTotal = jsonInt(comicsData['total']);
+    final rawPageSize = jsonInt(
+      comicsData['page_size'] ?? comicsData['pageSize'] ?? comicsData['limit'],
+    );
     return Res(
       comics,
-      subData: jsonInt(comicsData['pages'], fallback: 1),
+      subData: picacgMaxPage(
+        currentPage: page,
+        itemCount: docs.length,
+        pageCount: rawPageCount > 0 ? rawPageCount : null,
+        total: rawTotal > 0 ? rawTotal : null,
+        pageSize: rawPageSize > 0 ? rawPageSize : null,
+      ),
     );
   }
 

@@ -160,7 +160,7 @@ ComicSource buildJmSource() {
       return Res(SourceContentPage(
         query: query,
         comics: <BaseComic>[...res.data],
-        maxPage: jsonInt(res.subData, fallback: query.page),
+        maxPage: _optionalPageCount(res.subData),
       ));
     },
     loadHomeSections: () async {
@@ -304,6 +304,8 @@ const _jmSortMap = <String, String>{
 };
 
 String _jmSort(String? sort) => _jmSortMap[sort] ?? 'mr';
+
+int? _optionalPageCount(Object? value) => value is int ? value : null;
 
 List<String>? _storedAccount(Object? value) {
   final account = jsonStringList(value);

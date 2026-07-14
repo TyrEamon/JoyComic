@@ -118,7 +118,7 @@ List<JmCategory> parseJmCategories(Object? value) {
 
 /// Computes the last page without treating a short final page as page size.
 /// An empty response page means there is no more content after [currentPage].
-int jmCategoryMaxPage({
+int? jmCategoryMaxPage({
   required int total,
   required int currentPage,
   required int itemCount,
@@ -130,13 +130,14 @@ int jmCategoryMaxPage({
     return pageCount < page ? page : pageCount;
   }
   if (itemCount == 0) return page;
-  if (total <= 0) return page;
+  if (total <= 0) return null;
   final size = pageSize != null && pageSize > 0
       ? pageSize
       : jmCategoryProtocolPageSize;
   final calculated = (total + size - 1) ~/ size;
   return calculated < page ? page : calculated;
 }
+
 /// 禁漫网络请求类。
 class JmNetwork {
   JmNetwork._create();
