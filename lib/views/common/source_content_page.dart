@@ -129,15 +129,18 @@ class _SourceContentPageState extends State<SourceContentPage> {
       }
 
       final contentPage = response.data;
-      final received = contentPage.comics;
-      final merged = replace
-          ? _deduplicate(received)
-          : _deduplicate(<BaseComic>[..._comics, ...received]);
-      final maxPage = contentPage.maxPage;
+      final merged = models.mergeSourceContentPage(
+        existingComics: _comics,
+        incomingComics: contentPage.comics,
+        previousPage: _currentPage,
+        requestedPage: page,
+        maxPage: contentPage.maxPage,
+        replace: replace,
+      );
       setState(() {
-        _comics = merged;
-        _currentPage = page;
-        _reachedEnd = maxPage != null ? page >= maxPage : received.isEmpty;
+        _comics = merged.comics;
+        _currentPage = merged.currentPage;
+        _reachedEnd = merged.reachedEnd;
         _initialError = null;
         _loadMoreError = null;
       });
@@ -164,11 +167,6 @@ class _SourceContentPageState extends State<SourceContentPage> {
         });
       }
     }
-  }
-
-  List<BaseComic> _deduplicate(Iterable<BaseComic> comics) {
-    final ids = <String>{};
-    return [for (final comic in comics) if (ids.add(comic.id)) comic];
   }
 
   Map<String, dynamic>? _coverHeaders(ComicGridItem item) {

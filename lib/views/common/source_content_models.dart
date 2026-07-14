@@ -334,6 +334,92 @@ HomeContent mergeHomeSections(Iterable<HomeSourceResult> sourceResults) {
   return HomeContent(sections: sections, errors: errors);
 }
 
+/// Returns whether a root scroll update represents real movement toward the
+/// list tail close enough to request another page.
+///
+/// [scrollDelta] is positive for the non-reversed vertical grids used by
+/// ComicGrid. Top pulls, out-of-range metrics and non-scrollable short lists
+/// are deliberately rejected.
+bool shouldRequestNextPage({
+  required int depth,
+  required double scrollDelta,
+  required double pixels,
+  required double minScrollExtent,
+  required double maxScrollExtent,
+  required double extentAfter,
+  double threshold = 320.0,
+}) {
+  if (depth != 0 || scrollDelta <= 0) return false;
+  if (maxScrollExtent <= minScrollExtent) return false;
+  if (pixels <= minScrollExtent || pixels > maxScrollExtent) return false;
+  return extentAfter >= 0 && extentAfter < threshold;
+}
+
+/// Monotonic token gate for dropping stale asynchronous request completions.
+class RequestGenerationGate {
+  int _current = 0;
+
+  int get current => _current;
+
+  int begin() => ++_current;
+
+  bool accepts(int generation) => generation == _current;
+}
+
+@immutable
+class SourceContentMergeResult {
+  final List<BaseComic> comics;
+  final int currentPage;
+  final int addedCount;
+  final bool reachedEnd;
+
+  SourceContentMergeResult({
+    required List<BaseComic> comics,
+    required this.currentPage,
+    required this.addedCount,
+    required this.reachedEnd,
+  }) : comics = List<BaseComic>.unmodifiable(comics);
+}
+
+/// Merges one source-content response without advancing past an empty or
+/// duplicate-only page. Unknown limits remain open only while new ids arrive.
+SourceContentMergeResult mergeSourceContentPage({
+  required List<BaseComic> existingComics,
+  required List<BaseComic> incomingComics,
+  required int previousPage,
+  required int requestedPage,
+  required int? maxPage,
+  required bool replace,
+}) {
+  final ids = <String>{};
+  final comics = <BaseComic>[];
+  if (!replace) {
+    for (final comic in existingComics) {
+      if (ids.add(comic.id)) comics.add(comic);
+    }
+  }
+
+  var addedCount = 0;
+  for (final comic in incomingComics) {
+    if (!ids.add(comic.id)) continue;
+    comics.add(comic);
+    addedCount++;
+  }
+
+  final madeNoProgress =
+      incomingComics.isEmpty || (!replace && addedCount == 0);
+  final currentPage = madeNoProgress
+      ? (replace ? 0 : previousPage)
+      : requestedPage;
+  final reachedKnownEnd = maxPage != null && requestedPage >= maxPage;
+  return SourceContentMergeResult(
+    comics: comics,
+    currentPage: currentPage,
+    addedCount: addedCount,
+    reachedEnd: madeNoProgress || reachedKnownEnd,
+  );
+}
+
 typedef LoadSourceCategories = Future<Res<List<SourceCategory>>> Function();
 typedef LoadSourceContent = Future<Res<SourceContentPage>> Function(
   SourceContentQuery query,

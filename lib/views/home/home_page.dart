@@ -26,6 +26,7 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   List<HomeSourceResult> _sourceResults = const [];
   final Set<String> _retryingSources = <String>{};
+  final RequestGenerationGate _requestGeneration = RequestGenerationGate();
   bool _loading = true;
 
   HomeContent get _content => mergeHomeSections(_sourceResults);
@@ -66,12 +67,18 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _loadHome() async {
+    final generation = _requestGeneration.begin();
     final sources = ComicSource.sources
         .where((source) => source.loadHomeSections != null)
         .toList(growable: false);
-    if (mounted) setState(() => _loading = true);
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _retryingSources.clear();
+      });
+    }
     final results = await Future.wait(sources.map(_loadSource));
-    if (!mounted) return;
+    if (!mounted || !_requestGeneration.accepts(generation)) return;
     setState(() {
       _sourceResults = results;
       _loading = false;
@@ -79,16 +86,18 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _retrySource(String sourceKey) async {
-    if (!_retryingSources.add(sourceKey)) return;
+    if (_loading || !_retryingSources.add(sourceKey)) return;
+    final generation = _requestGeneration.current;
     if (mounted) setState(() {});
     final source = ComicSource.find(sourceKey);
     if (source == null) {
-      _retryingSources.remove(sourceKey);
-      if (mounted) setState(() {});
+      if (mounted && _requestGeneration.accepts(generation)) {
+        setState(() => _retryingSources.remove(sourceKey));
+      }
       return;
     }
     final replacement = await _loadSource(source);
-    if (!mounted) return;
+    if (!mounted || !_requestGeneration.accepts(generation)) return;
     setState(() {
       final index = _sourceResults.indexWhere(
         (result) => result.sourceKey == sourceKey,
@@ -157,6 +166,7 @@ class _HomePageState extends State<HomePage> {
                     child: _SourceErrors(
                       errors: content.errors,
                       retryingSources: _retryingSources,
+                      loading: _loading,
                       onRetry: _retrySource,
                     ),
                   ),
@@ -266,11 +276,13 @@ class _SourceErrors extends StatelessWidget {
   const _SourceErrors({
     required this.errors,
     required this.retryingSources,
+    required this.loading,
     required this.onRetry,
   });
 
   final List<HomeSourceError> errors;
   final Set<String> retryingSources;
+  final bool loading;
   final ValueChanged<String> onRetry;
 
   @override
@@ -311,11 +323,16 @@ class _SourceErrors extends StatelessWidget {
                     ),
                   ),
                   TextButton(
-                    onPressed: retryingSources.contains(error.sourceKey)
-                        ? null
-                        : () => onRetry(error.sourceKey),
+                    onPressed:
+                        loading || retryingSources.contains(error.sourceKey)
+                            ? null
+                            : () => onRetry(error.sourceKey),
                     child: Text(
-                      retryingSources.contains(error.sourceKey) ? '重试中' : '重试',
+                      loading
+                          ? '刷新中'
+                          : retryingSources.contains(error.sourceKey)
+                              ? '重试中'
+                              : '重试',
                     ),
                   ),
                 ],

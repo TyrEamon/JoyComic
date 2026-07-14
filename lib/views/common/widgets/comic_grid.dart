@@ -4,6 +4,7 @@ library comic_grid;
 import 'package:flutter/material.dart';
 
 import '../../../theme/app_spacing.dart';
+import '../source_content_models.dart';
 import 'comic_card.dart';
 import 'empty_state.dart';
 import 'loading_grid.dart';
@@ -121,9 +122,15 @@ class _ComicGridState extends State<ComicGrid> {
 
     return NotificationListener<ScrollNotification>(
       onNotification: (notification) {
-        if ((notification is ScrollUpdateNotification ||
-                notification is ScrollEndNotification) &&
-            notification.metrics.extentAfter < 320 &&
+        if (notification is ScrollUpdateNotification &&
+            shouldRequestNextPage(
+              depth: notification.depth,
+              scrollDelta: notification.scrollDelta ?? 0.0,
+              pixels: notification.metrics.pixels,
+              minScrollExtent: notification.metrics.minScrollExtent,
+              maxScrollExtent: notification.metrics.maxScrollExtent,
+              extentAfter: notification.metrics.extentAfter,
+            ) &&
             widget.hasMore &&
             widget.onLoadMore != null &&
             !widget.loading) {
