@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:joycomic/comic_source/comic_source.dart';
 import 'package:joycomic/database/joy_database.dart';
 import 'package:joycomic/foundation/reader_config.dart';
@@ -56,13 +57,13 @@ void main() {
   ) async {
     await _pumpRouter(tester);
 
-    const routes = <String, String>{
-      '最新': '/ranking',
-      '热门排行': '/ranking',
-      '影视': '/video',
-      '以图搜图': '/image-search',
-      '收藏库': '/favorites',
-      '下载': '/download',
+    const routes = <String, _RouteExpectation>{
+      '最新': _RouteExpectation('/ranking', '排行榜'),
+      '热门排行': _RouteExpectation('/ranking', '排行榜'),
+      '影视': _RouteExpectation('/video', '影视'),
+      '以图搜图': _RouteExpectation('/image-search', '以图搜图'),
+      '收藏库': _RouteExpectation('/favorites', '收藏'),
+      '下载': _RouteExpectation('/download', '下载'),
     };
     for (final entry in routes.entries) {
       await _goHome(tester);
@@ -70,10 +71,12 @@ void main() {
     }
 
     await _goHome(tester);
-    await tester.tap(find.byIcon(Icons.search).first);
-    await tester.pump();
-    expect(appRouter.routeInformationProvider.value.uri.path, '/search');
-    _expectNoFunctionalPlaceholder();
+    await _pumpUntilHitTestable(tester, find.byIcon(Icons.search).first);
+    await tester.tap(find.byIcon(Icons.search).hitTestable().first);
+    await _expectCurrentRoute(
+      tester,
+      const _RouteExpectation('/search', '搜索历史'),
+    );
   });
 
   testWidgets('all visible Mine and Settings menus navigate to real routes', (
@@ -81,34 +84,37 @@ void main() {
   ) async {
     await _pumpRouter(tester);
 
-    const mineRoutes = <String, String>{
-      '历史记录': '/history',
-      '下载管理': '/download',
-      '我的收藏': '/favorites',
-      '源管理 / 登录': '/login',
-      '阅读设置': '/settings/reader',
-      '应用设置': '/settings',
-      '关于': '/about',
+    const mineRoutes = <String, _RouteExpectation>{
+      '历史记录': _RouteExpectation('/history', '暂无阅读历史'),
+      '下载管理': _RouteExpectation('/download', '下载'),
+      '我的收藏': _RouteExpectation('/favorites', '收藏'),
+      '源管理 / 登录': _RouteExpectation('/login', '登录'),
+      '阅读设置': _RouteExpectation('/settings/reader', '阅读设置'),
+      '应用设置': _RouteExpectation('/settings', '设置'),
+      '关于': _RouteExpectation('/about', '关于 JoyComic'),
     };
     for (final entry in mineRoutes.entries) {
       await _goHome(tester);
-      await tester.tap(find.text('我的'));
-      await tester.pump();
+      await _pumpUntilHitTestable(tester, find.text('我的'));
+      await tester.tap(find.text('我的').hitTestable());
+      await _pumpUntilHitTestable(tester, find.text('源管理 / 登录'));
       await _tapAndExpectRoute(tester, entry.key, entry.value);
     }
 
-    const settingsRoutes = <String, String>{
-      '禁漫': '/login',
-      '测速选源': '/settings/source',
-      '阅读设置': '/settings/reader',
-      'WebDAV 同步': '/webdav',
-      '开源说明': '/about',
-      '诊断日志': '/logs',
+    const settingsRoutes = <String, _RouteExpectation>{
+      '禁漫': _RouteExpectation('/login', '登录'),
+      '测速选源': _RouteExpectation('/settings/source', '禁漫图床测速'),
+      '阅读设置': _RouteExpectation('/settings/reader', '阅读设置'),
+      'WebDAV 同步': _RouteExpectation('/webdav', 'WebDAV 同步'),
+      '开源说明': _RouteExpectation('/about', '关于 JoyComic'),
+      '诊断日志': _RouteExpectation('/logs', '诊断日志'),
     };
     for (final entry in settingsRoutes.entries) {
       appRouter.go('/settings');
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 20));
+      await _expectCurrentRoute(
+        tester,
+        const _RouteExpectation('/settings', '设置'),
+      );
       await _tapAndExpectRoute(tester, entry.key, entry.value);
     }
   });
@@ -119,13 +125,16 @@ void main() {
     appRouter.go('/missing/task-10?from=test');
     await _pumpRouter(tester);
 
+    expect(_currentPath(), '/missing/task-10');
     expect(find.text('页面不存在'), findsOneWidget);
     expect(find.textContaining('/missing/task-10'), findsOneWidget);
     expect(find.text('返回首页'), findsOneWidget);
 
     await tester.tap(find.text('返回首页'));
     await tester.pumpAndSettle();
-    expect(appRouter.routeInformationProvider.value.uri.path, '/');
+    expect(_currentPath(), '/');
+    expect(find.text('我的'), findsOneWidget);
+    _expectNoFunctionalPlaceholder();
   });
 
   test(
@@ -161,6 +170,24 @@ void main() {
   );
 }
 
+class _RouteExpectation {
+  const _RouteExpectation(this.path, this.targetText);
+
+  final String path;
+  final String targetText;
+}
+
+String _currentPath() {
+  final configuration = appRouter.routerDelegate.currentConfiguration;
+  if (configuration.matches.isNotEmpty) {
+    final lastMatch = configuration.matches.last;
+    if (lastMatch is ImperativeRouteMatch) {
+      return lastMatch.matches.uri.path;
+    }
+  }
+  return configuration.uri.path;
+}
+
 Future<void> _pumpRouter(WidgetTester tester) async {
   await tester.pumpWidget(MaterialApp.router(routerConfig: appRouter));
   await tester.pump();
@@ -169,22 +196,49 @@ Future<void> _pumpRouter(WidgetTester tester) async {
 
 Future<void> _goHome(WidgetTester tester) async {
   appRouter.go('/');
-  await tester.pump();
-  await tester.pump(const Duration(milliseconds: 20));
+  await _expectCurrentRoute(tester, const _RouteExpectation('/', '我的'));
 }
 
 Future<void> _tapAndExpectRoute(
   WidgetTester tester,
   String label,
-  String path,
+  _RouteExpectation expectation,
 ) async {
-  final finder = find.text(label).last;
+  final finder = find.text(label).first;
   await tester.ensureVisible(finder);
-  await tester.tap(finder);
-  await tester.pump();
-  await tester.pump(const Duration(milliseconds: 20));
-  expect(appRouter.routeInformationProvider.value.uri.path, path);
+  await _pumpUntilHitTestable(tester, finder);
+  await tester.tap(finder.hitTestable().last);
+  await _expectCurrentRoute(tester, expectation);
+}
+
+Future<void> _expectCurrentRoute(
+  WidgetTester tester,
+  _RouteExpectation expectation,
+) async {
+  final target = find.text(expectation.targetText);
+  final visibleTarget = target.hitTestable();
+  for (var attempt = 0; attempt < 40; attempt++) {
+    await tester.pump(const Duration(milliseconds: 10));
+    if (_currentPath() == expectation.path &&
+        visibleTarget.evaluate().isNotEmpty &&
+        find.text('页面不存在').evaluate().isEmpty) {
+      expect(visibleTarget, findsWidgets);
+      _expectNoFunctionalPlaceholder();
+      return;
+    }
+  }
+  expect(_currentPath(), expectation.path);
+  expect(visibleTarget, findsWidgets);
   _expectNoFunctionalPlaceholder();
+}
+
+Future<void> _pumpUntilHitTestable(WidgetTester tester, Finder finder) async {
+  final hitTestable = finder.hitTestable();
+  for (var attempt = 0; attempt < 60; attempt++) {
+    await tester.pump(const Duration(milliseconds: 10));
+    if (hitTestable.evaluate().isNotEmpty) return;
+  }
+  expect(hitTestable, findsWidgets);
 }
 
 void _expectNoFunctionalPlaceholder() {
