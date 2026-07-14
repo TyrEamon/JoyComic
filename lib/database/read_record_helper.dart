@@ -1,97 +1,194 @@
-/// 阅读记录数据库操作。
-library read_record_helper;
+// 阅读记录数据库操作。
+import 'package:sqlite3/sqlite3.dart';
 
-import '../foundation/log.dart';
 import 'joy_database.dart';
 
-/// 阅读记录数据模型。
+/// 每部漫画唯一的当前阅读恢复点。
 class ReadRecord {
-  final String comicId;
-  final String sourceKey;
+  final String source;
+  final String comic;
+  final String title;
+  final String cover;
+  final String author;
   final String chapterId;
+  final String chapterTitle;
   final int pageNo;
+  final int pageCount;
   final int updatedAt;
 
   const ReadRecord({
-    required this.comicId,
-    required this.sourceKey,
+    required this.source,
+    required this.comic,
+    required this.title,
+    required this.cover,
+    required this.author,
     required this.chapterId,
+    required this.chapterTitle,
     required this.pageNo,
+    required this.pageCount,
     required this.updatedAt,
   });
+
+  String get sourceKey => source;
+  String get comicId => comic;
+  String get coverUrl => cover;
+
+  factory ReadRecord.fromRow(Row row) {
+    return ReadRecord(
+      source: (row['source_key'] as String?) ?? '',
+      comic: (row['comic_id'] as String?) ?? '',
+      title: (row['title'] as String?) ?? '',
+      cover: (row['cover_url'] as String?) ?? '',
+      author: (row['author'] as String?) ?? '',
+      chapterId: (row['chapter_id'] as String?) ?? '',
+      chapterTitle: (row['chapter_title'] as String?) ?? '',
+      pageNo: (row['page_no'] as int?) ?? 0,
+      pageCount: (row['page_count'] as int?) ?? 0,
+      updatedAt: (row['updated_at'] as int?) ?? 0,
+    );
+  }
 }
 
 class ReadRecordHelper {
-  /// 保存或更新阅读记录。
+  ReadRecordHelper([Database? database]) : _database = database;
+
+  final Database? _database;
+  Database get _db => _database ?? JoyDatabase.instance.core;
+
+  /// 保存完整恢复点；同一来源、同一漫画始终只有一条记录。
+  void upsert(ReadRecord record) {
+    _db.execute(
+      '''
+      INSERT INTO read_records
+        (source_key, comic_id, title, cover_url, author, chapter_id,
+         chapter_title, page_no, page_count, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(source_key, comic_id) DO UPDATE SET
+        title = excluded.title,
+        cover_url = excluded.cover_url,
+        author = excluded.author,
+        chapter_id = excluded.chapter_id,
+        chapter_title = excluded.chapter_title,
+        page_no = excluded.page_no,
+        page_count = excluded.page_count,
+        updated_at = excluded.updated_at
+    ''',
+      <Object?>[
+        record.source,
+        record.comic,
+        record.title,
+        record.cover,
+        record.author,
+        record.chapterId,
+        record.chapterTitle,
+        record.pageNo,
+        record.pageCount,
+        record.updatedAt,
+      ],
+    );
+  }
+
+  /// 兼容阅读器现有调用的快捷保存接口。
   void save({
     required String comicId,
     required String sourceKey,
     required String chapterId,
     required int pageNo,
+    String? title,
+    String? cover,
+    String? author,
+    String? chapterTitle,
+    int? pageCount,
+    int? updatedAt,
   }) {
-    final now = DateTime.now().millisecondsSinceEpoch;
-    JoyDatabase.instance.core.execute(
-      'INSERT OR REPLACE INTO read_records '
-      '(comic_id, source_key, chapter_id, page_no, updated_at) '
-      'VALUES (?, ?, ?, ?, ?)',
-      [comicId, sourceKey, chapterId, pageNo, now],
+    final existing = get(sourceKey, comicId);
+    final sameChapter = existing?.chapterId == chapterId;
+    upsert(
+      ReadRecord(
+        source: sourceKey,
+        comic: comicId,
+        title: title ?? existing?.title ?? '',
+        cover: cover ?? existing?.cover ?? '',
+        author: author ?? existing?.author ?? '',
+        chapterId: chapterId,
+        chapterTitle:
+            chapterTitle ?? (sameChapter ? existing?.chapterTitle ?? '' : ''),
+        pageNo: pageNo,
+        pageCount: pageCount ?? (sameChapter ? existing?.pageCount ?? 0 : 0),
+        updatedAt: updatedAt ?? DateTime.now().millisecondsSinceEpoch,
+      ),
     );
   }
 
-  /// 获取某漫画的最近阅读记录（所有章节）。
+  /// 按更新时间倒序列出历史。
+  List<ReadRecord> list({int? limit}) {
+    if (limit != null && limit < 0) {
+      throw ArgumentError.value(limit, 'limit', 'must not be negative');
+    }
+    final sql = StringBuffer(
+      'SELECT * FROM read_records '
+      'ORDER BY updated_at DESC, source_key ASC, comic_id ASC',
+    );
+    final parameters = <Object?>[];
+    if (limit != null) {
+      sql.write(' LIMIT ?');
+      parameters.add(limit);
+    }
+    return _db
+        .select(sql.toString(), parameters)
+        .map(ReadRecord.fromRow)
+        .toList();
+  }
+
+  ReadRecord? get(String source, String comic) {
+    final rows = _db.select(
+      'SELECT * FROM read_records WHERE source_key = ? AND comic_id = ?',
+      <Object?>[source, comic],
+    );
+    return rows.isEmpty ? null : ReadRecord.fromRow(rows.first);
+  }
+
+  int delete(String source, String comic) {
+    _db.execute(
+      'DELETE FROM read_records WHERE source_key = ? AND comic_id = ?',
+      <Object?>[source, comic],
+    );
+    return _changes();
+  }
+
+  int clear() {
+    _db.execute('DELETE FROM read_records');
+    return _changes();
+  }
+
+  int count() {
+    return _db
+            .select('SELECT COUNT(*) AS count FROM read_records')
+            .single['count']
+        as int;
+  }
+
+  int _changes() {
+    return _db.select('SELECT changes() AS count').single['count'] as int;
+  }
+
+  /// 兼容旧接口：漫画级主键下最多返回一条记录。
   List<ReadRecord> getRecords(String comicId, String sourceKey) {
-    final result = JoyDatabase.instance.core.select(
-      'SELECT * FROM read_records WHERE comic_id = ? AND source_key = ? '
-      'ORDER BY updated_at DESC',
-      [comicId, sourceKey],
-    );
-    return result.map((r) => ReadRecord(
-      comicId: r['comic_id'] as String,
-      sourceKey: r['source_key'] as String,
-      chapterId: r['chapter_id'] as String,
-      pageNo: (r['page_no'] as int?) ?? 0,
-      updatedAt: (r['updated_at'] as int?) ?? 0,
-    )).toList();
+    final record = get(sourceKey, comicId);
+    return record == null ? <ReadRecord>[] : <ReadRecord>[record];
   }
 
-  /// 获取某章节的阅读记录（继续阅读用）。
+  /// 兼容旧接口：仅当当前恢复点仍位于指定章节时返回。
   ReadRecord? getRecord(String comicId, String sourceKey, String chapterId) {
-    final result = JoyDatabase.instance.core.select(
-      'SELECT * FROM read_records WHERE comic_id = ? AND source_key = ? AND chapter_id = ?',
-      [comicId, sourceKey, chapterId],
-    );
-    if (result.isEmpty) return null;
-    final r = result.first;
-    return ReadRecord(
-      comicId: r['comic_id'] as String,
-      sourceKey: r['source_key'] as String,
-      chapterId: r['chapter_id'] as String,
-      pageNo: (r['page_no'] as int?) ?? 0,
-      updatedAt: (r['updated_at'] as int?) ?? 0,
-    );
+    final record = get(sourceKey, comicId);
+    return record?.chapterId == chapterId ? record : null;
   }
 
-  /// 获取最近阅读的漫画列表（每个漫画一条）。
   List<ReadRecord> getRecentComics({int limit = 20}) {
-    final result = JoyDatabase.instance.core.select(
-      'SELECT comic_id, source_key, MAX(updated_at) as updated_at '
-      'FROM read_records GROUP BY comic_id, source_key '
-      'ORDER BY updated_at DESC LIMIT $limit',
-    );
-    return result.map((r) => ReadRecord(
-      comicId: r['comic_id'] as String,
-      sourceKey: r['source_key'] as String,
-      chapterId: '',
-      pageNo: 0,
-      updatedAt: (r['updated_at'] as int?) ?? 0,
-    )).toList();
+    return list(limit: limit);
   }
 
-  /// 删除某漫画的所有阅读记录。
   void deleteByComic(String comicId, String sourceKey) {
-    JoyDatabase.instance.core.execute(
-      'DELETE FROM read_records WHERE comic_id = ? AND source_key = ?',
-      [comicId, sourceKey],
-    );
+    delete(sourceKey, comicId);
   }
 }
