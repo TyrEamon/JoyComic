@@ -2,7 +2,7 @@
 ///
 /// 管理阅读器的核心内容状态：当前章节、页码、图片列表、工具栏显隐、自动翻页、
 /// 阅读记录。与 [ListStateProvider]（UI 态）分离，遵循单一职责。
-library reader_provider;
+library;
 
 import 'dart:async';
 
@@ -59,8 +59,7 @@ typedef ReaderImageLoader =
 extension BuildContextReader on BuildContext {
   ReaderProvider get reader => read<ReaderProvider>();
   ReaderProvider get watcher => watch<ReaderProvider>();
-  T selector<T>(T Function(ReaderProvider) s) =>
-      select<ReaderProvider, T>(s);
+  T selector<T>(T Function(ReaderProvider) s) => select<ReaderProvider, T>(s);
 }
 
 // ============================ 加载状态 ============================
@@ -86,14 +85,20 @@ class ReaderProvider extends ChangeNotifier {
   ReaderProvider({
     required ComicState state,
     ReaderImageLoader? imageLoader,
-  })  : _imageLoader = imageLoader {
+    ReadRecordHelper? readRecordHelper,
+    this.readRecordDebounce = const Duration(milliseconds: 250),
+  }) : _imageLoader = imageLoader,
+       _readRecordHelper = readRecordHelper ?? ReadRecordHelper() {
     id = state.id;
     title = state.title;
+    coverUrl = state.coverUrl;
+    author = state.author;
     chapters = state.chapters;
     _chapter = state.chapter;
-    _pageNo = state.pageNo;
+    _pageNo = state.pageNo < 0 ? 0 : state.pageNo;
     _sourceKey = state.sourceKey;
     _type = state.type;
+    _scheduleReadRecordSave();
     _loadImageUrls();
   }
 
@@ -104,6 +109,10 @@ class ReaderProvider extends ChangeNotifier {
 
   /// 漫画标题。
   late final String title;
+
+  /// 封面与作者用于写入可离线展示的完整历史元数据。
+  late final String coverUrl;
+  late final String author;
 
   /// 全部章节。
   late final List<ReaderChapter> chapters;
@@ -120,7 +129,10 @@ class ReaderProvider extends ChangeNotifier {
   final ReaderImageLoader? _imageLoader;
 
   /// 阅读记录助手。
-  final _readRecordHelper = ReadRecordHelper();
+  final ReadRecordHelper _readRecordHelper;
+
+  /// 连续翻页合并写入的等待时间。
+  final Duration readRecordDebounce;
 
   // ============================ 章节切换 ============================
 
@@ -133,8 +145,7 @@ class ReaderProvider extends ChangeNotifier {
   }
 
   /// 当前章节在 [chapters] 中的索引。
-  int get chapterIndex =>
-      chapters.indexWhere((c) => c.id == _chapter.id);
+  int get chapterIndex => chapters.indexWhere((c) => c.id == _chapter.id);
 
   /// 是否为第一章。
   bool get isFirstChapter => chapter.id == chapters.first.id;
@@ -152,10 +163,7 @@ class ReaderProvider extends ChangeNotifier {
       _readMode.isDoublePage ? toCorrectMultiPageNo(_pageNo, 2) : _pageNo;
 
   /// 设置当前页码（始终存储原始单页索引）。
-  set pageNo(int index) {
-    _pageNo = index;
-    notifyListeners();
-  }
+  set pageNo(int index) => onPageNoChanged(index);
 
   /// 当前章节的图片 URL 列表。
   List<ReaderImage> _images = const [];
@@ -195,13 +203,17 @@ class ReaderProvider extends ChangeNotifier {
   /// 调用外部 [imageLoader] 获取图片列表，成功后更新 [_images] 并通知各子模块，
   /// 失败时置错误态留 UI 层展示 [ErrorPage]。
   Future<void> _loadImageUrls() async {
-    if (_imageLoader == null) return;
+    final imageLoader = _imageLoader;
+    if (imageLoader == null) return;
     _loadingState = ReaderLoadState.loading;
     notifyListeners();
 
     Log.i('Reader load images', 'chapter: ${_chapter.id}');
 
-    final res = await _imageLoader!(id, _chapter.id.isNotEmpty ? _chapter.id : null);
+    final res = await imageLoader(
+      id,
+      _chapter.id.isNotEmpty ? _chapter.id : null,
+    );
 
     if (res.error) {
       _loadingState = ReaderLoadState.error;
@@ -212,7 +224,7 @@ class ReaderProvider extends ChangeNotifier {
     }
 
     final urls = res.data;
-    if (urls == null || urls.isEmpty) {
+    if (urls.isEmpty) {
       _loadingState = ReaderLoadState.error;
       _loadingErrorMessage = '该章节暂无图片';
       Log.w('Reader load empty', error: 'chapter ${_chapter.id} has no images');
@@ -223,13 +235,18 @@ class ReaderProvider extends ChangeNotifier {
     _images = urls.map((url) => ReaderImage(url: url, cacheKey: url)).toList();
     Log.i('Reader loaded', '${_images.length} images');
     _multiPageImagesCache = null; // 强制重建分组缓存
+    if (_pageNo >= _images.length) {
+      _pageNo = _images.length - 1;
+    }
     _loadingState = ReaderLoadState.success;
+    _scheduleReadRecordSave();
 
     // 通知预加载控制器（如已初始化）
     if (_preloadController != null) {
       _preloadController!.replaceItems(_images);
-      final anchor =
-          _readMode.isDoublePage ? toCorrectMultiPageNo(_pageNo, 2) : _pageNo;
+      final anchor = _readMode.isDoublePage
+          ? toCorrectMultiPageNo(_pageNo, 2)
+          : _pageNo;
       _preloadController!.onAnchorChanged([anchor]);
     }
 
@@ -244,8 +261,12 @@ class ReaderProvider extends ChangeNotifier {
   /// 跳转到指定章节。
   void go(ReaderChapter target) {
     Log.i('Reader go to chapter', '${target.id} - ${target.name}');
-    chapter = target;
+    _pageNoTimer?.cancel();
+    _hasPendingReadRecord = false;
+    _chapter = target;
     _pageNo = 0;
+    notifyListeners();
+    _scheduleReadRecordSave();
     // 切章后必须重置 PageController，否则 PageView 在新章节长度不足时会 clamp
     // 但不一定回调 onPageChanged，导致预加载锚点停留在旧章。
     if (_pageController.hasClients) {
@@ -269,29 +290,45 @@ class ReaderProvider extends ChangeNotifier {
   // ============================ 阅读记录（debounce 兜底） ============================
 
   Timer? _pageNoTimer;
-  int? _pendingReadRecordPageNo;
+  bool _hasPendingReadRecord = false;
 
-  /// 更新当前页码并 debounce 保存阅读记录。
-  ///
-  /// [index] 始终使用原始单页索引（非双页换算），与 [_pageNo] 内部存储一致。
-  void onPageNoChanged(int index) {
-    if (_pendingReadRecordPageNo == index) return;
-    if (index == _pageNo && _pendingReadRecordPageNo == null) return;
+  /// 生成当前完整恢复点；该纯逻辑入口也用于验证保存参数。
+  ReadRecord buildReadRecord({int? updatedAt}) {
+    return ReadRecord(
+      source: _sourceKey,
+      comic: id,
+      title: title,
+      cover: coverUrl,
+      author: author,
+      chapterId: _chapter.id,
+      chapterTitle: _chapter.name,
+      pageNo: _pageNo,
+      pageCount: _images.length,
+      updatedAt: updatedAt ?? DateTime.now().millisecondsSinceEpoch,
+    );
+  }
+
+  void _scheduleReadRecordSave() {
     _pageNoTimer?.cancel();
-    if (index != _pageNo) {
-      _pageNo = index;
+    _hasPendingReadRecord = true;
+    _pageNoTimer = Timer(readRecordDebounce, _persistReadRecord);
+  }
+
+  void _persistReadRecord() {
+    _pageNoTimer = null;
+    _hasPendingReadRecord = false;
+    _readRecordHelper.upsert(buildReadRecord());
+  }
+
+  /// 更新当前原始单页索引并 debounce 保存完整阅读记录。
+  void onPageNoChanged(int index) {
+    final normalized = index < 0 ? 0 : index;
+    if (normalized == _pageNo && !_hasPendingReadRecord) return;
+    if (normalized != _pageNo) {
+      _pageNo = normalized;
       notifyListeners();
     }
-    _pendingReadRecordPageNo = index;
-    _pageNoTimer = Timer(const Duration(milliseconds: 50), () {
-      _pendingReadRecordPageNo = null;
-      _readRecordHelper.save(
-        comicId: id,
-        sourceKey: _sourceKey,
-        chapterId: _chapter.id,
-        pageNo: index,
-      );
-    });
+    _scheduleReadRecordSave();
   }
 
   // ============================ 阅读模式 ============================
@@ -397,8 +434,7 @@ class ReaderProvider extends ChangeNotifier {
 
   /// 底部工具栏 Slider 拖动回调。
   void onSliderChanged(int index) {
-    _pageNo = index;
-    notifyListeners();
+    onPageNoChanged(index);
     if (_readMode.isVertical) {
       itemScrollController.jumpTo(index: index);
     } else {
@@ -654,6 +690,9 @@ class ReaderProvider extends ChangeNotifier {
     turnPageTimer?.cancel();
     _smoothTicker?.dispose();
     _pageNoTimer?.cancel();
+    if (_hasPendingReadRecord) {
+      _persistReadRecord();
+    }
     super.dispose();
   }
 }

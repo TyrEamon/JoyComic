@@ -1,18 +1,9 @@
-/// 收藏页（= 底部 Tab 3）。
-///
-/// 结构：
-/// 1. 顶栏：标题"收藏" + 搜索图标
-/// 2. 源筛选：全部 / 禁漫 / 哔咔
-/// 3. 文件夹横滑（多文件夹源）
-/// 4. 排序条：最近 / 收藏时间 / 标题
-/// 5. 漫画网格 [ComicGrid]
-///
-/// 功能集成说明：
-/// - 数据来自 `source.favoriteData.load(page, folder)`。
-/// - 遍历已登录源，按源筛选展示。
-/// - 未登录源灰显，点击弹出登录引导。
-library favorites_page;
+/// 收藏库：合并本地缓存与已登录漫画源的远端收藏。
+library;
 
+import 'dart:math' as math;
+
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -23,30 +14,98 @@ import '../../theme/app_colors.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
 import '../common/utils/source_login_guard.dart';
-import '../common/widgets/comic_grid.dart';
+import '../common/widgets/comic_card.dart';
 import '../common/widgets/empty_state.dart';
 
+List<ComicSource> _defaultSourcesProvider() => ComicSource.sources;
+
+/// 收藏页统一条目。一个条目可同时存在于 SQLite 与远端。
+class FavoriteLibraryItem {
+  const FavoriteLibraryItem({
+    required this.sourceKey,
+    required this.comicId,
+    required this.title,
+    required this.coverUrl,
+    required this.author,
+    this.favoritedAt = 0,
+    this.isLocal = false,
+    this.isRemote = false,
+  });
+
+  final String sourceKey;
+  final String comicId;
+  final String title;
+  final String coverUrl;
+  final String author;
+  final int favoritedAt;
+  final bool isLocal;
+  final bool isRemote;
+
+  FavoriteLibraryItem merge(FavoriteLibraryItem newer) {
+    return FavoriteLibraryItem(
+      sourceKey: sourceKey,
+      comicId: comicId,
+      title: newer.title.isNotEmpty ? newer.title : title,
+      coverUrl: newer.coverUrl.isNotEmpty ? newer.coverUrl : coverUrl,
+      author: newer.author.isNotEmpty ? newer.author : author,
+      favoritedAt: math.max(favoritedAt, newer.favoritedAt),
+      isLocal: isLocal || newer.isLocal,
+      isRemote: isRemote || newer.isRemote,
+    );
+  }
+}
+
+/// 按 `(sourceKey, comicId)` 合并，远端非空元数据优先，本地时间用于稳定排序。
+List<FavoriteLibraryItem> mergeFavoriteLibraryItems({
+  required Iterable<FavoriteLibraryItem> local,
+  required Iterable<FavoriteLibraryItem> remote,
+}) {
+  final merged = <(String, String), FavoriteLibraryItem>{};
+  for (final item in <FavoriteLibraryItem>[...local, ...remote]) {
+    final key = (item.sourceKey, item.comicId);
+    merged[key] = merged[key]?.merge(item) ?? item;
+  }
+  final result = merged.values.toList();
+  result.sort((a, b) {
+    final byTime = b.favoritedAt.compareTo(a.favoritedAt);
+    if (byTime != 0) return byTime;
+    final byTitle = a.title.compareTo(b.title);
+    if (byTitle != 0) return byTitle;
+    final bySource = a.sourceKey.compareTo(b.sourceKey);
+    return bySource != 0 ? bySource : a.comicId.compareTo(b.comicId);
+  });
+  return result;
+}
+
 class FavoritesPage extends StatefulWidget {
-  const FavoritesPage({super.key});
+  const FavoritesPage({
+    super.key,
+    this.favoritesHelper,
+    this.sourcesProvider = _defaultSourcesProvider,
+  });
+
+  final FavoritesHelper? favoritesHelper;
+  final List<ComicSource> Function() sourcesProvider;
 
   @override
   State<FavoritesPage> createState() => _FavoritesPageState();
 }
 
 class _FavoritesPageState extends State<FavoritesPage> {
-  /// 源筛选：null=全部, 'jm'=禁漫, 'picacg'=哔咔。
+  late final FavoritesHelper _helper =
+      widget.favoritesHelper ?? FavoritesHelper();
   String? _filterSource;
-
-  /// 各源的收藏数据。
-  Map<String, List<ComicGridItem>> _favData = {};
+  List<FavoriteLibraryItem> _items = const [];
+  Set<String> _failedSources = const {};
   bool _loading = true;
+  bool _syncingRemote = false;
+  int _loadGeneration = 0;
 
   @override
   void initState() {
     super.initState();
-    _loadFavorites();
-    // 监听收藏状态变化通知
     FavoriteNotifier.instance.addListener(_onFavoriteChanged);
+    _loadFavorites();
   }
 
   @override
@@ -56,47 +115,198 @@ class _FavoritesPageState extends State<FavoritesPage> {
   }
 
   void _onFavoriteChanged() {
-    if (FavoriteNotifier.instance.isDirty) {
-      FavoriteNotifier.instance.consumeDirty();
-      _loadFavorites();
-    }
+    if (!FavoriteNotifier.instance.isDirty || _syncingRemote) return;
+    FavoriteNotifier.instance.consumeDirty();
+    _loadFavorites();
+  }
+
+  List<FavoriteLibraryItem> _localItems() {
+    return _helper
+        .list()
+        .map(
+          (record) => FavoriteLibraryItem(
+            sourceKey: record.source,
+            comicId: record.comic,
+            title: record.title,
+            coverUrl: record.cover,
+            author: record.author,
+            favoritedAt: record.favoritedAt,
+            isLocal: true,
+          ),
+        )
+        .toList();
   }
 
   Future<void> _loadFavorites() async {
-    setState(() => _loading = true);
-    final data = <String, List<ComicGridItem>>{};
-
-    for (final s in ComicSource.sources) {
-      if (!s.isLogin || s.favoriteData == null) continue;
-      final res = await s.favoriteData!.load(1);
-      if (res.error) continue;
-      data[s.key] = res.data.map((b) => ComicGridItem(
-            id: b.id,
-            title: b.title,
-            coverUrl: b.cover,
-            subtitle: b.subTitle,
-            sourceKey: s.key,
-          )).toList();
+    final generation = ++_loadGeneration;
+    final local = _localItems();
+    if (mounted) {
+      setState(() {
+        _items = mergeFavoriteLibraryItems(local: local, remote: const []);
+        _loading = true;
+      });
     }
-    Log.i('Favorites loaded',
-        '${data.length} sources, total: ${data.values.expand((e) => e).length} items');
-    if (!mounted) return;
+
+    final remote = <FavoriteLibraryItem>[];
+    final failed = <String>{};
+    final sources = widget.sourcesProvider();
+    await Future.wait(
+      sources
+          .where((source) => source.isLogin && source.favoriteData != null)
+          .map((source) async {
+            try {
+              final result = await source.favoriteData!.load(1);
+              if (result.error) {
+                failed.add(source.key);
+                return;
+              }
+              for (final comic in result.data) {
+                remote.add(
+                  FavoriteLibraryItem(
+                    sourceKey: source.key,
+                    comicId: comic.id,
+                    title: comic.title,
+                    coverUrl: comic.cover,
+                    author: comic.subTitle,
+                    isRemote: true,
+                  ),
+                );
+              }
+            } catch (error, stackTrace) {
+              failed.add(source.key);
+              Log.e(
+                'Favorite source load failed',
+                error: error,
+                stackTrace: stackTrace,
+              );
+            }
+          }),
+    );
+
+    if (!mounted || generation != _loadGeneration) return;
+
+    // 成功取得的远端收藏写入本地缓存，使下次离线启动仍然可见。
+    _syncingRemote = true;
+    try {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      for (var index = 0; index < remote.length; index++) {
+        final item = remote[index];
+        final existing = _helper.get(item.sourceKey, item.comicId);
+        _helper.upsert(
+          FavoriteRecord(
+            source: item.sourceKey,
+            comic: item.comicId,
+            title: item.title.isEmpty ? existing?.title ?? '' : item.title,
+            cover: item.coverUrl.isEmpty
+                ? existing?.cover ?? ''
+                : item.coverUrl,
+            author: item.author.isEmpty ? existing?.author ?? '' : item.author,
+            favoritedAt: existing?.favoritedAt ?? now - index,
+          ),
+        );
+        if (!FavoriteNotifier.instance.isFavorited(
+          item.sourceKey,
+          item.comicId,
+        )) {
+          FavoriteNotifier.instance.addLocal(
+            item.sourceKey,
+            item.comicId,
+            item.title,
+            item.coverUrl,
+            item.author,
+          );
+        }
+      }
+    } finally {
+      _syncingRemote = false;
+      FavoriteNotifier.instance.consumeDirty();
+    }
+
+    final refreshedLocal = _localItems();
     setState(() {
-      _favData = data;
+      _items = mergeFavoriteLibraryItems(local: refreshedLocal, remote: remote);
+      _failedSources = failed;
       _loading = false;
     });
+    Log.i('Favorites loaded', '${_items.length} merged items');
   }
 
-  List<ComicGridItem> get _items {
-    if (_filterSource == null) {
-      return _favData.values.expand((e) => e).toList();
+  List<FavoriteLibraryItem> get _visibleItems => _filterSource == null
+      ? _items
+      : _items.where((item) => item.sourceKey == _filterSource).toList();
+
+  List<String> get _sourceKeys {
+    final keys = <String>{
+      ...widget.sourcesProvider().map((source) => source.key),
+      ..._items.map((item) => item.sourceKey),
+    }.toList();
+    keys.sort();
+    return keys;
+  }
+
+  String _sourceName(String key) =>
+      widget
+          .sourcesProvider()
+          .where((source) => source.key == key)
+          .firstOrNull
+          ?.name ??
+      key;
+
+  Future<void> _openDetail(FavoriteLibraryItem item) async {
+    final source =
+        ComicSource.find(item.sourceKey) ??
+        widget
+            .sourcesProvider()
+            .where((source) => source.key == item.sourceKey)
+            .firstOrNull;
+    if (source != null && !source.isLogin) {
+      final allowed = await ensureSourceLoggedIn(context, item.sourceKey);
+      if (!allowed) return;
     }
-    return _favData[_filterSource] ?? [];
+    if (!mounted) return;
+    context.push('/detail/${item.sourceKey}/${item.comicId}');
+  }
+
+  Future<void> _removeFavorite(FavoriteLibraryItem item) async {
+    final source = widget
+        .sourcesProvider()
+        .where((candidate) => candidate.key == item.sourceKey)
+        .firstOrNull;
+    if (item.isRemote && source != null && !source.isLogin) {
+      await ensureSourceLoggedIn(context, item.sourceKey);
+      return;
+    }
+
+    try {
+      if (item.isRemote &&
+          source?.favoriteData?.addOrDelFavorite != null &&
+          source!.isLogin) {
+        await _helper.toggleFavorite(
+          sourceKey: item.sourceKey,
+          comicId: item.comicId,
+          title: item.title,
+          coverUrl: item.coverUrl,
+          author: item.author,
+        );
+      } else {
+        _helper.delete(item.sourceKey, item.comicId);
+        FavoriteNotifier.instance.removeLocal(item.sourceKey, item.comicId);
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('取消收藏失败：$error')));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final items = _items;
+    final visibleItems = _visibleItems;
+    final loggedOutSources = widget
+        .sourcesProvider()
+        .where((source) => source.favoriteData != null && !source.isLogin)
+        .toList();
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -104,39 +314,72 @@ class _FavoritesPageState extends State<FavoritesPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _TopBar(),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-              child: _SourceFilterBar(
-                current: _filterSource,
-                onChanged: (s) => setState(() => _filterSource = s),
-              ),
+            _TopBar(
+              count: visibleItems.length,
+              loading: _loading,
+              onRefresh: _loadFavorites,
             ),
+            if (_sourceKeys.isNotEmpty)
+              _SourceFilterBar(
+                sourceKeys: _sourceKeys,
+                sourceName: _sourceName,
+                current: _filterSource,
+                onChanged: (source) => setState(() => _filterSource = source),
+              ),
+            if (loggedOutSources.isNotEmpty)
+              _LoginHint(
+                sourceNames: loggedOutSources
+                    .map((source) => source.name)
+                    .join('、'),
+                onLogin: () => context.push(
+                  '/login?source=${_filterSource ?? loggedOutSources.first.key}',
+                ),
+              ),
+            if (_failedSources.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.md,
+                  AppSpacing.xs,
+                  AppSpacing.md,
+                  0,
+                ),
+                child: Text(
+                  '${_failedSources.map(_sourceName).join('、')} 同步失败，已显示本地收藏',
+                  style: const TextStyle(
+                    color: AppColors.textLow,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
             Expanded(
-              child: _loading
+              child: _loading && visibleItems.isEmpty
                   ? const Center(
                       child: CircularProgressIndicator(
                         color: AppColors.brandPink,
                         strokeWidth: 2.5,
                       ),
                     )
-                  : items.isEmpty
-                      ? const EmptyState(
-                          icon: Icons.favorite_border_rounded,
-                          title: '还没有收藏',
-                          subtitle: '在详情页点收藏，作品会出现在这里',
-                          actionLabel: '去发现',
-                        )
-                      : ComicGrid(
-                          items: items,
-                          onItemTap: (i) async {
-                            final sk = i.sourceKey ?? 'jm';
-                            final ok = await ensureSourceLoggedIn(context, sk);
-                            if (!ok && sk == 'picacg') return;
-                            if (!context.mounted) return;
-                            context.push('/detail/$sk/${i.id}');
-                          },
-                        ),
+                  : visibleItems.isEmpty
+                  ? RefreshIndicator(
+                      onRefresh: _loadFavorites,
+                      child: ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        children: const [
+                          SizedBox(height: 120),
+                          EmptyState(
+                            icon: Icons.favorite_border_rounded,
+                            title: '还没有收藏',
+                            subtitle: '在详情页点收藏，作品会出现在这里',
+                          ),
+                        ],
+                      ),
+                    )
+                  : _FavoritesGrid(
+                      items: visibleItems,
+                      onRefresh: _loadFavorites,
+                      onOpen: _openDetail,
+                      onRemove: _removeFavorite,
+                    ),
             ),
           ],
         ),
@@ -146,79 +389,43 @@ class _FavoritesPageState extends State<FavoritesPage> {
 }
 
 class _TopBar extends StatelessWidget {
+  const _TopBar({
+    required this.count,
+    required this.loading,
+    required this.onRefresh,
+  });
+
+  final int count;
+  final bool loading;
+  final Future<void> Function() onRefresh;
+
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.sm,
+      ),
       child: Row(
         children: [
-          const Text('收藏',
-              style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.textHigh)),
+          const Text(
+            '收藏',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textHigh,
+            ),
+          ),
           const SizedBox(width: AppSpacing.xs),
-          const Text('128',
-              style: TextStyle(fontSize: 14, color: AppColors.textLow)),
+          Text(
+            '$count',
+            style: const TextStyle(fontSize: 14, color: AppColors.textLow),
+          ),
           const Spacer(),
           IconButton(
-            icon: const Icon(Icons.search, color: AppColors.textHigh),
-            onPressed: () => context.push('/search/all'),
-          ),
-          IconButton(
-            icon: const Icon(Icons.create_new_folder_outlined,
-                color: AppColors.textHigh),
-            onPressed: () => _showNewFolderDialog(context),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showNewFolderDialog(BuildContext context) {
-    final controller = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: const Text('新建文件夹',
-            style: TextStyle(color: AppColors.textHigh)),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          style: const TextStyle(color: AppColors.textHigh),
-          decoration: InputDecoration(
-            hintText: '文件夹名称',
-            hintStyle: const TextStyle(color: AppColors.textLow),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-            filled: true,
-            fillColor: const Color(0xFF221A2B),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消', style: TextStyle(color: AppColors.textLow)),
-          ),
-          FilledButton(
-            onPressed: () async {
-              final name = controller.text.trim();
-              if (name.isEmpty) return;
-              // 给第一个支持多文件夹的源创建
-              for (final s in ComicSource.sources) {
-                if (s.favoriteData?.addFolder != null && s.isLogin) {
-                  await s.favoriteData!.addFolder!(name);
-                  break;
-                }
-              }
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
-            style: FilledButton.styleFrom(backgroundColor: AppColors.brandPink),
-            child: const Text('创建'),
+            tooltip: '刷新收藏',
+            onPressed: loading ? null : onRefresh,
+            icon: const Icon(Icons.refresh_rounded),
           ),
         ],
       ),
@@ -226,57 +433,168 @@ class _TopBar extends StatelessWidget {
   }
 }
 
-
-/// 源筛选栏：全部 / 禁漫 / 哔咔。
 class _SourceFilterBar extends StatelessWidget {
-  const _SourceFilterBar({required this.current, required this.onChanged});
+  const _SourceFilterBar({
+    required this.sourceKeys,
+    required this.sourceName,
+    required this.current,
+    required this.onChanged,
+  });
+
+  final List<String> sourceKeys;
+  final String Function(String) sourceName;
   final String? current;
   final ValueChanged<String?> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        _FChip(label: '全部', active: current == null, onTap: () => onChanged(null)),
-        const SizedBox(width: 8),
-        _FChip(label: '禁漫', active: current == 'jm', onTap: () => onChanged('jm')),
-        const SizedBox(width: 8),
-        _FChip(label: '哔咔', active: current == 'picacg', onTap: () => onChanged('picacg')),
-      ],
+    return SizedBox(
+      height: 44,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+        itemCount: sourceKeys.length + 1,
+        separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.xs),
+        itemBuilder: (context, index) {
+          final key = index == 0 ? null : sourceKeys[index - 1];
+          return ChoiceChip(
+            label: Text(key == null ? '全部' : sourceName(key)),
+            selected: current == key,
+            onSelected: (_) => onChanged(key),
+          );
+        },
+      ),
     );
   }
 }
 
-class _FChip extends StatelessWidget {
-  const _FChip({required this.label, required this.active, required this.onTap});
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
+class _LoginHint extends StatelessWidget {
+  const _LoginHint({required this.sourceNames, required this.onLogin});
+
+  final String sourceNames;
+  final VoidCallback onLogin;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-        decoration: BoxDecoration(
-          gradient: active
-              ? const LinearGradient(colors: [Color(0xFFFF7BA9), Color(0xFFB967FF)])
-              : null,
-          color: active ? null : const Color(0xFF1B1622),
-          borderRadius: BorderRadius.circular(16),
-          border: active ? null : Border.all(color: const Color(0xFF2F2740)),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: active ? Colors.white : const Color(0xFF8A8298),
-          ),
-        ),
+    return Container(
+      margin: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.xs,
+        AppSpacing.md,
+        AppSpacing.xs,
       ),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.xs,
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: AppRadius.brMd,
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.cloud_off_rounded, size: 18),
+          const SizedBox(width: AppSpacing.xs),
+          Expanded(
+            child: Text(
+              '$sourceNames 未登录；本地收藏仍可离线查看',
+              style: const TextStyle(fontSize: 12),
+            ),
+          ),
+          TextButton(onPressed: onLogin, child: const Text('去登录')),
+        ],
+      ),
+    );
+  }
+}
+
+class _FavoritesGrid extends StatelessWidget {
+  const _FavoritesGrid({
+    required this.items,
+    required this.onRefresh,
+    required this.onOpen,
+    required this.onRemove,
+  });
+
+  final List<FavoriteLibraryItem> items;
+  final Future<void> Function() onRefresh;
+  final ValueChanged<FavoriteLibraryItem> onOpen;
+  final ValueChanged<FavoriteLibraryItem> onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const columns = 3;
+        final width =
+            (constraints.maxWidth - AppSpacing.md * 2 - AppSpacing.sm * 2) /
+            columns;
+        return RefreshIndicator(
+          color: AppColors.brandPink,
+          onRefresh: onRefresh,
+          child: GridView.builder(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.md,
+              AppSpacing.sm,
+              AppSpacing.md,
+              92,
+            ),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: columns,
+              mainAxisSpacing: AppSpacing.md,
+              crossAxisSpacing: AppSpacing.sm,
+              childAspectRatio: 0.52,
+            ),
+            itemCount: items.length,
+            itemBuilder: (context, index) {
+              final item = items[index];
+              final source = ComicSource.find(item.sourceKey);
+              final headers = source?.getThumbnailLoadingConfig?.call(
+                item.coverUrl,
+              );
+              final status = item.isLocal && item.isRemote
+                  ? '本地 + 云端'
+                  : item.isRemote
+                  ? '云端收藏'
+                  : '本地收藏 · 离线可见';
+              return Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  ComicCard.poster(
+                    title: item.title,
+                    coverUrl: item.coverUrl,
+                    subtitle: item.author.isEmpty
+                        ? status
+                        : '${item.author} · $status',
+                    width: width,
+                    headers: headers,
+                    sourceKey: item.sourceKey,
+                    onTap: () => onOpen(item),
+                  ),
+                  Positioned(
+                    right: 4,
+                    top: 4,
+                    child: Material(
+                      color: Colors.black.withValues(alpha: 0.62),
+                      shape: const CircleBorder(),
+                      child: IconButton(
+                        tooltip: '取消收藏',
+                        visualDensity: VisualDensity.compact,
+                        iconSize: 18,
+                        color: AppColors.brandPink,
+                        onPressed: () => onRemove(item),
+                        icon: const Icon(Icons.favorite_rounded),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        );
+      },
     );
   }
 }

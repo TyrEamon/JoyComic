@@ -196,6 +196,7 @@ class FavoritesHelper {
     required String comicId,
     required String title,
     required String coverUrl,
+    String author = '',
   }) async {
     final wasFavorited = FavoriteNotifier.instance.isFavorited(
       sourceKey,
@@ -217,11 +218,17 @@ class FavoritesHelper {
         comic: comicId,
         title: title,
         cover: coverUrl,
-        author: '',
+        author: author,
         favoritedAt: DateTime.now().millisecondsSinceEpoch,
       ),
     );
-    FavoriteNotifier.instance.addLocal(sourceKey, comicId, title, coverUrl);
+    FavoriteNotifier.instance.addLocal(
+      sourceKey,
+      comicId,
+      title,
+      coverUrl,
+      author,
+    );
     Log.i('Favorite added', '$sourceKey/$comicId');
     return true;
   }
@@ -233,7 +240,14 @@ class FavoritesHelper {
     }
     final source = ComicSource.find(sourceKey);
     if (source?.favoriteData?.addOrDelFavorite == null) return;
-    await source!.favoriteData!.addOrDelFavorite!(comicId, '', true);
+    final result = await source!.favoriteData!.addOrDelFavorite!(
+      comicId,
+      '',
+      true,
+    );
+    if (result.error) {
+      throw StateError(result.errorMessageWithoutNull);
+    }
   }
 
   Future<void> _removeFromSource(String sourceKey, String comicId) async {
@@ -243,6 +257,13 @@ class FavoritesHelper {
     }
     final source = ComicSource.find(sourceKey);
     if (source?.favoriteData?.addOrDelFavorite == null) return;
-    await source!.favoriteData!.addOrDelFavorite!(comicId, '', false);
+    final result = await source!.favoriteData!.addOrDelFavorite!(
+      comicId,
+      '',
+      false,
+    );
+    if (result.error) {
+      throw StateError(result.errorMessageWithoutNull);
+    }
   }
 }

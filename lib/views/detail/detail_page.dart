@@ -5,7 +5,7 @@
 ///
 /// 数据由 [DetailViewModel] 驱动（Provider 注入），支持
 /// loading / error / success 三态，error 态提供重试。
-library detail_page;
+library;
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -66,9 +66,9 @@ class _DetailScaffold extends StatelessWidget {
           switch (vm.state) {
             DetailLoadState.loading => const _Loading(),
             DetailLoadState.error => _Error(
-                message: vm.error ?? '加载失败',
-                onRetry: vm.reload,
-              ),
+              message: vm.error ?? '加载失败',
+              onRetry: vm.reload,
+            ),
             DetailLoadState.idle => const SizedBox.shrink(),
             DetailLoadState.success => const _Content(),
           },
@@ -92,7 +92,9 @@ class _Loading extends StatelessWidget {
       color: AppColors.background,
       child: const Center(
         child: CircularProgressIndicator(
-            color: AppColors.brandPink, strokeWidth: 2.5),
+          color: AppColors.brandPink,
+          strokeWidth: 2.5,
+        ),
       ),
     );
   }
@@ -112,8 +114,11 @@ class _Error extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.error_outline_rounded,
-                size: 48, color: AppColors.textLow),
+            const Icon(
+              Icons.error_outline_rounded,
+              size: 48,
+              color: AppColors.textLow,
+            ),
             const SizedBox(height: AppSpacing.sm),
             Text(
               message,
@@ -149,28 +154,34 @@ class _Content extends StatelessWidget {
     final chapterEntries = <ChapterEntry>[];
     var idx = 0;
     info.chapters?.forEach((id, name) {
-      chapterEntries.add(ChapterEntry(
-        id: id,
-        name: name.isEmpty ? '第${idx + 1}话' : name,
-        cover: info.thumbnails?.elementAtOrNull(idx),
-      ));
+      chapterEntries.add(
+        ChapterEntry(
+          id: id,
+          name: name.isEmpty ? '第${idx + 1}话' : name,
+          cover: info.thumbnails?.elementAtOrNull(idx),
+        ),
+      );
       idx++;
     });
-    final latestName =
-        chapterEntries.isNotEmpty ? chapterEntries.last.name : null;
+    final latestName = chapterEntries.isNotEmpty
+        ? chapterEntries.last.name
+        : null;
 
     // 作者：tags 中"作者"/"author"键首个值；禁漫可能多作者，取第一个展示。
     final author = (info.tags['作者'] ?? info.tags['author'])?.firstOrNull;
 
     // 相关推荐：从 ComicInfoData.suggestions 映射。
-    final List<RecommendItem> recommends = info.suggestions
-            ?.map((b) => RecommendItem(
-                  id: b.id,
-                  title: b.title,
-                  cover: b.cover,
-                  author: b.subTitle,
-                  sourceKey: vm.sourceKey,
-                ))
+    final List<RecommendItem> recommends =
+        info.suggestions
+            ?.map(
+              (b) => RecommendItem(
+                id: b.id,
+                title: b.title,
+                cover: b.cover,
+                author: b.subTitle,
+                sourceKey: vm.sourceKey,
+              ),
+            )
             .toList() ??
         const [];
 
@@ -211,13 +222,15 @@ class _Content extends StatelessWidget {
                   CommentSection(
                     total: vm.commentTotal,
                     comments: vm.comments
-                        .map((c) => CommentView(
-                              userName: c.userName,
-                              avatar: c.avatar,
-                              content: c.content,
-                              time: c.time,
-                              likes: c.replyCount,
-                            ))
+                        .map(
+                          (c) => CommentView(
+                            userName: c.userName,
+                            avatar: c.avatar,
+                            content: c.content,
+                            time: c.time,
+                            likes: c.replyCount,
+                          ),
+                        )
                         .toList(),
                     onShowAll: () {},
                   ),
@@ -255,12 +268,16 @@ class _Content extends StatelessWidget {
     );
   }
 
-  void _openReader(BuildContext context, DetailViewModel vm,
-      ChapterEntry? entry, List<ReaderChapter> chapters) {
+  void _openReader(
+    BuildContext context,
+    DetailViewModel vm,
+    ChapterEntry? entry,
+    List<ReaderChapter> chapters,
+  ) {
     if (chapters.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('暂无章节')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('暂无章节')));
       return;
     }
     ReaderChapter start;
@@ -272,15 +289,20 @@ class _Content extends StatelessWidget {
         orElse: () => chapters.last,
       );
     }
-    context.push('/reader', extra: ComicState(
-      id: vm.data!.info.comicId,
-      title: vm.data!.info.title,
-      chapters: chapters,
-      // 章节标识（禁漫 chapterId / 哔咔 order）作为 ep 传给 loadComicPages。
-      chapter: start,
-      pageNo: 0,
-      sourceKey: vm.sourceKey,
-    ));
+    context.push(
+      '/reader',
+      extra: ComicState(
+        id: vm.data!.info.comicId,
+        title: vm.data!.info.title,
+        coverUrl: vm.data!.info.cover,
+        author: vm.author,
+        chapters: chapters,
+        // 章节标识（禁漫 chapterId / 哔咔 order）作为 ep 传给 loadComicPages。
+        chapter: start,
+        pageNo: 0,
+        sourceKey: vm.sourceKey,
+      ),
+    );
   }
 
   List<String> _flattenTags(Map<String, List<String>> tags) {

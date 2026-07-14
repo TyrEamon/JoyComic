@@ -7,7 +7,7 @@
 ///
 /// 不直接依赖具体源网络层，全部走 ComicSource 声明式契约。
 /// 阶段4 接 DB 后在此注入收藏态持久化。
-library detail_view_model;
+library;
 
 import 'package:flutter/foundation.dart';
 
@@ -21,10 +21,7 @@ enum DetailLoadState { idle, loading, success, error }
 
 /// 详情页 UI 数据快照（与 ComicInfoData 解耦的视图模型）。
 class DetailUiData {
-  const DetailUiData({
-    required this.info,
-    required this.palette,
-  });
+  const DetailUiData({required this.info, required this.palette});
   final ComicInfoData info;
   final ComicPalette palette;
 }
@@ -93,11 +90,13 @@ class DetailViewModel extends ChangeNotifier {
     // 演示数据旁路：跳过网络，直接铺兜底色渲染，随后取色。
     if (demoData != null) {
       _data = DetailUiData(info: demoData!, palette: ComicPalette.fallback);
-      _isFavorite = demoData!.isFavorite ?? false;
+      _applyFavoriteState(demoData!);
       _state = DetailLoadState.success;
       notifyListeners();
-      final palette =
-          await PaletteExtractor.extract(demoData!.cover, headers: _demoHeaders);
+      final palette = await PaletteExtractor.extract(
+        demoData!.cover,
+        headers: _demoHeaders,
+      );
       if (_data != null) {
         _data = DetailUiData(info: demoData!, palette: palette);
         notifyListeners();
@@ -127,15 +126,8 @@ class DetailViewModel extends ChangeNotifier {
         return;
       }
       final info = res.data;
-      if (info == null) {
-        _state = DetailLoadState.error;
-        _error = '数据为空';
-        Log.w('Detail empty', error: '$comicId returned null info');
-        notifyListeners();
-        return;
-      }
 
-      _isFavorite = info.isFavorite ?? false;
+      _applyFavoriteState(info);
       Log.i('Detail loaded', '$comicId - ${info.title}');
 
       // 先以兜底色铺好，UI 立即可渲染；取色完成后再平滑替换。
@@ -145,7 +137,10 @@ class DetailViewModel extends ChangeNotifier {
 
       // 后台取色（不阻塞首屏）。
       final headers = source.getThumbnailLoadingConfig?.call(info.cover);
-      final palette = await PaletteExtractor.extract(info.cover, headers: headers);
+      final palette = await PaletteExtractor.extract(
+        info.cover,
+        headers: headers,
+      );
       if (_data != null && _data!.info == info) {
         _data = DetailUiData(info: info, palette: palette);
         notifyListeners();
@@ -160,7 +155,44 @@ class DetailViewModel extends ChangeNotifier {
     }
   }
 
-  /// 切换收藏态（API + 本地同步）。
+  String get author {
+    final info = _data?.info;
+    if (info == null) return '';
+    return _authorOf(info);
+  }
+
+  String _authorOf(ComicInfoData info) {
+    final values = info.tags['作者'] ?? info.tags['author'] ?? const <String>[];
+    return values.join('、');
+  }
+
+  void _applyFavoriteState(ComicInfoData info) {
+    final notifier = FavoriteNotifier.instance;
+    final isLocal = notifier.isFavorited(sourceKey, info.comicId);
+    if (info.isFavorite == true && !isLocal) {
+      final author = _authorOf(info);
+      _favHelper.upsert(
+        FavoriteRecord(
+          source: sourceKey,
+          comic: info.comicId,
+          title: info.title,
+          cover: info.cover,
+          author: author,
+          favoritedAt: DateTime.now().millisecondsSinceEpoch,
+        ),
+      );
+      notifier.addLocal(
+        sourceKey,
+        info.comicId,
+        info.title,
+        info.cover,
+        author,
+      );
+    }
+    _isFavorite = info.isFavorite == true || isLocal;
+  }
+
+  /// 切换收藏态（远端成功后才更新本地）。
   Future<void> toggleFavorite() async {
     final info = _data?.info;
     if (info == null) return;
@@ -170,6 +202,7 @@ class DetailViewModel extends ChangeNotifier {
       comicId: info.comicId,
       title: info.title,
       coverUrl: info.cover,
+      author: _authorOf(info),
     );
     _isFavorite = newState;
 

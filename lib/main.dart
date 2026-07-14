@@ -13,6 +13,8 @@ import 'views/auth/login_page.dart';
 import 'views/common/source_content_page.dart';
 import 'views/detail/detail_page.dart';
 import 'views/download/download_page.dart';
+import 'views/favorites/favorites_page.dart';
+import 'views/history/history_page.dart';
 import 'views/image_search/image_search_page.dart';
 import 'views/main_scaffold.dart';
 import 'views/ranking/ranking_page.dart';
@@ -42,15 +44,11 @@ Future<void> main() async {
 final _router = GoRouter(
   initialLocation: '/',
   routes: [
-    GoRoute(
-      path: '/',
-      builder: (context, state) => const MainScaffold(),
-    ),
+    GoRoute(path: '/', builder: (context, state) => const MainScaffold()),
     GoRoute(
       path: '/search/:sourceKey',
-      builder: (context, state) => SearchPage(
-        sourceKey: state.pathParameters['sourceKey']!,
-      ),
+      builder: (context, state) =>
+          SearchPage(sourceKey: state.pathParameters['sourceKey']!),
     ),
     GoRoute(
       path: '/content/:sourceKey',
@@ -75,14 +73,16 @@ final _router = GoRouter(
       path: '/image-search',
       builder: (context, state) => const ImageSearchPage(),
     ),
-    GoRoute(
-      path: '/video',
-      builder: (context, state) => const VideoPage(),
-    ),
+    GoRoute(path: '/video', builder: (context, state) => const VideoPage()),
     GoRoute(
       path: '/download',
       builder: (context, state) => const DownloadPage(),
     ),
+    GoRoute(
+      path: '/favorites',
+      builder: (context, state) => const FavoritesPage(),
+    ),
+    GoRoute(path: '/history', builder: (context, state) => const HistoryPage()),
     GoRoute(
       path: '/login',
       builder: (context, state) => LoginPage(
@@ -103,10 +103,7 @@ final _router = GoRouter(
       path: '/settings/reader',
       builder: (context, state) => const ReaderSettingsPage(),
     ),
-    GoRoute(
-      path: '/logs',
-      builder: (context, state) => const LogViewerPage(),
-    ),
+    GoRoute(path: '/logs', builder: (context, state) => const LogViewerPage()),
     GoRoute(
       path: '/webdav',
       builder: (context, state) => const WebDavSettingsPage(),
@@ -130,17 +127,13 @@ final _router = GoRouter(
           imageLoader = (String comicId, String? ep) =>
               source!.loadComicPages!(comicId, ep);
         }
-        return Reader(
-          comicState: comicState,
-          imageLoader: imageLoader,
-        );
+        return Reader(comicState: comicState, imageLoader: imageLoader);
       },
     ),
   ],
   // 未匹配路由（历史/关于/WebDAV/分类结果等"留功能位置"页）落到占位页，
   // 避免崩溃。功能集成时替换为真实页面。
-  errorBuilder: (context, state) =>
-      _PlaceholderPage(title: state.uri.path),
+  errorBuilder: (context, state) => _PlaceholderPage(title: state.uri.path),
 );
 
 /// 功能待集成占位页。
@@ -151,17 +144,29 @@ class _PlaceholderPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('功能待集成'), backgroundColor: const Color(0xFF0E0B14)),
+      appBar: AppBar(
+        title: const Text('功能待集成'),
+        backgroundColor: const Color(0xFF0E0B14),
+      ),
       body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.construction_rounded, size: 48, color: Color(0xFF8A8298)),
+            const Icon(
+              Icons.construction_rounded,
+              size: 48,
+              color: Color(0xFF8A8298),
+            ),
             const SizedBox(height: 12),
-            Text('该页面 UI 框架已留位，真实功能待集成',
-                style: const TextStyle(color: Color(0xFF8A8298))),
+            const Text(
+              '该页面 UI 框架已留位，真实功能待集成',
+              style: TextStyle(color: Color(0xFF8A8298)),
+            ),
             const SizedBox(height: 8),
-            Text(title, style: const TextStyle(fontSize: 12, color: Color(0xFF5A5466))),
+            Text(
+              title,
+              style: const TextStyle(fontSize: 12, color: Color(0xFF5A5466)),
+            ),
           ],
         ),
       ),

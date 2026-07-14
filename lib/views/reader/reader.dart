@@ -15,9 +15,7 @@
 ///         ├── ReaderBottom             ← 底部工具栏
 ///         └── Drawer                   ← 章节列表
 /// ```
-library reader_main;
-
-import 'dart:async';
+library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -26,7 +24,7 @@ import 'package:provider/provider.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 import '../../comic_source/comic_source.dart';
-import '../../foundation/reader_config.dart';
+import '../../database/read_record_helper.dart';
 import 'providers/list_state_provider.dart';
 import 'providers/reader_provider.dart';
 import 'state/comic_state.dart';
@@ -50,10 +48,14 @@ class Reader extends StatefulWidget {
     super.key,
     required this.comicState,
     this.imageLoader,
+    this.readRecordHelper,
+    this.readRecordDebounce = const Duration(milliseconds: 250),
   });
 
   final ComicState comicState;
   final ReaderImageLoader? imageLoader;
+  final ReadRecordHelper? readRecordHelper;
+  final Duration readRecordDebounce;
 
   @override
   State<Reader> createState() => _ReaderState();
@@ -80,8 +82,7 @@ class _ReaderState extends State<Reader> {
     if (widget.imageLoader != null) return widget.imageLoader;
     final source = ComicSource.find(widget.comicState.sourceKey);
     if (source?.loadComicPages == null) return null;
-    return (String comicId, String? ep) =>
-        source!.loadComicPages!(comicId, ep);
+    return (String comicId, String? ep) => source!.loadComicPages!(comicId, ep);
   }
 
   @override
@@ -94,6 +95,8 @@ class _ReaderState extends State<Reader> {
           create: (_) => ReaderProvider(
             state: widget.comicState,
             imageLoader: imageLoader,
+            readRecordHelper: widget.readRecordHelper,
+            readRecordDebounce: widget.readRecordDebounce,
           ),
         ),
         ChangeNotifierProvider(create: (_) => ListStateProvider()),
@@ -103,8 +106,7 @@ class _ReaderState extends State<Reader> {
         hideToolbarScrollThreshold: _hideToolbarScrollThreshold,
         onScrollNotification: (notification) {
           if (notification is ScrollUpdateNotification) {
-            _scrollAccumulator +=
-                (notification.scrollDelta ?? 0.0).abs();
+            _scrollAccumulator += (notification.scrollDelta ?? 0.0).abs();
             if (_scrollAccumulator >= _hideToolbarScrollThreshold) {
               if (context.stateReader.lockMenu) {
                 context.reader.collapseMenuLock();
@@ -140,8 +142,7 @@ class _ReaderContent extends StatelessWidget {
     final chapterIndex = context.selector((p) => p.chapterIndex);
     final loadingState = context.selector((p) => p.loadingState);
     final loadingErrorMessage = context.selector((p) => p.loadingErrorMessage);
-    final showPageNumbers =
-        context.stateSelector((p) => p.showPageNumbers);
+    final showPageNumbers = context.stateSelector((p) => p.showPageNumbers);
     final chapters = context.selector((p) => p.chapters);
     final prev = context.reader.prev;
     final next = context.reader.next;
@@ -159,30 +160,28 @@ class _ReaderContent extends StatelessWidget {
         children: [
           Positioned.fill(
             child: switch (loadingState) {
-              ReaderLoadState.success =>
-                ReaderKeyboardListener(
-                  handlers: {
-                    LogicalKeyboardKey.arrowLeft: prev,
-                    LogicalKeyboardKey.arrowRight: next,
-                    LogicalKeyboardKey.arrowUp: prev,
-                    LogicalKeyboardKey.arrowDown: next,
-                    LogicalKeyboardKey.pageUp: prev,
-                    LogicalKeyboardKey.pageDown: next,
-                  },
-                  child: listWidget,
-                ),
+              ReaderLoadState.success => ReaderKeyboardListener(
+                handlers: {
+                  LogicalKeyboardKey.arrowLeft: prev,
+                  LogicalKeyboardKey.arrowRight: next,
+                  LogicalKeyboardKey.arrowUp: prev,
+                  LogicalKeyboardKey.arrowDown: next,
+                  LogicalKeyboardKey.pageUp: prev,
+                  LogicalKeyboardKey.pageDown: next,
+                },
+                child: listWidget,
+              ),
               ReaderLoadState.error => ErrorPage(
-                  errorMessage:
-                      loadingErrorMessage ?? '加载失败',
-                  onRetry: context.reader.retry,
-                  canPop: true,
-                ),
+                errorMessage: loadingErrorMessage ?? '加载失败',
+                onRetry: context.reader.retry,
+                canPop: true,
+              ),
               ReaderLoadState.loading => const Center(
-                  child: CircularProgressIndicator(),
-                ),
+                child: CircularProgressIndicator(),
+              ),
               ReaderLoadState.idle => const Center(
-                  child: CircularProgressIndicator(),
-                ),
+                child: CircularProgressIndicator(),
+              ),
             },
           ),
 
@@ -198,9 +197,7 @@ class _ReaderContent extends StatelessWidget {
         ],
       ),
       drawer: Drawer(
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.zero,
-        ),
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
         child: SafeArea(
           child: Column(
             children: [
