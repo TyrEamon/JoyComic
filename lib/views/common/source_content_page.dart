@@ -70,9 +70,10 @@ class _SourceContentPageState extends State<SourceContentPage> {
           break;
         }
       }
-      if (match == null) return;
+      final sortOptions = match?.sortOptions;
+      if (sortOptions == null) return;
       setState(() {
-        _sortOptions = match.sortOptions;
+        _sortOptions = sortOptions;
         if (_selectedSort == null && _sortOptions.isNotEmpty) {
           _selectedSort = _sortOptions.first.key;
         }
