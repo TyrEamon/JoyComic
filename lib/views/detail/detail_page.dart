@@ -130,8 +130,29 @@ class _Error extends StatelessWidget {
   }
 }
 
-class _Content extends StatelessWidget {
+List<T> rotateRecommendationItems<T>(
+  List<T> items,
+  int offset, {
+  int batchSize = 4,
+}) {
+  if (items.isEmpty || batchSize <= 0) return <T>[];
+  final start = offset % items.length;
+  final count = batchSize.clamp(0, items.length);
+  return List<T>.generate(
+    count,
+    (index) => items[(start + index) % items.length],
+  );
+}
+
+class _Content extends StatefulWidget {
   const _Content();
+
+  @override
+  State<_Content> createState() => _ContentState();
+}
+
+class _ContentState extends State<_Content> {
+  int _recommendationOffset = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -176,6 +197,10 @@ class _Content extends StatelessWidget {
             )
             .toList() ??
         const [];
+    final visibleRecommends = rotateRecommendationItems(
+      recommends,
+      _recommendationOffset,
+    );
 
     return Stack(
       children: [
@@ -226,14 +251,21 @@ class _Content extends StatelessWidget {
                           ),
                         )
                         .toList(),
-                    onShowAll: () {},
+                    onShowAll: vm.canLoadComments
+                        ? () => _showCommentsSheet(context, vm)
+                        : null,
                   ),
                   const SizedBox(height: AppSpacing.sectionGap),
                   RecommendationCarousel(
-                    items: recommends,
+                    items: visibleRecommends,
                     coverHeaders: vm.coverHeaders,
                     palette: palette,
-                    onRefresh: () {},
+                    onRefresh: recommends.length > 1
+                        ? () => setState(() {
+                            _recommendationOffset =
+                                (_recommendationOffset + 4) % recommends.length;
+                          })
+                        : null,
                     onSelect: (i) => context.push(
                       '/detail/${i.sourceKey ?? vm.sourceKey}/${i.id}',
                     ),
@@ -259,6 +291,89 @@ class _Content extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  void _showCommentsSheet(BuildContext context, DetailViewModel vm) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: context.surfaceColor,
+      builder: (sheetContext) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(sheetContext).height * 0.72,
+          child: ListenableBuilder(
+            listenable: vm,
+            builder: (context, _) {
+              final comments = vm.comments;
+              return Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    child: Row(
+                      children: [
+                        Text(
+                          '全部评论 (${vm.commentTotal})',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          tooltip: '关闭',
+                          onPressed: () => Navigator.pop(sheetContext),
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: comments.isEmpty
+                        ? const Center(child: Text('还没有评论'))
+                        : ListView.separated(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: AppSpacing.md,
+                            ),
+                            itemCount: comments.length,
+                            separatorBuilder: (_, __) => const Divider(),
+                            itemBuilder: (context, index) {
+                              final comment = comments[index];
+                              return ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                title: Text(comment.userName),
+                                subtitle: Text(comment.content),
+                                trailing: comment.time == null
+                                    ? null
+                                    : Text(comment.time!),
+                              );
+                            },
+                          ),
+                  ),
+                  if (vm.hasMoreComments)
+                    Padding(
+                      padding: const EdgeInsets.all(AppSpacing.md),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: vm.commentsLoading
+                              ? null
+                              : vm.loadMoreComments,
+                          child: vm.commentsLoading
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Text('加载更多评论'),
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
     );
   }
 

@@ -1,24 +1,9 @@
-/// 源设置页（测速选源）。
-///
-/// 禁漫：
-/// - 接口域名轮询池（9 兜底域名 + 用户首选）→ 点测速 → 选最快持久化
-/// - 图床分流（app_shunts 动态项 + express 快速通道）→ 6 项测速 → 选最快
-///
-/// 哔咔：
-/// - API 接入域名 go2778 / picacomic 二选一切换
-///
-/// 功能集成说明：
-/// - 禁漫图床测速：`JmNetwork.testAllShunts(state.shunts)` →
-///   `JmShuntSpeed` 列表（含 latency/imgHost）→ `pickFastest` →
-///   `selectShunt(key)` 持久化。
-/// - 哔咔双源切换：`PicacgStateImpl.setApiBaseUrl(url)` 持久化。
-/// - 测速结果和源选择会写入对应源状态并持久化。
+/// Real source endpoint and image-host selection.
 library source_settings_page;
 
 import 'package:flutter/material.dart';
 import 'package:joycomic/theme/app_theme_context.dart';
 
-import '../../comic_source/comic_source.dart';
 import '../../network/jm/jm_network.dart';
 import '../../network/picacg/picacg_network.dart';
 import '../../network/source_state.dart';
@@ -26,10 +11,28 @@ import '../../theme/app_colors.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
 
+typedef JmShuntTester =
+    Future<List<JmShuntSpeed>> Function(List<JmShunt> shunts);
+typedef JmShuntSelector = Future<bool> Function(int key);
+typedef JmDomainTester = Future<int> Function(String domain);
+
 class SourceSettingsPage extends StatefulWidget {
-  const SourceSettingsPage({super.key, this.sourceKey = 'jm'});
+  const SourceSettingsPage({
+    super.key,
+    this.sourceKey = 'jm',
+    this.jmState,
+    this.picacgState,
+    this.testShunts,
+    this.selectShunt,
+    this.testDomain,
+  });
 
   final String sourceKey;
+  final JmState? jmState;
+  final PicacgState? picacgState;
+  final JmShuntTester? testShunts;
+  final JmShuntSelector? selectShunt;
+  final JmDomainTester? testDomain;
 
   @override
   State<SourceSettingsPage> createState() => _SourceSettingsPageState();
@@ -37,16 +40,47 @@ class SourceSettingsPage extends StatefulWidget {
 
 class _SourceSettingsPageState extends State<SourceSettingsPage> {
   bool _testing = false;
+  int? _selectingShunt;
   int? _selectedShunt;
-  String? _picaDomain; // 'go2778' 或 'picacomic'
+  String? _preferredDomain;
+  String? _picaDomain;
+  List<JmShunt> _shunts = const <JmShunt>[];
+  Map<int, JmShuntSpeed> _shuntSpeeds = const <int, JmShuntSpeed>{};
+  Map<String, int> _domainSpeeds = const <String, int>{};
+
+  JmState? get _jmState => widget.jmState ?? JmNetwork().state;
+  PicacgState? get _picacgState => widget.picacgState ?? PicacgNetwork().state;
+
+  List<String> get _domains {
+    final domains = <String>[];
+    void add(String value) {
+      final clean = _cleanDomain(value);
+      if (clean.isNotEmpty && !domains.contains(clean)) domains.add(clean);
+    }
+
+    add(_preferredDomain ?? '');
+    for (final domain in jmBuiltInDomains) {
+      add(domain);
+    }
+    return domains;
+  }
 
   @override
   void initState() {
     super.initState();
-    if (widget.sourceKey == 'picacg') {
-      final source = ComicSource.find('picacg');
-      final state = source != null ? PicacgNetwork().state : null;
-      _picaDomain = state?.apiBaseUrl.contains('picacomic') == true
+    if (widget.sourceKey == 'jm') {
+      final state = _jmState;
+      _selectedShunt = state?.selectedShuntKey;
+      final preferred = _cleanDomain(state?.preferredDomain ?? '');
+      _preferredDomain = preferred.isEmpty ? null : preferred;
+      final configured = state?.shunts ?? const <JmShunt>[];
+      _shunts = <JmShunt>[
+        if (!configured.any((shunt) => shunt.key == jmExpressShuntKey))
+          const JmShunt(key: jmExpressShuntKey, title: '快速通道'),
+        ...configured,
+      ];
+    } else {
+      _picaDomain = _picacgState?.apiBaseUrl.contains('picacomic') == true
           ? 'picacomic'
           : 'go2778';
     }
@@ -63,67 +97,159 @@ class _SourceSettingsPageState extends State<SourceSettingsPage> {
       ),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.md),
-        children: [
-          if (isJm) ...[
-            const _SectionLabel(label: '图床分流（6 项）'),
-            ..._jmShunts.map(
-              (s) => _ShuntTile(
-                title: s.title,
-                subtitle: s.host,
-                latency: s.latency,
-                selected: _selectedShunt == s.key,
-                testing: _testing,
-                onTap: () => setState(() => _selectedShunt = s.key),
-              ),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            FilledButton.icon(
-              onPressed: _testing ? null : _test,
-              icon: _testing
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.speed_rounded, size: 18),
-              label: Text(_testing ? '测速中…' : '开始测速'),
-              style: FilledButton.styleFrom(
-                backgroundColor: context.colorScheme.primary,
-                minimumSize: const Size.fromHeight(48),
-              ),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            const _SectionLabel(label: 'API 兜底域名（9 个）'),
-            ..._jmDomains.map(
-              (d) => _DomainTile(title: d, latency: _domainLatency(d)),
-            ),
-          ] else ...[
-            const _SectionLabel(label: 'API 接入域名'),
-            _RadioTile(
-              title: 'go2778 中转（默认）',
-              subtitle: 'picaapi.go2778.com',
-              selected: _picaDomain == 'go2778',
-              onTap: () => _setPicaDomain('go2778'),
-            ),
-            _RadioTile(
-              title: 'picacomic 直连',
-              subtitle: 'picaapi.picacomic.com',
-              selected: _picaDomain == 'picacomic',
-              onTap: () => _setPicaDomain('picacomic'),
-            ),
-          ],
-        ],
+        children: isJm ? _buildJmSettings(context) : _buildPicacgSettings(),
       ),
     );
   }
 
+  List<Widget> _buildJmSettings(BuildContext context) => <Widget>[
+    _SectionLabel(label: '图床分流（${_shunts.length} 项）'),
+    for (final shunt in _shunts)
+      _ChoiceTile(
+        key: ValueKey('jm-shunt-${shunt.key}'),
+        title: shunt.title,
+        subtitle: _shuntSubtitle(shunt),
+        latency: _shuntSpeeds[shunt.key]?.latency,
+        selected: _selectedShunt == shunt.key,
+        selectedKey: _selectedShunt == shunt.key
+            ? ValueKey('jm-shunt-selected-${shunt.key}')
+            : null,
+        busy: _selectingShunt == shunt.key,
+        onTap: _testing || _selectingShunt != null
+            ? null
+            : () => _selectJmShunt(shunt.key),
+      ),
+    const SizedBox(height: AppSpacing.lg),
+    FilledButton.icon(
+      onPressed: _testing ? null : _testAll,
+      icon: _testing
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            )
+          : const Icon(Icons.speed_rounded, size: 18),
+      label: Text(_testing ? '测速中…' : '开始测速'),
+      style: FilledButton.styleFrom(
+        backgroundColor: context.colorScheme.primary,
+        minimumSize: const Size.fromHeight(48),
+      ),
+    ),
+    const SizedBox(height: AppSpacing.lg),
+    _SectionLabel(label: 'API 接入域名（${_domains.length} 个）'),
+    for (final domain in _domains)
+      _ChoiceTile(
+        key: ValueKey('jm-domain-$domain'),
+        title: domain,
+        subtitle: _domainSubtitle(domain),
+        latency: _domainSpeeds[domain],
+        selected: _preferredDomain == domain,
+        selectedKey: _preferredDomain == domain
+            ? ValueKey('jm-domain-selected-$domain')
+            : null,
+        busy: false,
+        onTap: _testing ? null : () => _selectDomain(domain),
+      ),
+  ];
+
+  List<Widget> _buildPicacgSettings() => <Widget>[
+    const _SectionLabel(label: 'API 接入域名'),
+    _RadioTile(
+      title: 'go2778 中转（默认）',
+      subtitle: 'picaapi.go2778.com',
+      selected: _picaDomain == 'go2778',
+      selectedKey: _picaDomain == 'go2778'
+          ? const Key('pica-domain-selected-go2778')
+          : null,
+      onTap: () => _setPicaDomain('go2778'),
+    ),
+    _RadioTile(
+      title: 'picacomic 直连',
+      subtitle: 'picaapi.picacomic.com',
+      selected: _picaDomain == 'picacomic',
+      selectedKey: _picaDomain == 'picacomic'
+          ? const Key('pica-domain-selected-picacomic')
+          : null,
+      onTap: () => _setPicaDomain('picacomic'),
+    ),
+  ];
+
+  String _shuntSubtitle(JmShunt shunt) {
+    final host = _shuntSpeeds[shunt.key]?.imgHost ?? '';
+    if (host.isNotEmpty) return host;
+    if (_selectedShunt == shunt.key) {
+      final current = _jmState?.imageBaseUrl ?? '';
+      if (current.isNotEmpty) return _cleanDomain(current);
+    }
+    return '点击选择；测速后显示真实图床';
+  }
+
+  String _domainSubtitle(String domain) {
+    if (_preferredDomain == domain) return '当前首选 API 域名';
+    return _domainSpeeds.containsKey(domain) ? '最近测速结果' : '等待测速';
+  }
+
+  Future<void> _selectJmShunt(int key) async {
+    setState(() => _selectingShunt = key);
+    final selector = widget.selectShunt ?? JmNetwork().selectShunt;
+    final success = await selector(key);
+    if (!mounted) return;
+    setState(() {
+      _selectedShunt = _jmState?.selectedShuntKey ?? key;
+      _selectingShunt = null;
+    });
+    if (!success) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('线路已保存，但暂时无法获取图床地址')));
+    }
+  }
+
+  Future<void> _testAll() async {
+    setState(() => _testing = true);
+    try {
+      final shuntTester = widget.testShunts ?? JmNetwork().testAllShunts;
+      final domainTester =
+          widget.testDomain ?? JmNetwork().testApiDomainLatency;
+      final results = await Future.wait<Object>(<Future<Object>>[
+        shuntTester(_shunts),
+        Future.wait<int>([for (final domain in _domains) domainTester(domain)]),
+      ]);
+      if (!mounted) return;
+      final shuntResults = results[0] as List<JmShuntSpeed>;
+      final domainResults = results[1] as List<int>;
+      setState(() {
+        _shuntSpeeds = <int, JmShuntSpeed>{
+          for (final result in shuntResults) result.key: result,
+        };
+        _domainSpeeds = <String, int>{
+          for (var index = 0; index < _domains.length; index++)
+            _domains[index]: domainResults[index],
+        };
+      });
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('测速失败：$error')));
+    } finally {
+      if (mounted) setState(() => _testing = false);
+    }
+  }
+
+  void _selectDomain(String domain) {
+    final state = _jmState;
+    if (state == null) return;
+    state.setPreferredDomain(domain);
+    state.setApiBaseUrl('https://$domain');
+    setState(() => _preferredDomain = domain);
+  }
+
   void _setPicaDomain(String domain) {
-    final source = ComicSource.find('picacg');
-    if (source == null) return;
-    final state = PicacgNetwork().state;
+    final state = _picacgState;
     if (state == null) return;
     final url = domain == 'picacomic'
         ? 'https://picaapi.picacomic.com'
@@ -131,41 +257,11 @@ class _SourceSettingsPageState extends State<SourceSettingsPage> {
     state.setApiBaseUrl(url);
     setState(() => _picaDomain = domain);
   }
+}
 
-  Future<void> _test() async {
-    setState(() => _testing = true);
-    try {
-      final net = JmNetwork();
-      final state = net.state;
-      if (state == null || state.shunts.isEmpty) {
-        // 用预设 shunt 列表测试
-        final results = await net.testAllShunts([
-          JmShunt(key: 0, title: '快速通道(express)'),
-          JmShunt(key: 1, title: '分流1'),
-          JmShunt(key: 2, title: '分流2'),
-          JmShunt(key: 3, title: '分流3'),
-          JmShunt(key: 4, title: '分流4'),
-          JmShunt(key: 5, title: '分流5'),
-        ]);
-        final fastest = net.pickFastest(results);
-        if (fastest != null && fastest.key >= 0) {
-          await net.selectShunt(fastest.key);
-          if (mounted) setState(() => _selectedShunt = fastest.key);
-        }
-      } else {
-        final results = await net.testAllShunts(state.shunts);
-        final fastest = net.pickFastest(results);
-        if (fastest != null) {
-          await net.selectShunt(fastest.key);
-          if (mounted) setState(() => _selectedShunt = fastest.key);
-        }
-      }
-    } catch (_) {
-      // 失败时保留上一次可用线路，页面结束加载态
-    }
-    if (!mounted) return;
-    setState(() => _testing = false);
-  }
+String _cleanDomain(String value) {
+  final uri = Uri.tryParse(value.contains('://') ? value : 'https://$value');
+  return uri?.host.isNotEmpty == true ? uri!.host : '';
 }
 
 class _SectionLabel extends StatelessWidget {
@@ -173,166 +269,118 @@ class _SectionLabel extends StatelessWidget {
   final String label;
 
   @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(
-        top: AppSpacing.sm,
-        bottom: AppSpacing.xs,
-        left: AppSpacing.xxs,
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(
+      top: AppSpacing.sm,
+      bottom: AppSpacing.xs,
+      left: AppSpacing.xxs,
+    ),
+    child: Text(
+      label,
+      style: TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        color: context.tertiaryTextColor,
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: context.tertiaryTextColor,
-        ),
-      ),
-    );
-  }
+    ),
+  );
 }
 
-class _ShuntTile extends StatelessWidget {
-  const _ShuntTile({
+class _ChoiceTile extends StatelessWidget {
+  const _ChoiceTile({
+    super.key,
     required this.title,
     required this.subtitle,
     required this.latency,
     required this.selected,
-    required this.testing,
+    required this.busy,
     required this.onTap,
+    this.selectedKey,
   });
+
   final String title;
   final String subtitle;
   final int? latency;
   final bool selected;
-  final bool testing;
-  final VoidCallback onTap;
+  final bool busy;
+  final VoidCallback? onTap;
+  final Key? selectedKey;
 
   @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: AppRadius.brMd,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: AppSpacing.xs),
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.md,
-          vertical: AppSpacing.sm + 2,
-        ),
-        decoration: BoxDecoration(
-          color: context.surfaceColor,
-          borderRadius: AppRadius.brMd,
-          border: Border.all(
-            color: selected ? context.colorScheme.primary : context.borderColor,
-            width: selected ? 1.5 : 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: context.primaryTextColor,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: context.tertiaryTextColor,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (testing)
-              const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            else if (latency != null)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: latency! < 300
-                      ? AppColors.success.withValues(alpha: 0.15)
-                      : AppColors.hotAccent.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  latency! < 0 ? '失败' : '${latency}ms',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: latency! < 300
-                        ? AppColors.success
-                        : AppColors.hotAccent,
-                  ),
-                ),
-              ),
-            if (selected)
-              Padding(
-                padding: EdgeInsets.only(left: AppSpacing.xs),
-                child: Icon(
-                  Icons.check_circle_rounded,
-                  color: context.colorScheme.primary,
-                  size: 20,
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DomainTile extends StatelessWidget {
-  const _DomainTile({required this.title, required this.latency});
-  final String title;
-  final int? latency;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: AppSpacing.xxs),
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    borderRadius: AppRadius.brMd,
+    child: Container(
+      margin: const EdgeInsets.only(bottom: AppSpacing.xs),
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.md,
-        vertical: AppSpacing.sm,
+        vertical: AppSpacing.sm + 2,
       ),
       decoration: BoxDecoration(
         color: context.surfaceColor,
-        borderRadius: AppRadius.brSm,
-        border: Border.all(color: context.borderColor),
+        borderRadius: AppRadius.brMd,
+        border: Border.all(
+          color: selected ? context.colorScheme.primary : context.borderColor,
+          width: selected ? 1.5 : 1,
+        ),
       ),
       child: Row(
         children: [
           Expanded(
-            child: Text(
-              title,
-              style: TextStyle(fontSize: 13, color: context.secondaryTextColor),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: context.primaryTextColor,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: context.tertiaryTextColor,
+                  ),
+                ),
+              ],
             ),
           ),
-          if (latency != null)
+          if (busy)
+            const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else if (latency != null)
             Text(
               latency! < 0 ? '失败' : '${latency}ms',
               style: TextStyle(
                 fontSize: 12,
-                color: latency! < 300 ? AppColors.success : AppColors.hotAccent,
+                color: latency! < 0
+                    ? context.colorScheme.error
+                    : latency! < 300
+                    ? AppColors.success
+                    : AppColors.hotAccent,
                 fontWeight: FontWeight.w600,
               ),
             ),
+          const SizedBox(width: AppSpacing.xs),
+          Icon(
+            selected ? Icons.radio_button_checked : Icons.radio_button_off,
+            key: selectedKey,
+            color: selected
+                ? context.colorScheme.primary
+                : context.tertiaryTextColor,
+            size: 22,
+          ),
         ],
       ),
-    );
-  }
+    ),
+  );
 }
 
 class _RadioTile extends StatelessWidget {
@@ -341,116 +389,23 @@ class _RadioTile extends StatelessWidget {
     required this.subtitle,
     required this.selected,
     required this.onTap,
+    this.selectedKey,
   });
+
   final String title;
   final String subtitle;
   final bool selected;
   final VoidCallback onTap;
+  final Key? selectedKey;
 
   @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: AppRadius.brMd,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: AppSpacing.xs),
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.md,
-          vertical: AppSpacing.sm + 2,
-        ),
-        decoration: BoxDecoration(
-          color: context.surfaceColor,
-          borderRadius: AppRadius.brMd,
-          border: Border.all(
-            color: selected ? context.colorScheme.primary : context.borderColor,
-            width: selected ? 1.5 : 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: context.primaryTextColor,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: context.tertiaryTextColor,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(
-              selected ? Icons.radio_button_checked : Icons.radio_button_off,
-              color: selected
-                  ? context.colorScheme.primary
-                  : context.tertiaryTextColor,
-              size: 22,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _JmShunt {
-  const _JmShunt({
-    required this.key,
-    required this.title,
-    required this.host,
-    this.latency,
-  });
-  final int key;
-  final String title;
-  final String host;
-  final int? latency;
-}
-
-final _jmShunts = [
-  _JmShunt(
-    key: 0,
-    title: '快速通道 (express)',
-    host: 'cdn-msp.18comic.vip',
-    latency: 180,
-  ),
-  _JmShunt(key: 1, title: '线路一', host: 'cdn-msp3.jmapiproxy1.cc', latency: 320),
-  _JmShunt(key: 2, title: '线路二', host: 'cdn-msp.jmapiproxy3.cc', latency: 450),
-  _JmShunt(
-    key: 3,
-    title: '线路三',
-    host: 'cdn-msp2.jmapiproxy2.cc',
+  Widget build(BuildContext context) => _ChoiceTile(
+    title: title,
+    subtitle: subtitle,
     latency: null,
-  ),
-  _JmShunt(key: 4, title: '线路四', host: 'cdn-msp3.jmapiproxy3.cc', latency: 580),
-  _JmShunt(key: 5, title: '线路五', host: 'cdn-msp.18comic.vip', latency: null),
-];
-
-final _jmDomains = [
-  'www.cdnhjk.net',
-  'www.cdngwc.cc',
-  'www.cdngwc.net',
-  'www.cdngwc.club',
-  'www.cdnutc.me',
-  'jmcomic1.cc',
-  'jmcomic2.me',
-  'jmcomic3.pw',
-  'jmcomic4.win',
-];
-
-int? _domainLatency(String d) {
-  final h = d.hashCode.abs();
-  if (h % 7 == 0) return -1;
-  return 100 + h % 500;
+    selected: selected,
+    selectedKey: selectedKey,
+    busy: false,
+    onTap: onTap,
+  );
 }

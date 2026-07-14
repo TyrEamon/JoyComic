@@ -8,8 +8,7 @@
 /// - 收藏库     → /favorites           （=收藏 Tab，这里做快捷入口）
 /// - 下载       → /download           （已下载与队列）
 ///
-/// 功能集成说明：每项的 onTap 由 [ToolEntry.onTap] 注入，
-/// 真实实现时 push 对应路由。mock 阶段留空回调 + 注释指向路由名。
+/// 每项直接注入已注册生产路由的导航动作。
 library home_tool_bar;
 
 import 'package:flutter/material.dart';

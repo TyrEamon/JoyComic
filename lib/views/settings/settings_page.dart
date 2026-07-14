@@ -22,14 +22,16 @@ import '../../foundation/app_data.dart';
 import '../../foundation/cache_manager.dart';
 import '../../foundation/download_manager.dart';
 import '../../foundation/reader_config.dart';
+import '../../foundation/webdav_config_store.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
 import '../common/source_account_profile.dart';
 
 class SettingsPage extends StatefulWidget {
-  const SettingsPage({super.key, this.cacheManager});
+  const SettingsPage({super.key, this.cacheManager, this.webDavConfigStore});
 
   final CacheManager? cacheManager;
+  final WebDavConfigStore? webDavConfigStore;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -37,7 +39,9 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   late Future<CacheManager> _cacheManager;
+  late Future<WebDavConfigStore> _webDavConfigStore;
   CacheSize? _cacheSize;
+  String _webDavStatus = '读取中…';
   bool _loadingCache = false;
 
   @override
@@ -49,7 +53,22 @@ class _SettingsPageState extends State<SettingsPage> {
                 DownloadManager.instance.clearCompletedSafely(),
           )
         : Future.value(widget.cacheManager!);
+    _webDavConfigStore = widget.webDavConfigStore == null
+        ? WebDavConfigStore.create()
+        : Future<WebDavConfigStore>.value(widget.webDavConfigStore!);
     _refreshCacheSize();
+    _refreshWebDavStatus();
+  }
+
+  Future<void> _refreshWebDavStatus() async {
+    final store = await _webDavConfigStore;
+    if (!mounted) return;
+    setState(() => _webDavStatus = store.statusLabel);
+  }
+
+  Future<void> _openWebDavSettings() async {
+    await context.push('/webdav');
+    if (mounted) await _refreshWebDavStatus();
   }
 
   Future<void> _refreshCacheSize() async {
@@ -226,8 +245,8 @@ class _SettingsPageState extends State<SettingsPage> {
               _SettingsItem(
                 icon: Icons.cloud_sync_outlined,
                 label: 'WebDAV 同步',
-                value: '未配置',
-                route: '/webdav',
+                value: _webDavStatus,
+                onTap: _openWebDavSettings,
               ),
               _SettingsItem(
                 icon: Icons.cleaning_services_outlined,

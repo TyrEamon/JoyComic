@@ -13,6 +13,7 @@ import 'dart:io';
 import 'package:cached_network_image_ce/cached_network_image.dart';
 import 'package:flutter/widgets.dart';
 
+import '../../../foundation/log.dart';
 import '../providers/reader_provider.dart';
 import '../state/comic_state.dart';
 import '../widgets/retry_for_image.dart';
@@ -140,7 +141,17 @@ class ImagePreloadController implements ImagePreloadControllerRef {
             ? ResizeImage.resizeIfNeeded(cacheWidth, null, base)
             : base;
 
-        precacheImage(provider, context, onError: (_, _) {});
+        precacheImage(
+          provider,
+          context,
+          onError: (error, stackTrace) {
+            Log.e(
+              'Reader image preload failed',
+              error: error,
+              stackTrace: stackTrace,
+            );
+          },
+        );
       }
     });
   }

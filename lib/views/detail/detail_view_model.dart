@@ -58,9 +58,16 @@ class DetailViewModel extends ChangeNotifier {
   int _commentTotal = 0;
   int get commentTotal => _commentTotal;
 
-  /// 评论是否已加载。
+  /// 评论分页状态。
   bool _commentsLoaded = false;
   bool get commentsLoaded => _commentsLoaded;
+  bool _commentsLoading = false;
+  bool get commentsLoading => _commentsLoading;
+  bool _hasMoreComments = false;
+  bool get hasMoreComments => _hasMoreComments;
+  int _commentPage = 0;
+  bool get canLoadComments =>
+      ComicSource.find(sourceKey)?.commentsLoader != null;
 
   /// 封面图鉴权 headers（来源的 getThumbnailLoadingConfig）。
   Map<String, dynamic>? get coverHeaders {
@@ -179,23 +186,64 @@ class DetailViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 加载评论。
+  /// Loads the first comment page.
   Future<void> loadComments() async {
-    if (_commentsLoaded) return;
+    if (_commentsLoaded || _commentsLoading) return;
+    await _loadCommentsPage(1, replace: true);
+  }
+
+  /// Loads the next comment page when the remote total has not been reached.
+  Future<void> loadMoreComments() async {
+    if (_commentsLoading || !_hasMoreComments) return;
+    await _loadCommentsPage(_commentPage + 1, replace: false);
+  }
+
+  Future<void> _loadCommentsPage(int page, {required bool replace}) async {
     final source = ComicSource.find(sourceKey);
-    if (source?.commentsLoader == null) return;
-    final res = await source!.commentsLoader!(comicId, null, 1, null);
-    if (res.error) return;
-    _comments = res.data;
-    _commentTotal = res.subData is int ? res.subData as int : _comments.length;
-    _commentsLoaded = true;
+    final loader = source?.commentsLoader;
+    if (loader == null) return;
+    _commentsLoading = true;
     notifyListeners();
+    try {
+      final res = await loader(comicId, null, page, null);
+      if (res.error) return;
+      final incoming = res.data;
+      if (replace) {
+        _comments = List<Comment>.of(incoming);
+      } else {
+        final knownIds = _comments
+            .map((comment) => comment.id)
+            .whereType<String>()
+            .toSet();
+        _comments = <Comment>[
+          ..._comments,
+          for (final comment in incoming)
+            if (comment.id == null || knownIds.add(comment.id!)) comment,
+        ];
+      }
+      final remoteTotal = res.subData is int ? res.subData as int : null;
+      if (remoteTotal != null) _commentTotal = remoteTotal;
+      if (_commentTotal == 0) _commentTotal = _comments.length;
+      _commentPage = page;
+      _commentsLoaded = true;
+      _hasMoreComments =
+          incoming.isNotEmpty &&
+          (remoteTotal == null || _comments.length < remoteTotal);
+    } finally {
+      _commentsLoading = false;
+      notifyListeners();
+    }
   }
 
   Future<void> reload() async {
     _state = DetailLoadState.idle;
     _data = null;
     _error = null;
+    _comments = const <Comment>[];
+    _commentTotal = 0;
+    _commentPage = 0;
+    _commentsLoaded = false;
+    _hasMoreComments = false;
     notifyListeners();
     await load();
   }

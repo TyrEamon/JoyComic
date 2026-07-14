@@ -105,8 +105,9 @@ List<JmCategory> parseJmCategories(Object? value) {
             subCategory['key'] ??
             subCategory['slug'],
       ).trim();
-      final subName =
-          jsonString(subCategory['name'] ?? subCategory['title']).trim();
+      final subName = jsonString(
+        subCategory['name'] ?? subCategory['title'],
+      ).trim();
       final subSlug = jsonString(subCategory['slug']).trim();
       if (cid.isEmpty || subName.isEmpty) continue;
       subCategories.add(JmSubCategory(cid, subName, subSlug));
@@ -152,7 +153,8 @@ class JmNetwork {
 
   bool _performingLogin = false;
 
-  String get baseUrl => state?.apiBaseUrl ?? 'https://${jmBuiltInDomains.first}';
+  String get baseUrl =>
+      state?.apiBaseUrl ?? 'https://${jmBuiltInDomains.first}';
 
   /// 兜底域名轮询候选，优先级：
   /// `用户首选(preferredDomain) > 当前主源(apiBaseUrl) > 内置兜底池`。
@@ -167,6 +169,7 @@ class JmNetwork {
       pool.remove(clean);
       pool.insert(0, clean);
     }
+
     // 先 lift 主源到最前，再 lift preferredDomain（后者覆盖到最前）。
     lift(state?.apiBaseUrl ?? '');
     lift(state?.preferredDomain ?? '');
@@ -181,8 +184,11 @@ class JmNetwork {
   /// 返回 null 以触发外层切换域名重试。401（登录失效）属业务级错误，
   /// 直接返回 Res 由上层处理重登，不参与轮询。
   /// 注意：合法的空结果（如 `data` 为空 List）属正常返回，不触发轮询。
-  Future<Res<dynamic>?> _doGet(String url, int time,
-      {bool isRetry = false}) async {
+  Future<Res<dynamic>?> _doGet(
+    String url,
+    int time, {
+    bool isRetry = false,
+  }) async {
     final options = buildApiOptions(time, byte: true);
     options.validateStatus = (i) => i == 200 || i == 401;
     final dio = Dio(options);
@@ -225,18 +231,18 @@ class JmNetwork {
     final dio = Dio(options);
     dio.interceptors.add(CookieManager(cookieJar));
     try {
-      final res = await dio.post<List<int>>(url,
-          data: data, options: Options(validateStatus: (i) => i == 200 || i == 401));
+      final res = await dio.post<List<int>>(
+        url,
+        data: data,
+        options: Options(validateStatus: (i) => i == 200 || i == 401),
+      );
       if (res.data == null) return null;
       final body = utf8.decode(res.data!);
       final decoded = const JsonDecoder().convert(body);
       if (decoded is! Map) return null;
       final json = jsonMap(decoded);
       if (res.statusCode == 401) {
-        final msg = jsonString(
-          json['errorMsg'],
-          fallback: 'Unknown Error',
-        );
+        final msg = jsonString(json['errorMsg'], fallback: 'Unknown Error');
         return Res(null, errorMessage: msg);
       }
       final enc = json['data'];
@@ -262,7 +268,9 @@ class JmNetwork {
   /// 按候选域名依次尝试请求 [url]，首个成功者（非空 Res）返回；
   /// 全部失败则返回最后一个错误 Res。最多轮询 [_domainCandidates] 个域名。
   Future<Res<dynamic>> _withDomainFailover(
-      String url, Future<Res<dynamic>?> Function(String, int) attempt) async {
+    String url,
+    Future<Res<dynamic>?> Function(String, int) attempt,
+  ) async {
     final candidates = _domainCandidates;
     Res<dynamic>? last = const Res(null, errorMessage: '所有域名均不可用');
     for (final d in candidates) {
@@ -283,13 +291,15 @@ class JmNetwork {
   }
 
   Future<Res<dynamic>> get(String url, {bool isRetry = false}) async {
-    final res = await _withDomainFailover(url, (u, t) => _doGet(u, t, isRetry: isRetry));
+    final res = await _withDomainFailover(
+      url,
+      (u, t) => _doGet(u, t, isRetry: isRetry),
+    );
     return res;
   }
 
   Future<Res<dynamic>> post(String url, String data) async {
-    final res = await _withDomainFailover(
-        url, (u, t) => _doPost(u, data, t));
+    final res = await _withDomainFailover(url, (u, t) => _doPost(u, data, t));
     return res;
   }
 
@@ -338,10 +348,7 @@ class JmNetwork {
       final shunt = jsonMap(rawShunt);
       final key = jsonInt(shunt['key'], fallback: -1);
       if (key < 0) continue;
-      shunts.add(JmShunt(
-        key: key,
-        title: jsonString(shunt['title']),
-      ));
+      shunts.add(JmShunt(key: key, title: jsonString(shunt['title'])));
     }
     state?.setShunts(shunts);
 
@@ -373,17 +380,73 @@ class JmNetwork {
   /// 测试某图床延迟（HEAD `/favicon.ico`，8s 超时）。失败返回 -1。
   Future<int> testImgHostLatency(String host) async {
     final clean = host.replaceAll(RegExp(r'^https?://'), '');
-    final dio = Dio(BaseOptions(
-      connectTimeout: const Duration(seconds: 8),
-      receiveTimeout: const Duration(seconds: 8),
-      validateStatus: (_) => true,
-    ));
+    final dio = Dio(
+      BaseOptions(
+        connectTimeout: const Duration(seconds: 8),
+        receiveTimeout: const Duration(seconds: 8),
+        validateStatus: (_) => true,
+      ),
+    );
     final sw = Stopwatch()..start();
     try {
       await dio.head('https://$clean/favicon.ico');
       return sw.elapsedMilliseconds;
     } catch (_) {
       return -1;
+    }
+  }
+
+  /// Tests a JM API domain with a lightweight HEAD request and a ranged GET
+  /// fallback. The measured value is real elapsed wall-clock time; -1 means
+  /// timeout or an unreachable/server-failing endpoint.
+  Future<int> testApiDomainLatency(
+    String domain, {
+    Duration timeout = const Duration(seconds: 5),
+  }) async {
+    final raw = domain.trim();
+    if (raw.isEmpty) return -1;
+    final uri = Uri.tryParse(raw.contains('://') ? raw : 'https://$raw');
+    if (uri == null || uri.host.isEmpty) return -1;
+    final endpoint = uri.replace(path: '/', query: null, fragment: null);
+    final dio = Dio(
+      BaseOptions(
+        connectTimeout: timeout,
+        sendTimeout: timeout,
+        receiveTimeout: timeout,
+        followRedirects: false,
+        validateStatus: (_) => true,
+      ),
+    );
+    final stopwatch = Stopwatch()..start();
+    try {
+      Response<dynamic> response;
+      try {
+        response = await dio.headUri(endpoint);
+      } on DioException {
+        response = await dio.getUri(
+          endpoint,
+          options: Options(
+            headers: const <String, String>{'Range': 'bytes=0-0'},
+          ),
+        );
+      }
+      if (response.statusCode == 405 || response.statusCode == 501) {
+        response = await dio.getUri(
+          endpoint,
+          options: Options(
+            headers: const <String, String>{'Range': 'bytes=0-0'},
+          ),
+        );
+      }
+      final status = response.statusCode;
+      return status != null && status < 500
+          ? stopwatch.elapsedMilliseconds
+          : -1;
+    } on DioException {
+      return -1;
+    } finally {
+      stopwatch.stop();
+      dio.close(force: true);
     }
   }
 
@@ -402,11 +465,18 @@ class JmNetwork {
       try {
         final host = await getShuntImgHost(s.key);
         final latency = host == null ? -1 : await testImgHostLatency(host);
-        results.add(JmShuntSpeed(
-            key: s.key, title: s.title, latency: latency, imgHost: host ?? ''));
+        results.add(
+          JmShuntSpeed(
+            key: s.key,
+            title: s.title,
+            latency: latency,
+            imgHost: host ?? '',
+          ),
+        );
       } catch (_) {
-        results.add(JmShuntSpeed(
-            key: s.key, title: s.title, latency: -1, imgHost: ''));
+        results.add(
+          JmShuntSpeed(key: s.key, title: s.title, latency: -1, imgHost: ''),
+        );
       }
     }
     return results;
@@ -451,8 +521,9 @@ class JmNetwork {
     _performingLogin = true;
     try {
       final res = await post(
-          '$baseUrl/login',
-          'username=${Uri.encodeComponent(account)}&password=${Uri.encodeComponent(pwd)}');
+        '$baseUrl/login',
+        'username=${Uri.encodeComponent(account)}&password=${Uri.encodeComponent(pwd)}',
+      );
       if (res.error) return Res(null, errorMessage: res.errorMessage);
       return const Res(true);
     } finally {
@@ -463,7 +534,10 @@ class JmNetwork {
   /// 搜索。
   /// [keyword] 关键词；[page] 页码；[order] 排序（'mr'=最新/ 'mp'=最多/ 'mv'=评分）。
   Future<Res<List<JmComicBrief>>> search(
-      String keyword, int page, String order) async {
+    String keyword,
+    int page,
+    String order,
+  ) async {
     var kw = keyword.trim().replaceAll('  ', ' ');
     kw = Uri.encodeComponent(kw).replaceAll('%20', '+');
     String url;
@@ -502,6 +576,7 @@ class JmNetwork {
     }
     return Res(parseJmCategories(data));
   }
+
   /// 获取分类漫画，排序值由源适配层映射为服务端 order。
   Future<Res<List<JmComicBrief>>> getCategoryComics(
     String category,
@@ -509,11 +584,7 @@ class JmNetwork {
     int page,
   ) async {
     final uri = Uri.parse('$baseUrl/categories/filter').replace(
-      queryParameters: {
-        'o': order,
-        'c': category,
-        'page': page.toString(),
-      },
+      queryParameters: {'o': order, 'c': category, 'page': page.toString()},
     );
     final res = await get(uri.toString());
     if (res.error) return Res(null, errorMessage: res.errorMessage);
@@ -538,7 +609,9 @@ class JmNetwork {
       data['page_size'] ?? data['pageSize'] ?? data['per_page'],
     );
     final rawPageCount = jsonInt(
-      data['page_count'] ?? data['pageCount'] ?? data['total_page'] ??
+      data['page_count'] ??
+          data['pageCount'] ??
+          data['total_page'] ??
           data['totalPage'],
     );
     final maxPage = jmCategoryMaxPage(
@@ -576,12 +649,14 @@ class JmNetwork {
         if (comic.id.isEmpty) continue;
         comics.add(comic);
       }
-      sections.add(JmHomeSection(
-        key: key.isEmpty ? title : key,
-        title: title,
-        categoryParam: type == 'promote' || key.isEmpty ? null : key,
-        comics: comics,
-      ));
+      sections.add(
+        JmHomeSection(
+          key: key.isEmpty ? title : key,
+          title: title,
+          categoryParam: type == 'promote' || key.isEmpty ? null : key,
+          comics: comics,
+        ),
+      );
     }
     return Res(sections);
   }
@@ -596,9 +671,7 @@ class JmNetwork {
       return Res(null, errorMessage: res.errorMessage);
     }
     final info = parseJmComicInfoResponse(res.data, id: id);
-    return info == null
-        ? const Res(null, errorMessage: '漫画详情解析失败')
-        : Res(info);
+    return info == null ? const Res(null, errorMessage: '漫画详情解析失败') : Res(info);
   }
 
   /// 章节内文图文件名列表（图片重组用 scrambleId 与 bookId 由调用方推算）。
@@ -642,7 +715,9 @@ class JmNetwork {
     String o = 'mr',
     String folderId = '0',
   }) async {
-    final res = await get('$baseUrl/favorite?page=$page&o=$o&folder_id=$folderId');
+    final res = await get(
+      '$baseUrl/favorite?page=$page&o=$o&folder_id=$folderId',
+    );
     if (res.error) return Res(null, errorMessage: res.errorMessage);
     final rawData = res.data;
     if (rawData is! Map) return Res(<JmComicBrief>[]);
@@ -684,8 +759,11 @@ class JmNetwork {
   ///
   /// [id] 漫画 id，[page] 页码，[mode] 评论模式（默认 'manhua'）。
   /// 返回解析后的行数据列表，每个 map 含：id / avatar / userName / content / time / replyCount。
-  Future<Res<List<Map<String, dynamic>>>> getComment(String id, int page,
-      [String mode = 'manhua']) async {
+  Future<Res<List<Map<String, dynamic>>>> getComment(
+    String id,
+    int page, [
+    String mode = 'manhua',
+  ]) async {
     final res = await get('$baseUrl/forum?mode=$mode&aid=$id&page=$page');
     if (res.error) return Res(null, errorMessage: res.errorMessage);
     final rawData = res.data;
@@ -698,7 +776,8 @@ class JmNetwork {
       if (rawComment is! Map) continue;
       final comment = jsonMap(rawComment);
       final replies = jsonList(comment['replys']);
-      final rawReplyCount = comment['replyCount'] ??
+      final rawReplyCount =
+          comment['replyCount'] ??
           comment['reply_count'] ??
           comment['comments'];
       final commentId = jsonString(comment['CID'] ?? comment['id']);
