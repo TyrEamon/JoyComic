@@ -12,11 +12,11 @@
 library ranking_page;
 
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../comic_source/comic_source.dart';
 import '../../foundation/log.dart';
-import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../common/widgets/comic_grid.dart';
 
@@ -32,8 +32,11 @@ class RankingPage extends StatefulWidget {
 
 class _RankingPageState extends State<RankingPage>
     with SingleTickerProviderStateMixin {
-  late final TabController _tab =
-      TabController(length: 3, vsync: this, initialIndex: widget.initialTab);
+  late final TabController _tab = TabController(
+    length: 3,
+    vsync: this,
+    initialIndex: widget.initialTab,
+  );
   int _range = 1; // 0=日 1=周 2=月 3=总
 
   /// 各 Tab 各自的数据与加载状态。
@@ -70,13 +73,17 @@ class _RankingPageState extends State<RankingPage>
       if (s.searchPageData?.loadPage == null) continue;
       final res = await s.searchPageData!.loadPage!('', 1, [_order]);
       if (res.error) continue;
-      items.addAll(res.data.map((b) => ComicGridItem(
+      items.addAll(
+        res.data.map(
+          (b) => ComicGridItem(
             id: b.id,
             title: b.title,
             coverUrl: b.cover,
             subtitle: b.subTitle,
             sourceKey: s.key,
-          )));
+          ),
+        ),
+      );
     }
 
     if (!mounted) return;
@@ -95,17 +102,20 @@ class _RankingPageState extends State<RankingPage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.pageBackground,
       appBar: AppBar(
         title: const Text('排行榜'),
-        backgroundColor: AppColors.background,
+        backgroundColor: context.pageBackground,
         bottom: TabBar(
           controller: _tab,
-          indicatorColor: AppColors.brandPink,
+          indicatorColor: context.colorScheme.primary,
           indicatorSize: TabBarIndicatorSize.label,
-          labelColor: AppColors.textHigh,
-          unselectedLabelColor: AppColors.textLow,
-          labelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+          labelColor: context.primaryTextColor,
+          unselectedLabelColor: context.tertiaryTextColor,
+          labelStyle: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+          ),
           tabs: const [
             Tab(text: '最新'),
             Tab(text: '热门'),
@@ -124,9 +134,9 @@ class _RankingPageState extends State<RankingPage>
               controller: _tab,
               children: List.generate(3, (i) {
                 if (_loading[i] == true && _data[i] == null) {
-                  return const Center(
+                  return Center(
                     child: CircularProgressIndicator(
-                      color: AppColors.brandPink,
+                      color: context.colorScheme.primary,
                       strokeWidth: 2.5,
                     ),
                   );
@@ -134,8 +144,9 @@ class _RankingPageState extends State<RankingPage>
                 return _RankList(
                   key: ValueKey(i),
                   items: _data[i]?.items ?? const [],
-                  onItemTap: (item) =>
-                      context.push('/detail/${item.sourceKey ?? 'jm'}/${item.id}'),
+                  onItemTap: (item) => context.push(
+                    '/detail/${item.sourceKey ?? 'jm'}/${item.id}',
+                  ),
                 );
               }),
             ),
@@ -162,7 +173,9 @@ class _RangeBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.sm,
+      ),
       child: Row(
         children: [
           for (var i = 0; i < _labels.length; i++)
@@ -181,7 +194,11 @@ class _RangeBar extends StatelessWidget {
 }
 
 class _RangeChip extends StatelessWidget {
-  const _RangeChip({required this.label, required this.active, required this.onTap});
+  const _RangeChip({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
   final String label;
   final bool active;
   final VoidCallback onTap;
@@ -195,18 +212,25 @@ class _RangeChip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
           gradient: active
-              ? const LinearGradient(colors: [AppColors.brandPink, AppColors.brandViolet])
+              ? LinearGradient(
+                  colors: [
+                    context.colorScheme.primary,
+                    context.colorScheme.secondary,
+                  ],
+                )
               : null,
-          color: active ? null : AppColors.surface,
+          color: active ? null : context.surfaceColor,
           borderRadius: BorderRadius.circular(16),
-          border: active ? null : Border.all(color: AppColors.border),
+          border: active ? null : Border.all(color: context.borderColor),
         ),
         child: Text(
           label,
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: active ? Colors.white : AppColors.textMedium,
+            color: active
+                ? context.colorScheme.onPrimary
+                : context.secondaryTextColor,
           ),
         ),
       ),
@@ -221,9 +245,6 @@ class _RankList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ComicGrid(
-      items: items,
-      onItemTap: onItemTap,
-    );
+    return ComicGrid(items: items, onItemTap: onItemTap);
   }
 }

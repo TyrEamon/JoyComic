@@ -17,11 +17,11 @@
 library login_page;
 
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../comic_source/comic_source.dart';
 import '../../foundation/log.dart';
-import '../../theme/app_colors.dart';
 
 import 'package:url_launcher/url_launcher.dart';
 import '../../theme/app_radius.dart';
@@ -48,8 +48,7 @@ class _LoginPageState extends State<LoginPage> {
     _SourceOpt(key: 'picacg', name: '哔咔', website: 'https://picacomic.com'),
   ];
 
-  _SourceOpt get _source =>
-      _sources.firstWhere((s) => s.key == _sourceKey);
+  _SourceOpt get _source => _sources.firstWhere((s) => s.key == _sourceKey);
 
   @override
   void dispose() {
@@ -66,9 +65,9 @@ class _LoginPageState extends State<LoginPage> {
       if (!mounted) return;
       setState(() => _loading = false);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('该源不支持登录')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('该源不支持登录')));
       }
       return;
     }
@@ -78,16 +77,16 @@ class _LoginPageState extends State<LoginPage> {
     if (res.error) {
       Log.e('Login failed', error: '${_sourceKey}: ${res.errorMessage}');
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(res.errorMessage ?? '登录失败')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(res.errorMessage ?? '登录失败')));
       }
     } else {
       if (context.mounted) context.pop();
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${_source.name} 登录成功')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('${_source.name} 登录成功')));
       }
     }
   }
@@ -95,15 +94,16 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.pageBackground,
       appBar: AppBar(
-        title: const Text('登录'),
-        backgroundColor: AppColors.background,
+        title: Text('登录'),
+        backgroundColor: context.pageBackground,
         actions: [
           if (_sourceKey == 'jm')
             IconButton(
               icon: const Icon(Icons.speed_rounded),
-              onPressed: () => context.push('/settings/source?source=$_sourceKey'),
+              onPressed: () =>
+                  context.push('/settings/source?source=$_sourceKey'),
               tooltip: '测速选源',
             ),
         ],
@@ -117,16 +117,23 @@ class _LoginPageState extends State<LoginPage> {
               height: 80,
               width: 80,
               alignment: Alignment.center,
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: LinearGradient(
-                    colors: [AppColors.brandPink, AppColors.brandViolet]),
+                  colors: [
+                    context.colorScheme.primary,
+                    context.colorScheme.secondary,
+                  ],
+                ),
               ),
-              child: Text(_source.name[0],
-                  style: const TextStyle(
-                      fontSize: 36,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white)),
+              child: Text(
+                _source.name[0],
+                style: TextStyle(
+                  fontSize: 36,
+                  fontWeight: FontWeight.w800,
+                  color: context.colorScheme.onPrimary,
+                ),
+              ),
             ),
             const SizedBox(height: AppSpacing.xl),
             // 源切换
@@ -156,8 +163,13 @@ class _LoginPageState extends State<LoginPage> {
               hint: '密码',
               obscure: _obscure,
               suffix: IconButton(
-                icon: Icon(_obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                    size: 20, color: AppColors.textLow),
+                icon: Icon(
+                  _obscure
+                      ? Icons.visibility_off_outlined
+                      : Icons.visibility_outlined,
+                  size: 20,
+                  color: context.tertiaryTextColor,
+                ),
                 onPressed: () => setState(() => _obscure = !_obscure),
               ),
             ),
@@ -170,12 +182,18 @@ class _LoginPageState extends State<LoginPage> {
                 borderRadius: BorderRadius.circular(26),
                 child: Container(
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                        colors: [AppColors.brandPink, AppColors.brandViolet]),
+                    gradient: LinearGradient(
+                      colors: [
+                        context.colorScheme.primary,
+                        context.colorScheme.secondary,
+                      ],
+                    ),
                     borderRadius: BorderRadius.circular(26),
                     boxShadow: [
                       BoxShadow(
-                        color: AppColors.brandPink.withValues(alpha: 0.4),
+                        color: context.colorScheme.primary.withValues(
+                          alpha: 0.4,
+                        ),
                         blurRadius: 16,
                         offset: const Offset(0, 6),
                       ),
@@ -183,17 +201,22 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   child: Center(
                     child: _loading
-                        ? const SizedBox(
+                        ? SizedBox(
                             width: 22,
                             height: 22,
                             child: CircularProgressIndicator(
-                                color: Colors.white, strokeWidth: 2.5),
+                              color: context.colorScheme.onPrimary,
+                              strokeWidth: 2.5,
+                            ),
                           )
-                        : const Text('登录',
+                        : Text(
+                            '登录',
                             style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.white)),
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: context.colorScheme.onPrimary,
+                            ),
+                          ),
                   ),
                 ),
               ),
@@ -207,18 +230,21 @@ class _LoginPageState extends State<LoginPage> {
                     final uri = Uri.parse(_source.website);
                     if (await canLaunchUrl(uri)) await launchUrl(uri);
                   },
-                  child: const Text('注册账号',
-                      style: TextStyle(color: AppColors.textMedium)),
+                  child: Text(
+                    '注册账号',
+                    style: TextStyle(color: context.secondaryTextColor),
+                  ),
                 ),
-                Text('·',
-                    style: TextStyle(color: AppColors.textLow)),
+                Text('·', style: TextStyle(color: context.tertiaryTextColor)),
                 TextButton(
                   onPressed: () async {
                     final uri = Uri.parse('${_source.website}/forgot');
                     if (await canLaunchUrl(uri)) await launchUrl(uri);
                   },
-                  child: const Text('忘记密码',
-                      style: TextStyle(color: AppColors.textMedium)),
+                  child: Text(
+                    '忘记密码',
+                    style: TextStyle(color: context.secondaryTextColor),
+                  ),
                 ),
               ],
             ),
@@ -230,14 +256,22 @@ class _LoginPageState extends State<LoginPage> {
 }
 
 class _SourceOpt {
-  const _SourceOpt({required this.key, required this.name, required this.website});
+  const _SourceOpt({
+    required this.key,
+    required this.name,
+    required this.website,
+  });
   final String key;
   final String name;
   final String website;
 }
 
 class _SourceChip extends StatelessWidget {
-  const _SourceChip({required this.label, required this.active, required this.onTap});
+  const _SourceChip({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
   final String label;
   final bool active;
   final VoidCallback onTap;
@@ -251,17 +285,27 @@ class _SourceChip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
           gradient: active
-              ? const LinearGradient(colors: [AppColors.brandPink, AppColors.brandViolet])
+              ? LinearGradient(
+                  colors: [
+                    context.colorScheme.primary,
+                    context.colorScheme.secondary,
+                  ],
+                )
               : null,
-          color: active ? null : AppColors.surface,
+          color: active ? null : context.surfaceColor,
           borderRadius: BorderRadius.circular(20),
-          border: active ? null : Border.all(color: AppColors.border),
+          border: active ? null : Border.all(color: context.borderColor),
         ),
-        child: Text(label,
-            style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: active ? Colors.white : AppColors.textMedium)),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: active
+                ? context.colorScheme.onPrimary
+                : context.secondaryTextColor,
+          ),
+        ),
       ),
     );
   }
@@ -286,15 +330,18 @@ class _InputField extends StatelessWidget {
     return TextField(
       controller: controller,
       obscureText: obscure,
-      style: const TextStyle(color: AppColors.textHigh, fontSize: 15),
+      style: TextStyle(color: context.primaryTextColor, fontSize: 15),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: const TextStyle(color: AppColors.textLow),
-        prefixIcon: Icon(icon, color: AppColors.textLow, size: 20),
+        hintStyle: TextStyle(color: context.tertiaryTextColor),
+        prefixIcon: Icon(icon, color: context.tertiaryTextColor, size: 20),
         suffixIcon: suffix,
         filled: true,
-        fillColor: AppColors.surface,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+        fillColor: context.surfaceColor,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 14,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide.none,

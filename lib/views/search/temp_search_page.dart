@@ -9,11 +9,11 @@
 library temp_search_page;
 
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../comic_source/comic_source.dart';
 import '../../network/base_comic.dart';
-import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../common/widgets/comic_card.dart';
 
@@ -77,10 +77,10 @@ class _TempSearchPageState extends State<TempSearchPage> {
   Widget build(BuildContext context) {
     final src = _source;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.pageBackground,
       appBar: AppBar(
         title: Text('${src?.name ?? ""}搜索'),
-        backgroundColor: AppColors.background,
+        backgroundColor: context.pageBackground,
       ),
       body: Column(
         children: [
@@ -94,21 +94,21 @@ class _TempSearchPageState extends State<TempSearchPage> {
                     focusNode: _focus,
                     textInputAction: TextInputAction.search,
                     onSubmitted: (_) => _doSearch(),
-                    style: const TextStyle(color: AppColors.textHigh),
+                    style: TextStyle(color: context.primaryTextColor),
                     decoration: InputDecoration(
                       hintText: '输入关键词，如：星屑',
-                      hintStyle: const TextStyle(color: AppColors.textLow),
-                      prefixIcon: const Icon(
+                      hintStyle: TextStyle(color: context.tertiaryTextColor),
+                      prefixIcon: Icon(
                         Icons.search,
-                        color: AppColors.textLow,
+                        color: context.tertiaryTextColor,
                       ),
                       suffixIcon: _controller.text.isEmpty
                           ? null
                           : IconButton(
-                              icon: const Icon(
+                              icon: Icon(
                                 Icons.close,
                                 size: 18,
-                                color: AppColors.textLow,
+                                color: context.tertiaryTextColor,
                               ),
                               onPressed: () {
                                 _controller.clear();
@@ -134,9 +134,9 @@ class _TempSearchPageState extends State<TempSearchPage> {
 
   Widget _buildBody() {
     if (_loading) {
-      return const Center(
+      return Center(
         child: CircularProgressIndicator(
-          color: AppColors.brandPink,
+          color: context.colorScheme.primary,
           strokeWidth: 2.5,
         ),
       );
@@ -148,14 +148,17 @@ class _TempSearchPageState extends State<TempSearchPage> {
           child: Text(
             _error!,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: AppColors.textMedium),
+            style: TextStyle(color: context.secondaryTextColor),
           ),
         ),
       );
     }
     if (_results.isEmpty) {
-      return const Center(
-        child: Text('输入关键词后搜索', style: TextStyle(color: AppColors.textLow)),
+      return Center(
+        child: Text(
+          '输入关键词后搜索',
+          style: TextStyle(color: context.tertiaryTextColor),
+        ),
       );
     }
     // 计算 3 列网格的单元宽度，传给 ComicCard.poster 的固定 width 参数。

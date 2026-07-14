@@ -13,10 +13,10 @@
 library video_page;
 
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../comic_source/comic_source.dart';
-import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../common/widgets/comic_grid.dart';
 import '../common/widgets/loading_grid.dart';
@@ -58,13 +58,17 @@ class _VideoPageState extends State<VideoPage>
       if (s.searchPageData?.loadPage == null) continue;
       final res = await s.searchPageData!.loadPage!(keyword, 1, const []);
       if (res.error) continue;
-      items.addAll(res.data.map((b) => ComicGridItem(
+      items.addAll(
+        res.data.map(
+          (b) => ComicGridItem(
             id: b.id,
             title: b.title,
             coverUrl: b.cover,
             subtitle: b.subTitle,
             sourceKey: s.key,
-          )));
+          ),
+        ),
+      );
     }
 
     if (!mounted) return;
@@ -83,18 +87,21 @@ class _VideoPageState extends State<VideoPage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.pageBackground,
       appBar: AppBar(
         title: const Text('影视'),
-        backgroundColor: AppColors.background,
+        backgroundColor: context.pageBackground,
         bottom: TabBar(
           controller: _tab,
           isScrollable: true,
-          indicatorColor: AppColors.brandPink,
+          indicatorColor: context.colorScheme.primary,
           indicatorSize: TabBarIndicatorSize.label,
-          labelColor: AppColors.textHigh,
-          unselectedLabelColor: AppColors.textLow,
-          labelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+          labelColor: context.primaryTextColor,
+          unselectedLabelColor: context.tertiaryTextColor,
+          labelStyle: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+          ),
           tabs: const [
             Tab(text: '全部'),
             Tab(text: '动画'),

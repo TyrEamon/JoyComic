@@ -12,13 +12,13 @@ library image_search_page;
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../comic_source/comic_source.dart';
 import '../../foundation/log.dart';
 import '../../foundation/sauce_nao_search.dart';
-import '../../theme/app_colors.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
 import '../common/widgets/comic_grid.dart';
@@ -70,13 +70,15 @@ class _ImageSearchPageState extends State<ImageSearchPage> {
           final res = await s.searchPageData!.loadPage!(title, 1, const []);
           if (res.error) continue;
           for (final b in res.data) {
-            matched.add(ComicGridItem(
-              id: b.id,
-              title: b.title,
-              coverUrl: b.cover,
-              subtitle: b.subTitle,
-              sourceKey: s.key,
-            ));
+            matched.add(
+              ComicGridItem(
+                id: b.id,
+                title: b.title,
+                coverUrl: b.cover,
+                subtitle: b.subTitle,
+                sourceKey: s.key,
+              ),
+            );
           }
         }
       }
@@ -92,42 +94,49 @@ class _ImageSearchPageState extends State<ImageSearchPage> {
         _results = const [];
         _searching = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('搜索失败：$e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('搜索失败：$e')));
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.pageBackground,
       appBar: AppBar(
         title: const Text('以图搜图'),
-        backgroundColor: AppColors.background,
+        backgroundColor: context.pageBackground,
       ),
       body: CustomScrollView(
         slivers: [
-          SliverToBoxAdapter(child: _PickerArea(picked: _picked, onPick: _pick)),
+          SliverToBoxAdapter(
+            child: _PickerArea(picked: _picked, onPick: _pick),
+          ),
           const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.lg)),
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-              child: Text('相似结果',
-                  style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textHigh)),
+              child: Text(
+                '相似结果',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: context.primaryTextColor,
+                ),
+              ),
             ),
           ),
           if (_searching)
-            const SliverFillRemaining(
+            SliverFillRemaining(
               hasScrollBody: false,
               child: Center(
                 child: Padding(
                   padding: EdgeInsets.all(48),
                   child: CircularProgressIndicator(
-                      color: AppColors.brandPink, strokeWidth: 2.5),
+                    color: context.colorScheme.primary,
+                    strokeWidth: 2.5,
+                  ),
                 ),
               ),
             )
@@ -172,23 +181,29 @@ class _PickerArea extends StatelessWidget {
             aspectRatio: 16 / 9,
             child: Container(
               decoration: BoxDecoration(
-                color: AppColors.surface,
+                color: context.surfaceColor,
                 borderRadius: AppRadius.brLg,
                 border: Border.all(
-                    color: AppColors.brandPink.withValues(alpha: 0.3),
-                    width: 1.5,
-                    style: BorderStyle.solid),
+                  color: context.colorScheme.primary.withValues(alpha: 0.3),
+                  width: 1.5,
+                  style: BorderStyle.solid,
+                ),
               ),
               child: picked == null
-                  ? const Center(
+                  ? Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.add_photo_alternate_outlined,
-                              size: 48, color: AppColors.textLow),
+                          Icon(
+                            Icons.add_photo_alternate_outlined,
+                            size: 48,
+                            color: context.tertiaryTextColor,
+                          ),
                           SizedBox(height: AppSpacing.xs),
-                          Text('选择一张漫画截图',
-                              style: TextStyle(color: AppColors.textLow)),
+                          Text(
+                            '选择一张漫画截图',
+                            style: TextStyle(color: context.tertiaryTextColor),
+                          ),
                         ],
                       ),
                     )
@@ -225,8 +240,11 @@ class _PickerArea extends StatelessWidget {
 }
 
 class _PickerButton extends StatelessWidget {
-  const _PickerButton(
-      {required this.icon, required this.label, required this.onTap});
+  const _PickerButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
   final IconData icon;
   final String label;
   final VoidCallback onTap;
@@ -239,20 +257,23 @@ class _PickerButton extends StatelessWidget {
       child: Container(
         height: 52,
         decoration: BoxDecoration(
-          color: AppColors.surfaceElevated,
+          color: context.elevatedSurfaceColor,
           borderRadius: AppRadius.brMd,
-          border: Border.all(color: AppColors.border),
+          border: Border.all(color: context.borderColor),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 20, color: AppColors.brandPink),
+            Icon(icon, size: 20, color: context.colorScheme.primary),
             const SizedBox(width: AppSpacing.xs),
-            Text(label,
-                style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textHigh)),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: context.primaryTextColor,
+              ),
+            ),
           ],
         ),
       ),

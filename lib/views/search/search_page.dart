@@ -16,6 +16,7 @@
 library search_page;
 
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../comic_source/comic_source.dart';
@@ -23,7 +24,6 @@ import '../../database/search_history_helper.dart';
 import '../../foundation/log.dart';
 import '../../network/base_comic.dart';
 import '../../network/res.dart';
-import '../../theme/app_colors.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
 import '../common/utils/source_login_guard.dart';
@@ -111,13 +111,15 @@ class _SearchPageState extends State<SearchPage> {
     final futures = sources.map((s) async {
       final res = await s.searchPageData!.loadPage!(kw, 1, const []);
       if (res.error) return <ComicGridItem>[];
-      final items = res.data.map((b) => ComicGridItem(
-            id: b.id,
-            title: b.title,
-            coverUrl: b.cover,
-            subtitle: b.subTitle,
-            sourceKey: s.key,
-          ));
+      final items = res.data.map(
+        (b) => ComicGridItem(
+          id: b.id,
+          title: b.title,
+          coverUrl: b.cover,
+          subtitle: b.subTitle,
+          sourceKey: s.key,
+        ),
+      );
       return items.toList();
     });
 
@@ -141,15 +143,20 @@ class _SearchPageState extends State<SearchPage> {
     final sources = _targetSources;
     final futures = sources.map((s) async {
       final res = await s.searchPageData!.loadPage!(
-          _controller.text, nextPage, const []);
+        _controller.text,
+        nextPage,
+        const [],
+      );
       if (res.error) return <ComicGridItem>[];
-      return res.data.map((b) => ComicGridItem(
-            id: b.id,
-            title: b.title,
-            coverUrl: b.cover,
-            subtitle: b.subTitle,
-            sourceKey: s.key,
-          ));
+      return res.data.map(
+        (b) => ComicGridItem(
+          id: b.id,
+          title: b.title,
+          coverUrl: b.cover,
+          subtitle: b.subTitle,
+          sourceKey: s.key,
+        ),
+      );
     });
     final results = await Future.wait(futures);
     if (!mounted) return;
@@ -196,9 +203,9 @@ class _SearchPageState extends State<SearchPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.pageBackground,
       appBar: AppBar(
-        backgroundColor: AppColors.background,
+        backgroundColor: context.pageBackground,
         titleSpacing: 0,
         title: _SearchField(
           controller: _controller,
@@ -215,8 +222,10 @@ class _SearchPageState extends State<SearchPage> {
         actions: [
           TextButton(
             onPressed: () => _doSearch(_controller.text),
-            child: const Text('搜索',
-                style: TextStyle(color: AppColors.brandPink)),
+            child: Text(
+              '搜索',
+              style: TextStyle(color: context.colorScheme.primary),
+            ),
           ),
         ],
       ),
@@ -257,7 +266,9 @@ class _SearchPageState extends State<SearchPage> {
             child: ComicGrid(
               items: _filterSource == null
                   ? _results
-                  : _results.where((i) => i.sourceKey == _filterSource).toList(),
+                  : _results
+                        .where((i) => i.sourceKey == _filterSource)
+                        .toList(),
               onLoadMore: _hasMore ? _loadMore : null,
               hasMore: _hasMore,
               onItemTap: (i) => _onItemTap(i),
@@ -310,20 +321,31 @@ class _SearchField extends StatelessWidget {
         textInputAction: TextInputAction.search,
         onSubmitted: onSubmitted,
         autofocus: true,
-        style: const TextStyle(color: AppColors.textHigh, fontSize: 15),
+        style: TextStyle(color: context.primaryTextColor, fontSize: 15),
         decoration: InputDecoration(
           hintText: '搜索漫画、作者、标签',
-          hintStyle: const TextStyle(color: AppColors.textLow),
-          prefixIcon: const Icon(Icons.search, color: AppColors.textLow, size: 20),
+          hintStyle: TextStyle(color: context.tertiaryTextColor),
+          prefixIcon: Icon(
+            Icons.search,
+            color: context.tertiaryTextColor,
+            size: 20,
+          ),
           suffixIcon: controller.text.isEmpty
               ? null
               : IconButton(
-                  icon: const Icon(Icons.close, size: 18, color: AppColors.textLow),
+                  icon: Icon(
+                    Icons.close,
+                    size: 18,
+                    color: context.tertiaryTextColor,
+                  ),
                   onPressed: onClear,
                 ),
           filled: true,
-          fillColor: AppColors.surface,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          fillColor: context.surfaceColor,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 8,
+          ),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(24),
             borderSide: BorderSide.none,
@@ -382,19 +404,25 @@ class _SearchHomeState extends State<_SearchHome> {
       children: [
         Row(
           children: [
-            const Text('搜索历史',
-                style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textHigh)),
+            Text(
+              '搜索历史',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: context.primaryTextColor,
+              ),
+            ),
             const Spacer(),
             InkWell(
               onTap: () {
                 _historyHelper.clear();
                 setState(() => _history = const []);
               },
-              child: const Icon(Icons.delete_outline_rounded,
-                  size: 18, color: AppColors.textLow),
+              child: Icon(
+                Icons.delete_outline_rounded,
+                size: 18,
+                color: context.tertiaryTextColor,
+              ),
             ),
           ],
         ),
@@ -407,17 +435,20 @@ class _SearchHomeState extends State<_SearchHome> {
               .toList(),
         ),
         const SizedBox(height: AppSpacing.xl),
-        Text('热门搜索',
-            style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textHigh)),
+        Text(
+          '热门搜索',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: context.primaryTextColor,
+          ),
+        ),
         const SizedBox(height: AppSpacing.xs),
         if (_loadingTags)
-          const Padding(
+          Padding(
             padding: EdgeInsets.symmetric(vertical: 8),
             child: CircularProgressIndicator(
-              color: AppColors.brandPink,
+              color: context.colorScheme.primary,
               strokeWidth: 2,
             ),
           )
@@ -426,13 +457,15 @@ class _SearchHomeState extends State<_SearchHome> {
             spacing: 8,
             runSpacing: 8,
             children: _hotTags
-                .map((k) => _Chip(
-                      label: k,
-                      hot: true,
-                      onTap: () => widget.onHotTap(k),
-                    ))
+                .map(
+                  (k) => _Chip(
+                    label: k,
+                    hot: true,
+                    onTap: () => widget.onHotTap(k),
+                  ),
+                )
                 .toList(),
-        ),
+          ),
       ],
     );
   }
@@ -452,22 +485,30 @@ class _Chip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: AppColors.surface,
+          color: context.surfaceColor,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.border),
+          border: Border.all(color: context.borderColor),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             if (hot) ...[
-              const Icon(Icons.local_fire_department_rounded,
-                  size: 13, color: AppColors.hotAccent),
+              Icon(
+                Icons.local_fire_department_rounded,
+                size: 13,
+                color: context.colorScheme.tertiary,
+              ),
               const SizedBox(width: 4),
             ],
-            Text(label,
-                style: TextStyle(
-                    fontSize: 13,
-                    color: hot ? AppColors.hotAccent : AppColors.textMedium)),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                color: hot
+                    ? context.colorScheme.tertiary
+                    : context.secondaryTextColor,
+              ),
+            ),
           ],
         ),
       ),
@@ -511,7 +552,11 @@ class _SourceFilterBar extends StatelessWidget {
 }
 
 class _FilterChip extends StatelessWidget {
-  const _FilterChip({required this.label, required this.active, required this.onTap});
+  const _FilterChip({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
   final String label;
   final bool active;
   final VoidCallback onTap;
@@ -525,18 +570,25 @@ class _FilterChip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         decoration: BoxDecoration(
           gradient: active
-              ? const LinearGradient(colors: [Color(0xFFFF7BA9), Color(0xFFB967FF)])
+              ? LinearGradient(
+                  colors: [
+                    context.colorScheme.primary,
+                    context.colorScheme.secondary,
+                  ],
+                )
               : null,
-          color: active ? null : const Color(0xFF1B1622),
+          color: active ? null : context.surfaceColor,
           borderRadius: BorderRadius.circular(16),
-          border: active ? null : Border.all(color: const Color(0xFF2F2740)),
+          border: active ? null : Border.all(color: context.borderColor),
         ),
         child: Text(
           label,
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w600,
-            color: active ? Colors.white : const Color(0xFF8A8298),
+            color: active
+                ? context.colorScheme.onPrimary
+                : context.secondaryTextColor,
           ),
         ),
       ),
