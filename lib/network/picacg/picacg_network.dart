@@ -10,6 +10,7 @@ import 'dart:convert' as convert;
 import 'package:dio/dio.dart';
 
 import '../res.dart';
+import '../json_value.dart';
 import '../base_comic.dart';
 import '../../foundation/log.dart';
 import 'picacg_headers.dart';
@@ -121,11 +122,18 @@ class PicacgNetwork {
     if (res.data == null) {
       return const Res(null, errorMessage: 'Empty data');
     }
+    final decoded = convert.jsonDecode(res.data!);
+    if (decoded is! Map) {
+      return const Res(null, errorMessage: '响应结构错误');
+    }
+    final json = jsonMap(decoded);
     if (res.statusCode == 200) {
-      return Res(convert.jsonDecode(res.data!) as Map<String, dynamic>);
+      return Res(json);
     } else if (res.statusCode == 400) {
-      final json = convert.jsonDecode(res.data!) as Map<String, dynamic>;
-      return Res(null, errorMessage: json['message'] ?? '请求错误');
+      return Res(
+        null,
+        errorMessage: jsonString(json['message'], fallback: '请求错误'),
+      );
     } else if (res.statusCode == 401) {
       final ok = await _reLogin();
       if (!ok) {
@@ -137,7 +145,6 @@ class PicacgNetwork {
     }
     return Res(null, errorMessage: 'Invalid Status Code ${res.statusCode}');
   }
-
   Future<bool> _reLogin() async => state?.reLogin() ?? false;
 
   String _dioErrMsg(DioException e) {
@@ -145,6 +152,15 @@ class PicacgNetwork {
     if (e.type == DioExceptionType.sendTimeout) return '发送超时';
     if (e.type == DioExceptionType.receiveTimeout) return '接收超时';
     return e.message ?? e.toString().split('\n').first;
+  }
+
+  String _mediaUrl(Object? value, {String fallback = ''}) {
+    if (value is String) return value;
+    final media = jsonMap(value);
+    final fileServer = jsonString(media['fileServer']);
+    final path = jsonString(media['path']);
+    if (fileServer.isEmpty || path.isEmpty) return fallback;
+    return '$fileServer/static/$path';
   }
 
   // ============================ 业务端点 ============================
@@ -157,51 +173,41 @@ class PicacgNetwork {
     });
     if (response.error) return Res(null, errorMessage: response.errorMessage);
     final res = response.data;
-    if (res['message'] == 'success') {
-      try {
-        return Res(res['data']['token']);
-      } catch (e) {
-        return const Res(null, errorMessage: 'Failed to get token');
-      }
+    final message = jsonString(res['message']);
+    if (message == 'success') {
+      final token = jsonString(jsonMap(res['data'])['token']);
+      if (token.isNotEmpty) return Res(token);
+      return const Res(null, errorMessage: 'Failed to get token');
     }
-    return Res(null, errorMessage: res['message']);
+    return Res(null, errorMessage: message);
   }
 
   /// 用户档案。
   Future<Res<Profile>> getProfile() async {
     final response = await get('${apiUrl}/users/profile');
     if (response.error) return Res(null, errorMessage: response.errorMessage);
-    final u = response.data['data']['user'];
-    String url;
-    if (u['avatar'] == null) {
-      url = defaultAvatarUrl;
-    } else {
-      url = u['avatar']['fileServer'] + '/static/' + u['avatar']['path'];
+    final user = jsonMap(jsonMap(response.data['data'])['user']);
+    final id = jsonString(user['_id'] ?? user['id']);
+    if (id.isEmpty) {
+      return const Res(null, errorMessage: '用户档案解析失败');
     }
-    return Res(Profile(
-      id: u['_id'] ?? '',
-      avatarUrl: url,
-      email: u['email'] ?? '',
-      exp: u['exp'] ?? 0,
-      level: u['level'] ?? 0,
-      name: u['name'] ?? '',
-      title: u['title'] ?? '',
-      isPunched: u['isPunched'],
-      slogan: u['slogan'],
-      frameUrl: u['character'],
-    ));
+    final avatar = user['avatar'] == null
+        ? defaultAvatarUrl
+        : _mediaUrl(user['avatar'], fallback: defaultAvatarUrl);
+    return Res(Profile.fromJson(<String, dynamic>{
+      ...user,
+      'id': id,
+      'avatarUrl': avatar,
+      'frameUrl': user['character'],
+    }));
   }
 
   /// 热门搜索词。
   Future<Res<List<String>>> getHotTags() async {
     final response = await get('${apiUrl}/keywords');
     if (response.error) return Res(null, errorMessage: response.errorMessage);
-    final list = <String>[];
-    final k = response.data['data']['keywords'] ?? [];
-    for (int i = 0; i < k.length; i++) {
-      list.add(k[i]);
-    }
-    return Res(list);
+    final data = jsonMap(response.data['data']);
+    return Res(jsonStringList(data['keywords']));
   }
 
   /// 获取首页分类。跳过 web 专属分类。
@@ -209,14 +215,14 @@ class PicacgNetwork {
     final response = await get('${apiUrl}/categories');
     if (response.error) return Res(null, errorMessage: response.errorMessage);
     final items = <CategoryItem>[];
-    final cats = response.data['data']['categories'] ?? [];
-    for (final c in cats) {
-      if (c['isWeb'] == true) continue;
-      final thumb = c['thumb'] ?? {};
-      var url = thumb['fileServer'] ?? '';
-      final path = thumb['path'] ?? '';
-      url = url.endsWith('/') ? '$url$path' : '$url/static/$path';
-      items.add(CategoryItem(c['title'] ?? '', url));
+    final data = jsonMap(response.data['data']);
+    for (final rawCategory in jsonList(data['categories'])) {
+      if (rawCategory is! Map) continue;
+      final category = jsonMap(rawCategory);
+      if (jsonBool(category['isWeb'])) continue;
+      final title = jsonString(category['title']);
+      if (title.isEmpty) continue;
+      items.add(CategoryItem(title, _mediaUrl(category['thumb'])));
     }
     return Res(items);
   }
@@ -231,30 +237,18 @@ class PicacgNetwork {
       'sort': sort,
     });
     if (response.error) return Res(null, errorMessage: response.errorMessage);
-    final data = response.data['data']['comics'];
-    final pages = data['pages'] ?? 1;
-    final comics = <ComicItemBrief>[];
-    for (final doc in data['docs'] ?? []) {
-      try {
-        final tags = <String>[];
-        tags.addAll(List<String>.from(doc['tags'] ?? []));
-        tags.addAll(List<String>.from(doc['categories'] ?? []));
-        comics.add(ComicItemBrief(
-          title: doc['title'] ?? 'Unknown',
-          author: doc['author'] ?? 'Unknown',
-          likes: int.tryParse('${doc['likesCount']}') ?? 0,
-          coverPath: doc['thumb']['fileServer'] +
-              '/static/' +
-              doc['thumb']['path'],
-          id: doc['_id'],
-          tags: tags,
-          pages: doc['pagesCount'],
-        ));
-      } catch (e) {
-        continue;
-      }
+    final comicsData = jsonMap(jsonMap(response.data['data'])['comics']);
+    if (comicsData.isEmpty) {
+      return const Res(null, errorMessage: '搜索结果解析失败');
     }
-    return Res(comics, subData: pages);
+    final comics = <ComicItemBrief>[];
+    for (final rawComic in jsonList(comicsData['docs'])) {
+      if (rawComic is! Map) continue;
+      final comic = ComicItemBrief.fromJson(jsonMap(rawComic));
+      if (comic.id.isEmpty) continue;
+      comics.add(comic);
+    }
+    return Res(comics, subData: jsonInt(comicsData['pages'], fallback: 1));
   }
 
   /// 漫画详情：合并详情 + 章节 + 推荐。
@@ -264,60 +258,60 @@ class PicacgNetwork {
     final epsRes = await getEps(id);
     if (epsRes.error) return Res(null, errorMessage: epsRes.errorMessage);
     final recRes = await getRecommendation(id);
-    final comic = response.data['data']['comic'];
-    final creatorSrc = comic['_creator'];
-    String avatar;
-    if (creatorSrc['avatar'] == null) {
-      avatar = defaultAvatarUrl;
-    } else {
-      avatar = creatorSrc['avatar']['fileServer'] +
-          '/static/' +
-          creatorSrc['avatar']['path'];
+    final comic = jsonMap(jsonMap(response.data['data'])['comic']);
+    if (comic.isEmpty) {
+      return const Res(null, errorMessage: '漫画详情解析失败');
     }
-    final item = ComicItem(
-      id: comic['_id'] ?? id,
-      title: comic['title'] ?? 'Unknown',
-      author: creatorSrc['name'] ?? 'Unknown',
-      description: comic['description'] ?? '',
-      thumbUrl: comic['thumb']['fileServer'] + '/static/' + comic['thumb']['path'],
-      chineseTeam: comic['chineseTeam'] ?? '',
-      categories: List<String>.from(comic['categories'] ?? []),
-      tags: List<String>.from(comic['tags'] ?? []),
-      likes: comic['likesCount'] ?? 0,
-      comments: comic['commentsCount'] ?? 0,
-      isLiked: comic['isLiked'] ?? false,
-      isFavourite: comic['isFavourite'] ?? false,
-      epsCount: comic['epsCount'] ?? 0,
-      pagesCount: comic['pagesCount'] ?? 0,
-      time: comic['created_at'] ?? '',
+    final creator = jsonMap(comic['_creator']);
+    return Res(ComicItem(
+      id: jsonString(comic['_id'], fallback: id),
+      title: jsonString(comic['title'], fallback: 'Unknown'),
+      author: jsonString(creator['name'] ?? comic['author'], fallback: 'Unknown'),
+      description: jsonString(comic['description']),
+      thumbUrl: _mediaUrl(comic['thumb']),
+      chineseTeam: jsonString(comic['chineseTeam']),
+      categories: jsonStringList(comic['categories']),
+      tags: jsonStringList(comic['tags']),
+      likes: jsonInt(comic['likesCount'] ?? comic['totalLikes'] ?? comic['likes']),
+      comments: jsonInt(
+        comic['commentsCount'] ?? comic['totalComments'] ?? comic['comments'],
+      ),
+      isLiked: jsonBool(comic['isLiked']),
+      isFavourite: jsonBool(comic['isFavourite']),
+      epsCount: jsonInt(comic['epsCount']),
+      pagesCount: jsonInt(comic['pagesCount'] ?? comic['pages']),
+      time: jsonString(comic['created_at']),
       episodes: epsRes.data,
-      recommendation: recRes.error ? [] : recRes.data,
-    );
-    return Res(item);
+      recommendation: recRes.error ? <ComicItemBrief>[] : recRes.data,
+    ));
   }
 
   /// 获取章节列表。服务端序为倒序，这里按 order 升序整理返回。
   Future<Res<List<PicacgEpisode>>> getEps(String id) async {
     final eps = <PicacgEpisode>[];
-    int i = 0;
+    var page = 0;
     try {
       while (true) {
-        i++;
-        final res = await get('${apiUrl}/comics/$id/eps?page=$i');
+        page++;
+        final res = await get('${apiUrl}/comics/$id/eps?page=$page');
         if (res.error) return Res(null, errorMessage: res.errorMessage);
-        final epsRoot = res.data['data']['eps'];
-        final lastPage = epsRoot['pages'] ?? 1;
-        for (final doc in epsRoot['docs'] ?? []) {
-          final order = doc['order'] ?? 0;
-          final title = doc['title'];
+        final epsRoot = jsonMap(jsonMap(res.data['data'])['eps']);
+        if (epsRoot.isEmpty) {
+          return const Res(null, errorMessage: '章节列表解析失败');
+        }
+        var lastPage = jsonInt(epsRoot['pages'], fallback: 1);
+        if (lastPage < 1) lastPage = 1;
+        for (final rawEpisode in jsonList(epsRoot['docs'])) {
+          if (rawEpisode is! Map) continue;
+          final episode = jsonMap(rawEpisode);
+          final order = jsonInt(episode['order']);
+          final title = jsonString(episode['title']);
           eps.add(PicacgEpisode(
-            title: (title == null || (title as String).isEmpty)
-                ? '第$order'
-                : title,
+            title: title.isEmpty ? '第$order' : title,
             order: order,
           ));
         }
-        if (lastPage == i) break;
+        if (page >= lastPage) break;
       }
     } catch (e) {
       return Res(null, errorMessage: e.toString());
@@ -329,24 +323,24 @@ class PicacgNetwork {
   /// 获取某章节的全部图片 URL，分页聚合。
   Future<Res<List<String>>> getComicContent(String id, int order) async {
     final urls = <String>[];
-    int i = 0;
+    var page = 0;
     try {
       while (true) {
-        i++;
-        final res = await get('${apiUrl}/comics/$id/order/$order/pages?page=$i');
+        page++;
+        final res = await get('${apiUrl}/comics/$id/order/$order/pages?page=$page');
         if (res.error) return Res(null, errorMessage: res.errorMessage);
-        final pages = res.data['data']['pages'];
-        if ((pages['pages'] ?? 1) == i) {
-          for (final doc in pages['docs'] ?? []) {
-            final media = doc['media'];
-            urls.add('${media['fileServer']}/static/${media['path']}');
-          }
-          break;
+        final pages = jsonMap(jsonMap(res.data['data'])['pages']);
+        if (pages.isEmpty) {
+          return const Res(null, errorMessage: '章节图片解析失败');
         }
-        for (final doc in pages['docs'] ?? []) {
-          final media = doc['media'];
-          urls.add('${media['fileServer']}/static/${media['path']}');
+        for (final rawPage in jsonList(pages['docs'])) {
+          if (rawPage is! Map) continue;
+          final url = _mediaUrl(jsonMap(rawPage)['media']);
+          if (url.isNotEmpty) urls.add(url);
         }
+        var lastPage = jsonInt(pages['pages'], fallback: 1);
+        if (lastPage < 1) lastPage = 1;
+        if (page >= lastPage) break;
       }
     } catch (e) {
       return Res(null, errorMessage: e.toString());
@@ -358,19 +352,13 @@ class PicacgNetwork {
   Future<Res<List<ComicItemBrief>>> getRecommendation(String id) async {
     final res = await get('${apiUrl}/comics/$id/recommendation');
     if (res.error) return Res(null, errorMessage: res.errorMessage);
+    final data = jsonMap(res.data['data']);
     final comics = <ComicItemBrief>[];
-    for (final doc in res.data['data']['comics'] ?? []) {
-      try {
-        comics.add(ComicItemBrief(
-          title: doc['title'] ?? 'Unknown',
-          author: doc['author'] ?? '',
-          likes: doc['likesCount'] ?? 0,
-          coverPath: doc['thumb']['fileServer'] + '/static/' + doc['thumb']['path'],
-          id: doc['_id'],
-        ));
-      } catch (e) {
-        continue;
-      }
+    for (final rawComic in jsonList(data['comics'])) {
+      if (rawComic is! Map) continue;
+      final comic = ComicItemBrief.fromJson(jsonMap(rawComic));
+      if (comic.id.isEmpty) continue;
+      comics.add(comic);
     }
     return Res(comics);
   }
@@ -382,23 +370,18 @@ class PicacgNetwork {
     final sort = newToOld ? 'dd' : 'da';
     final res = await get('${apiUrl}/users/favourite?s=$sort&page=$page');
     if (res.error) return Res(null, errorMessage: res.errorMessage);
+    final comicsData = jsonMap(jsonMap(res.dataOrNull?['data'])['comics']);
     final comics = <BaseComic>[];
-    final docs = res.dataOrNull?['data']?['comics']?['docs'] ?? [];
-    for (final doc in docs) {
-      final tags = <String>[];
-      if (doc['tags'] is List) tags.addAll(List<String>.from(doc['tags']));
-      if (doc['categories'] is List) tags.addAll(List<String>.from(doc['categories']));
-      comics.add(ComicItemBrief(
-        title: doc['title'] ?? 'Unknown',
-        id: doc['_id'] ?? '',
-        author: doc['author'] ?? '',
-        coverPath: doc['thumb']?.toString() ?? doc['cover']?.toString() ?? '',
-        tags: tags,
-        likes: doc['totalLikes'] ?? 0,
-      ));
+    for (final rawComic in jsonList(comicsData['docs'])) {
+      if (rawComic is! Map) continue;
+      final comic = ComicItemBrief.fromJson(jsonMap(rawComic));
+      if (comic.id.isEmpty) continue;
+      comics.add(comic);
     }
-    final maxPage = res.dataOrNull?['data']?['comics']?['pages'] ?? 1;
-    return Res<List<BaseComic>>(comics, subData: maxPage);
+    return Res<List<BaseComic>>(
+      comics,
+      subData: jsonInt(comicsData['pages'], fallback: 1),
+    );
   }
 
   /// 收藏 / 取消收藏。
@@ -413,23 +396,33 @@ class PicacgNetwork {
       {int page = 1, String type = 'comics'}) async {
     final res = await get('${apiUrl}/$type/$id/comments?page=$page');
     if (res.error) return Res(null, errorMessage: res.errorMessage);
-    final data = res.dataOrNull;
-    final docs = data?['data']?['comments']?['docs'] ?? [];
-    final pages = data?['data']?['comments']?['pages'] ?? 1;
-    final list = docs.map<Map<String, dynamic>>((d) {
-      final user = d['_user'] ?? {};
-      final avatar = user['avatar'] != null
-          ? '${user['avatar']['fileServer']}/static/${user['avatar']['path']}'
-          : null;
-      return {
-        'id': d['_id']?.toString(),
+    final commentsData =
+        jsonMap(jsonMap(res.dataOrNull?['data'])['comments']);
+    final list = <Map<String, dynamic>>[];
+    for (final rawComment in jsonList(commentsData['docs'])) {
+      if (rawComment is! Map) continue;
+      final comment = jsonMap(rawComment);
+      final user = jsonMap(comment['_user']);
+      final avatar = user['avatar'] == null ? null : _mediaUrl(user['avatar']);
+      final commentId = jsonString(comment['_id'] ?? comment['id']);
+      list.add(<String, dynamic>{
+        'id': commentId.isEmpty ? null : commentId,
         'avatar': avatar,
-        'userName': user['name'] ?? 'Unknown',
-        'content': d['content'] ?? '',
-        'time': d['created_at']?.toString(),
-        'replyCount': d['commentsCount'] ?? 0,
-      };
-    }).toList();
-    return Res(list, subData: pages);
+        'userName': jsonString(user['name'], fallback: 'Unknown'),
+        'content': jsonString(comment['content']),
+        'time': comment['created_at'] == null
+            ? null
+            : jsonString(comment['created_at']),
+        'replyCount': jsonInt(
+          comment['commentsCount'] ??
+              comment['replyCount'] ??
+              comment['reply_count'],
+        ),
+      });
+    }
+    return Res(
+      list,
+      subData: jsonInt(commentsData['pages'], fallback: 1),
+    );
   }
 }

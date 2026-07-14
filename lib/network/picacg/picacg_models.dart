@@ -6,6 +6,7 @@
 library picacg_models;
 
 import '../base_comic.dart';
+import '../json_value.dart';
 import 'package:flutter/foundation.dart';
 
 /// 哔咔用户档案。
@@ -36,16 +37,20 @@ class Profile {
   });
 
   factory Profile.fromJson(Map<String, dynamic> json) => Profile(
-        id: json['id'] ?? '',
-        title: json['title'] ?? '',
-        email: json['email'] ?? '',
-        name: json['name'] ?? '',
-        level: json['level'] ?? 0,
-        exp: json['exp'] ?? 0,
-        avatarUrl: json['avatarUrl'] ?? '',
-        frameUrl: json['frameUrl'],
-        isPunched: json['isPunched'],
-        slogan: json['slogan'],
+        id: jsonString(json['id'] ?? json['_id']),
+        title: jsonString(json['title']),
+        email: jsonString(json['email']),
+        name: jsonString(json['name']),
+        level: jsonInt(json['level']),
+        exp: jsonInt(json['exp']),
+        avatarUrl: jsonString(json['avatarUrl']),
+        frameUrl: json['frameUrl'] == null
+            ? null
+            : jsonString(json['frameUrl']),
+        isPunched: json['isPunched'] == null
+            ? null
+            : jsonBool(json['isPunched']),
+        slogan: json['slogan'] == null ? null : jsonString(json['slogan']),
       );
 }
 
@@ -81,17 +86,31 @@ class ComicItemBrief extends BaseComic {
     this.pages,
   });
 
-  factory ComicItemBrief.fromJson(Map<String, dynamic> json) => ComicItemBrief(
-        title: json['title'] ?? '',
-        author: (json['author'] as String?) ?? '',
-        likes: json['totalLikes'] ?? json['likes'] ?? 0,
-        coverPath: (json['thumb']?['fileServer'] ?? '') +
-            '/static/' +
-            (json['thumb']?['path'] ?? ''),
-        id: json['_id'] ?? '',
-        tags: List<String>.from(json['categories'] ?? []),
-        pages: json['pages'],
-      );
+  factory ComicItemBrief.fromJson(Map<String, dynamic> json) {
+    final rawThumb = json['thumb'];
+    final thumb = jsonMap(rawThumb);
+    final fileServer = jsonString(thumb['fileServer']);
+    final path = jsonString(thumb['path']);
+    final rawPages = json['pages'] ?? json['pagesCount'];
+    return ComicItemBrief(
+      title: jsonString(json['title']),
+      author: jsonString(json['author']),
+      likes: jsonInt(
+        json['totalLikes'] ?? json['likes'] ?? json['likesCount'],
+      ),
+      coverPath: rawThumb is String
+          ? rawThumb
+          : fileServer.isNotEmpty && path.isNotEmpty
+              ? '$fileServer/static/$path'
+              : jsonString(json['cover']),
+      id: jsonString(json['_id'] ?? json['id']),
+      tags: <String>{
+        ...jsonStringList(json['tags']),
+        ...jsonStringList(json['categories']),
+      }.toList(),
+      pages: rawPages == null ? null : jsonInt(rawPages),
+    );
+  }
 
   @override
   String get cover => coverPath;

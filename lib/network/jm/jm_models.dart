@@ -5,6 +5,7 @@
 library jm_models;
 
 import '../base_comic.dart';
+import '../json_value.dart';
 import 'package:flutter/foundation.dart';
 
 import 'jm_image.dart';
@@ -26,6 +27,25 @@ class JmComicBrief extends BaseComic {
     required this.rawDescription,
     this.categories = const [],
   });
+
+  factory JmComicBrief.fromJson(Map<String, dynamic> json) {
+    final categories = <ComicCategoryInfo>[];
+    for (final key in const ['category', 'category_sub']) {
+      final category = jsonMap(json[key]);
+      final id = jsonString(category['id']);
+      final name = jsonString(category['title'] ?? category['name']);
+      if (id.isNotEmpty && name.isNotEmpty) {
+        categories.add(ComicCategoryInfo(id, name));
+      }
+    }
+    return JmComicBrief(
+      id: jsonString(json['id'] ?? json['_id']),
+      author: jsonString(json['author']),
+      name: jsonString(json['name'] ?? json['title']),
+      rawDescription: jsonString(json['description']),
+      categories: categories,
+    );
+  }
 
   @override
   String get title => name;

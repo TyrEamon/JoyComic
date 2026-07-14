@@ -15,6 +15,7 @@ import 'package:dio/dio.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 
 import '../res.dart';
+import '../json_value.dart';
 import '../../foundation/log.dart';
 import 'jm_headers.dart';
 import 'jm_image.dart';
@@ -114,8 +115,8 @@ class JmNetwork {
       if (res.data == null) return null; // 无响应体→换域名
       final body = utf8.decode(res.data!);
       if (res.statusCode == 401) {
-        final msg =
-            (const JsonDecoder().convert(body) as Map)['errorMsg'] ?? 'Error';
+        final errorJson = jsonMap(const JsonDecoder().convert(body));
+        final msg = jsonString(errorJson['errorMsg'], fallback: 'Error');
         if (msg == '請先登入會員' && state?.username != null && !isRetry) {
           final ok = await state!.reLogin();
           if (ok) return get(url, isRetry: true);
@@ -151,16 +152,20 @@ class JmNetwork {
           data: data, options: Options(validateStatus: (i) => i == 200 || i == 401));
       if (res.data == null) return null;
       final body = utf8.decode(res.data!);
+      final decoded = const JsonDecoder().convert(body);
+      if (decoded is! Map) return null;
+      final json = jsonMap(decoded);
       if (res.statusCode == 401) {
-        final msg = (const JsonDecoder().convert(body) as Map)['errorMsg'] ??
-            'Unknown Error';
-        return Res(null, errorMessage: '$msg');
+        final msg = jsonString(
+          json['errorMsg'],
+          fallback: 'Unknown Error',
+        );
+        return Res(null, errorMessage: msg);
       }
-      final json = const JsonDecoder().convert(body) as Map;
       final enc = json['data'];
       if (enc is String && enc.isNotEmpty) {
-        final decoded = convertData(enc, '$time$jmDataSecret');
-        return Res(const JsonDecoder().convert(decoded));
+        final decrypted = convertData(enc, '$time$jmDataSecret');
+        return Res(const JsonDecoder().convert(decrypted));
       }
       return Res<dynamic>(json);
     } on DioException {
@@ -244,30 +249,35 @@ class JmNetwork {
   Future<Res<Map<String, dynamic>>> fetchSetting() async {
     final res = await get('$baseUrl/setting');
     if (res.error) return Res(null, errorMessage: res.errorMessage);
-    final json = res.data;
-    if (json is! Map) return const Res(null, errorMessage: 'setting 解析失败');
-    try {
-      // 写入动态分流项（服务端原始项，不含 express 快速通道）。
-      final rawShunts = (json['app_shunts'] as List?) ?? const [];
-      final shunts = <JmShunt>[
-        for (final s in rawShunts)
-          JmShunt(key: s['key'] as int, title: (s['title'] ?? '') as String),
-      ];
-      state?.setShunts(shunts);
-
-      final imgHost = (json['img_host'] ?? '') as String;
-      final cleanImg = imgHost.replaceAll(RegExp(r'^https?://'), '');
-      if (cleanImg.isNotEmpty) {
-        state?.setImageBaseUrl('https://$cleanImg');
-      }
-      final mainWeb = (json['main_web_host'] ?? '') as String;
-      if (mainWeb.isNotEmpty) {
-        state?.setApiBaseUrl('https://$mainWeb');
-      }
-      return Res(json as Map<String, dynamic>);
-    } catch (e) {
-      return Res(null, errorMessage: e.toString());
+    final rawJson = res.data;
+    if (rawJson is! Map) {
+      return const Res(null, errorMessage: 'setting 解析失败');
     }
+    final json = jsonMap(rawJson);
+
+    final shunts = <JmShunt>[];
+    for (final rawShunt in jsonList(json['app_shunts'])) {
+      if (rawShunt is! Map) continue;
+      final shunt = jsonMap(rawShunt);
+      final key = jsonInt(shunt['key'], fallback: -1);
+      if (key < 0) continue;
+      shunts.add(JmShunt(
+        key: key,
+        title: jsonString(shunt['title']),
+      ));
+    }
+    state?.setShunts(shunts);
+
+    final imgHost = jsonString(json['img_host']);
+    final cleanImg = imgHost.replaceAll(RegExp(r'^https?://'), '');
+    if (cleanImg.isNotEmpty) {
+      state?.setImageBaseUrl('https://$cleanImg');
+    }
+    final mainWeb = jsonString(json['main_web_host']);
+    if (mainWeb.isNotEmpty) {
+      state?.setApiBaseUrl('https://$mainWeb');
+    }
+    return Res(json);
   }
 
   /// 获取某个 shunt（分流）对应的图床域名。
@@ -278,7 +288,7 @@ class JmNetwork {
     final qs = key == jmExpressShuntKey ? 'express=on' : 'app_img_shunt=$key';
     final res = await get('$baseUrl/setting?$qs');
     if (res.error || res.data is! Map) return null;
-    final host = (res.data['img_host'] ?? '') as String;
+    final host = jsonString(jsonMap(res.data)['img_host']);
     final clean = host.replaceAll(RegExp(r'^https?://'), '');
     return clean.isEmpty ? null : clean;
   }
@@ -387,36 +397,19 @@ class JmNetwork {
     }
     final res = await get(url);
     if (res.error) return Res(null, errorMessage: res.errorMessage);
-    try {
-      final comics = <JmComicBrief>[];
-      final content = res.data['content'] as List? ?? [];
-      for (final c in content) {
-        try {
-          final categories = <ComicCategoryInfo>[];
-          if (c['category']?['id'] != null && c['category']?['title'] != null) {
-            categories.add(
-                ComicCategoryInfo(c['category']['id'], c['category']['title']));
-          }
-          if (c['category_sub']?['id'] != null &&
-              c['category_sub']?['title'] != null) {
-            categories.add(ComicCategoryInfo(
-                c['category_sub']['id'], c['category_sub']['title']));
-          }
-          comics.add(JmComicBrief(
-            id: c['id'],
-            author: c['author'] ?? '',
-            name: c['name'] ?? '',
-            rawDescription: c['description'] ?? '',
-            categories: categories,
-          ));
-        } catch (_) {
-          continue;
-        }
-      }
-      return Res(comics);
-    } catch (e) {
-      return Res(null, errorMessage: e.toString());
+    final rawData = res.data;
+    if (rawData is! Map) {
+      return const Res(null, errorMessage: '搜索结果解析失败');
     }
+    final data = jsonMap(rawData);
+    final comics = <JmComicBrief>[];
+    for (final rawComic in jsonList(data['content'])) {
+      if (rawComic is! Map) continue;
+      final comic = JmComicBrief.fromJson(jsonMap(rawComic));
+      if (comic.id.isEmpty) continue;
+      comics.add(comic);
+    }
+    return Res(comics);
   }
 
   /// 专辑（漫画）详情。
@@ -428,69 +421,76 @@ class JmNetwork {
       }
       return Res(null, errorMessage: res.errorMessage);
     }
-    try {
-      final author = <String>[];
-      for (final s in (res.data['author'] ?? ['未知']) as List) {
-        author.add('$s');
-      }
-      final series = <int, String>{};
-      final epNames = <String>[];
-      var sort = 1;
-      for (final s in (res.data['series'] ?? []) as List) {
-        series[sort] = s['id'];
-        var name = s['name'] as String;
-        if (name.isEmpty) name = '第${s['sort']}話';
-        epNames.add(name);
-        sort++;
-      }
-      final tags = List<String>.from(res.data['tags'] ?? []);
-      final works = List<String>.from(res.data['works'] ?? []);
-      final actors = List<String>.from(res.data['actors'] ?? []);
-      final related = <JmComicBrief>[];
-      for (final c in (res.data['related_list'] ?? []) as List) {
-        related.add(JmComicBrief(
-          id: c['id'],
-          author: c['author'] ?? 'Unknown',
-          name: c['name'] ?? '',
-          rawDescription: '',
-        ));
-      }
-      final info = JmComicInfo(
-        name: res.data['name'] ?? 'Unknown',
-        id: id,
-        author: author,
-        description: res.data['description'] ?? '',
-        likes: res.data['likes'] ?? 0,
-        views: res.data['totalViews'] ?? 0,
-        series: series,
-        tags: tags,
-        works: works,
-        actors: actors,
-        relatedComics: related,
-        liked: res.data['likes'] is bool ? res.data['likes'] : false,
-        favorite: res.data['is_favorite'] ?? false,
-        comments: (res.data['comment'] as int?) ?? 0,
-        epNames: epNames,
-      );
-      return Res(info);
-    } catch (e) {
-      return Res(null, errorMessage: e.toString());
+    final rawData = res.data;
+    if (rawData is! Map) {
+      return const Res(null, errorMessage: '漫画详情解析失败');
     }
+    final data = jsonMap(rawData);
+
+    final author = jsonStringList(data['author']);
+    if (author.isEmpty) author.add('未知');
+
+    final series = <int, String>{};
+    final epNames = <String>[];
+    for (final rawSeries in jsonList(data['series'])) {
+      if (rawSeries is! Map) continue;
+      final chapter = jsonMap(rawSeries);
+      final chapterId = jsonString(chapter['id']);
+      if (chapterId.isEmpty) continue;
+      final order = series.length + 1;
+      series[order] = chapterId;
+      final remoteOrder = jsonInt(chapter['sort'], fallback: order);
+      epNames.add(
+        jsonString(chapter['name'], fallback: '第$remoteOrder話').isEmpty
+            ? '第$remoteOrder話'
+            : jsonString(chapter['name']),
+      );
+    }
+
+    final related = <JmComicBrief>[];
+    for (final rawRelated in jsonList(data['related_list'])) {
+      if (rawRelated is! Map) continue;
+      final comic = JmComicBrief.fromJson(jsonMap(rawRelated));
+      if (comic.id.isEmpty) continue;
+      related.add(comic);
+    }
+
+    return Res(JmComicInfo(
+      name: jsonString(data['name'], fallback: 'Unknown'),
+      id: id,
+      author: author,
+      description: jsonString(data['description']),
+      likes: jsonInt(data['likes']),
+      views: jsonInt(data['total_views'] ?? data['totalViews'] ?? data['views']),
+      series: series,
+      tags: jsonStringList(data['tags']),
+      works: jsonStringList(data['works']),
+      actors: jsonStringList(data['actors']),
+      relatedComics: related,
+      liked: jsonBool(
+        data['liked'] ?? (data['likes'] is bool ? data['likes'] : null),
+      ),
+      favorite: jsonBool(data['is_favorite']),
+      comments: jsonInt(
+        data['comment_total'] ?? data['comment'] ?? data['comments'],
+      ),
+      epNames: epNames,
+    ));
   }
 
   /// 章节内文图文件名列表（图片重组用 scrambleId 与 bookId 由调用方推算）。
   Future<Res<List<String>>> getChapter(String id) async {
     final res = await get('$baseUrl/chapter?&id=$id');
     if (res.error) return Res(null, errorMessage: res.errorMessage);
-    try {
-      final images = <String>[];
-      for (final s in (res.data['images'] as List?) ?? const []) {
-        images.add(getJmImageUrl('$s', id));
-      }
-      return Res(images);
-    } catch (e) {
-      return Res(null, errorMessage: e.toString());
+    final rawData = res.data;
+    if (rawData is! Map) {
+      return const Res(null, errorMessage: '章节内容解析失败');
     }
+    final images = <String>[];
+    for (final image in jsonStringList(jsonMap(rawData)['images'])) {
+      images.add(getJmImageUrl(image, id));
+    }
+    return Res(images);
   }
 
   /// 点赞。
@@ -506,13 +506,8 @@ class JmNetwork {
   Future<Res<List<String>>> getHotTags() async {
     final res = await get('$baseUrl/hot_tags');
     if (res.error) return Res(null, errorMessage: res.errorMessage);
-    final data = res.data;
-    if (data is List) {
-      return Res(data.cast<String>());
-    }
-    return Res(<String>[]);
+    return Res(jsonStringList(res.data));
   }
-
   // ============================ 收藏相关 ============================
 
   /// 获取收藏列表。
@@ -526,32 +521,16 @@ class JmNetwork {
   }) async {
     final res = await get('$baseUrl/favorite?page=$page&o=$o&folder_id=$folderId');
     if (res.error) return Res(null, errorMessage: res.errorMessage);
-    final data = res.data;
-    if (data is Map && data['list'] is List) {
-      final list = data['list'] as List;
-      final comics = <JmComicBrief>[];
-      for (final item in list) {
-        if (item is Map) {
-          final categories = <ComicCategoryInfo>[];
-          if (item['category'] is Map) {
-            final cat = item['category'] as Map;
-            categories.add(ComicCategoryInfo(
-              (cat['id'] ?? '').toString(),
-              cat['title'] ?? '',
-            ));
-          }
-          comics.add(JmComicBrief(
-            id: (item['id'] ?? '').toString(),
-            author: item['author'] ?? '',
-            name: item['name'] ?? '',
-            rawDescription: item['description'] ?? '',
-            categories: categories,
-          ));
-        }
-      }
-      return Res(comics);
+    final rawData = res.data;
+    if (rawData is! Map) return Res(<JmComicBrief>[]);
+    final comics = <JmComicBrief>[];
+    for (final rawComic in jsonList(jsonMap(rawData)['list'])) {
+      if (rawComic is! Map) continue;
+      final comic = JmComicBrief.fromJson(jsonMap(rawComic));
+      if (comic.id.isEmpty) continue;
+      comics.add(comic);
     }
-    return Res(<JmComicBrief>[]);
+    return Res(comics);
   }
 
   /// 切换收藏（已收藏则取消，未收藏则添加）。
@@ -565,11 +544,12 @@ class JmNetwork {
   Future<Res<List<Map<String, dynamic>>>> fetchFavoriteFolders() async {
     final res = await get('$baseUrl/favorite_folder');
     if (res.error) return Res(null, errorMessage: res.errorMessage);
-    final data = res.data;
-    if (data is List) {
-      return Res(data.cast<Map<String, dynamic>>());
+    final folders = <Map<String, dynamic>>[];
+    for (final rawFolder in jsonList(res.data)) {
+      if (rawFolder is! Map) continue;
+      folders.add(jsonMap(rawFolder));
     }
-    return Res(<Map<String, dynamic>>[]);
+    return Res(folders);
   }
 
   /// 登出。
@@ -585,28 +565,34 @@ class JmNetwork {
       [String mode = 'manhua']) async {
     final res = await get('$baseUrl/forum?mode=$mode&aid=$id&page=$page');
     if (res.error) return Res(null, errorMessage: res.errorMessage);
-    try {
-      final list = (res.data['list'] as List?) ?? [];
-      final comments = list.map((c) {
-        final replys = (c['replys'] as List?)?.length ?? 0;
-        return <String, dynamic>{
-          'id': c['CID']?.toString(),
-          'avatar': c['photo'] != null
-              ? getJmAvatarUrl(c['photo'].toString())
-              : null,
-          'userName': c['username'] ?? '',
-          'content': _stripHtml(c['content'] ?? ''),
-          'time': c['addtime']?.toString(),
-          'replyCount': replys,
-        };
-      }).toList();
-      final total = res.data['total'] is int
-          ? res.data['total'] as int
-          : int.tryParse('${res.data['total']}') ?? 0;
-      return Res(comments, subData: total);
-    } catch (e) {
-      return Res(null, errorMessage: e.toString());
+    final rawData = res.data;
+    if (rawData is! Map) {
+      return const Res(null, errorMessage: '评论解析失败');
     }
+    final data = jsonMap(rawData);
+    final comments = <Map<String, dynamic>>[];
+    for (final rawComment in jsonList(data['list'])) {
+      if (rawComment is! Map) continue;
+      final comment = jsonMap(rawComment);
+      final replies = jsonList(comment['replys']);
+      final rawReplyCount = comment['replyCount'] ??
+          comment['reply_count'] ??
+          comment['comments'];
+      final commentId = jsonString(comment['CID'] ?? comment['id']);
+      comments.add(<String, dynamic>{
+        'id': commentId.isEmpty ? null : commentId,
+        'avatar': comment['photo'] == null
+            ? null
+            : getJmAvatarUrl(jsonString(comment['photo'])),
+        'userName': jsonString(comment['username']),
+        'content': _stripHtml(jsonString(comment['content'])),
+        'time': comment['addtime'] == null
+            ? null
+            : jsonString(comment['addtime']),
+        'replyCount': jsonInt(rawReplyCount, fallback: replies.length),
+      });
+    }
+    return Res(comments, subData: jsonInt(data['total']));
   }
 
   /// 简易 HTML 标签剥离。
