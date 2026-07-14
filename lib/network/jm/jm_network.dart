@@ -20,6 +20,7 @@ import '../../foundation/log.dart';
 import 'jm_headers.dart';
 import 'jm_image.dart';
 import 'jm_models.dart';
+import 'jm_parsing.dart';
 import '../source_state.dart';
 
 export 'jm_models.dart';
@@ -421,61 +422,10 @@ class JmNetwork {
       }
       return Res(null, errorMessage: res.errorMessage);
     }
-    final rawData = res.data;
-    if (rawData is! Map) {
-      return const Res(null, errorMessage: '漫画详情解析失败');
-    }
-    final data = jsonMap(rawData);
-
-    final author = jsonStringList(data['author']);
-    if (author.isEmpty) author.add('未知');
-
-    final series = <int, String>{};
-    final epNames = <String>[];
-    for (final rawSeries in jsonList(data['series'])) {
-      if (rawSeries is! Map) continue;
-      final chapter = jsonMap(rawSeries);
-      final chapterId = jsonString(chapter['id']);
-      if (chapterId.isEmpty) continue;
-      final order = series.length + 1;
-      series[order] = chapterId;
-      final remoteOrder = jsonInt(chapter['sort'], fallback: order);
-      epNames.add(
-        jsonString(chapter['name'], fallback: '第$remoteOrder話').isEmpty
-            ? '第$remoteOrder話'
-            : jsonString(chapter['name']),
-      );
-    }
-
-    final related = <JmComicBrief>[];
-    for (final rawRelated in jsonList(data['related_list'])) {
-      if (rawRelated is! Map) continue;
-      final comic = JmComicBrief.fromJson(jsonMap(rawRelated));
-      if (comic.id.isEmpty) continue;
-      related.add(comic);
-    }
-
-    return Res(JmComicInfo(
-      name: jsonString(data['name'], fallback: 'Unknown'),
-      id: id,
-      author: author,
-      description: jsonString(data['description']),
-      likes: jsonInt(data['likes']),
-      views: jsonInt(data['total_views'] ?? data['totalViews'] ?? data['views']),
-      series: series,
-      tags: jsonStringList(data['tags']),
-      works: jsonStringList(data['works']),
-      actors: jsonStringList(data['actors']),
-      relatedComics: related,
-      liked: jsonBool(
-        data['liked'] ?? (data['likes'] is bool ? data['likes'] : null),
-      ),
-      favorite: jsonBool(data['is_favorite']),
-      comments: jsonInt(
-        data['comment_total'] ?? data['comment'] ?? data['comments'],
-      ),
-      epNames: epNames,
-    ));
+    final info = parseJmComicInfoResponse(res.data, id: id);
+    return info == null
+        ? const Res(null, errorMessage: '漫画详情解析失败')
+        : Res(info);
   }
 
   /// 章节内文图文件名列表（图片重组用 scrambleId 与 bookId 由调用方推算）。

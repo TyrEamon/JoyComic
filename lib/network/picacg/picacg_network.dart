@@ -15,6 +15,7 @@ import '../base_comic.dart';
 import '../../foundation/log.dart';
 import 'picacg_headers.dart';
 import 'picacg_models.dart';
+import 'picacg_parsing.dart';
 import '../source_state.dart';
 
 export 'picacg_models.dart';
@@ -288,36 +289,25 @@ class PicacgNetwork {
 
   /// 获取章节列表。服务端序为倒序，这里按 order 升序整理返回。
   Future<Res<List<PicacgEpisode>>> getEps(String id) async {
-    final eps = <PicacgEpisode>[];
+    final episodes = <PicacgEpisode>[];
     var page = 0;
     try {
       while (true) {
         page++;
         final res = await get('${apiUrl}/comics/$id/eps?page=$page');
         if (res.error) return Res(null, errorMessage: res.errorMessage);
-        final epsRoot = jsonMap(jsonMap(res.data['data'])['eps']);
-        if (epsRoot.isEmpty) {
+        final parsed = parsePicacgEpisodePage(res.data);
+        if (parsed == null) {
           return const Res(null, errorMessage: '章节列表解析失败');
         }
-        var lastPage = jsonInt(epsRoot['pages'], fallback: 1);
-        if (lastPage < 1) lastPage = 1;
-        for (final rawEpisode in jsonList(epsRoot['docs'])) {
-          if (rawEpisode is! Map) continue;
-          final episode = jsonMap(rawEpisode);
-          final order = jsonInt(episode['order']);
-          final title = jsonString(episode['title']);
-          eps.add(PicacgEpisode(
-            title: title.isEmpty ? '第$order' : title,
-            order: order,
-          ));
-        }
-        if (page >= lastPage) break;
+        episodes.addAll(parsed.episodes);
+        if (page >= parsed.pages) break;
       }
     } catch (e) {
       return Res(null, errorMessage: e.toString());
     }
-    eps.sort((a, b) => a.order.compareTo(b.order));
-    return Res(eps);
+    episodes.sort((a, b) => a.order.compareTo(b.order));
+    return Res(episodes);
   }
 
   /// 获取某章节的全部图片 URL，分页聚合。
