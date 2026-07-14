@@ -251,16 +251,53 @@ class HomeContent {
         errors = List<HomeSourceError>.unmodifiable(errors);
 }
 
+class _HomeSectionAccumulator {
+  _HomeSectionAccumulator({
+    required this.sourceKey,
+    required this.sourceName,
+    required this.key,
+    required this.title,
+  });
+
+  final String sourceKey;
+  final String sourceName;
+  final String key;
+  final String title;
+  final List<BaseComic> comics = <BaseComic>[];
+  final Set<String> _comicIds = <String>{};
+  SourceContentQuery? moreQuery;
+
+  void merge(SourceContentSection section) {
+    moreQuery ??= section.moreQuery;
+    for (final comic in section.comics) {
+      if (_comicIds.add(comic.id)) comics.add(comic);
+    }
+  }
+
+  HomeContentSection? build() {
+    if (comics.isEmpty) return null;
+    return HomeContentSection(
+      sourceKey: sourceKey,
+      sourceName: sourceName,
+      key: key,
+      title: title,
+      comics: comics,
+      moreQuery: moreQuery,
+    );
+  }
+}
+
 /// Combines source home responses without allowing one failed source to hide
 /// successful content from another source.
 ///
-/// Input source order and source-local section order are retained. Empty
-/// sections are discarded. For duplicate section keys within one source and
-/// duplicate comic ids within one section, the first non-empty value wins.
+/// Source order and the first occurrence of each source-local section key are
+/// retained. Duplicate sections merge comics by id in first-seen order, keep
+/// the first title and first non-null more query, and are omitted only when all
+/// occurrences are empty.
 HomeContent mergeHomeSections(Iterable<HomeSourceResult> sourceResults) {
-  final sections = <HomeContentSection>[];
+  final accumulators = <_HomeSectionAccumulator>[];
+  final accumulatorsByKey = <String, _HomeSectionAccumulator>{};
   final errors = <HomeSourceError>[];
-  final sectionKeys = <String>{};
 
   for (final sourceResult in sourceResults) {
     final result = sourceResult.result;
@@ -274,26 +311,26 @@ HomeContent mergeHomeSections(Iterable<HomeSourceResult> sourceResults) {
     }
 
     for (final section in result.data) {
-      final comicIds = <String>{};
-      final comics = <BaseComic>[];
-      for (final comic in section.comics) {
-        if (comicIds.add(comic.id)) comics.add(comic);
-      }
-      if (comics.isEmpty) continue;
-
-      final sectionIdentity = '${sourceResult.sourceKey}:${section.key}';
-      if (!sectionKeys.add(sectionIdentity)) continue;
-      sections.add(HomeContentSection(
-        sourceKey: sourceResult.sourceKey,
-        sourceName: sourceResult.sourceName,
-        key: section.key,
-        title: section.title,
-        comics: comics,
-        moreQuery: section.moreQuery,
-      ));
+      final identity = '${sourceResult.sourceKey}:${section.key}';
+      final accumulator = accumulatorsByKey.putIfAbsent(identity, () {
+        final value = _HomeSectionAccumulator(
+          sourceKey: sourceResult.sourceKey,
+          sourceName: sourceResult.sourceName,
+          key: section.key,
+          title: section.title,
+        );
+        accumulators.add(value);
+        return value;
+      });
+      accumulator.merge(section);
     }
   }
 
+  final sections = <HomeContentSection>[];
+  for (final accumulator in accumulators) {
+    final section = accumulator.build();
+    if (section != null) sections.add(section);
+  }
   return HomeContent(sections: sections, errors: errors);
 }
 

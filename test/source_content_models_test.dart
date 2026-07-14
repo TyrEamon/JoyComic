@@ -69,7 +69,17 @@ void main() {
       ]);
     });
 
-    test('preserves source and section order while deduplicating first wins', () {
+    test('merges duplicate non-empty sections in first-seen order', () {
+      const firstMoreQuery = SourceContentQuery(
+        categoryKey: 'latest',
+        param: 'first-param',
+        sort: 'popular',
+      );
+      const laterMoreQuery = SourceContentQuery(
+        categoryKey: 'latest',
+        param: 'later-param',
+        sort: 'latest',
+      );
       final content = mergeHomeSections([
         HomeSourceResult(
           sourceKey: 'picacg',
@@ -77,27 +87,26 @@ void main() {
           result: Res([
             SourceContentSection(
               key: 'latest',
-              title: '最新漫画',
+              title: '首次标题',
               comics: const [
-                _TestComic('pica-1'),
                 _TestComic('pica-1'),
                 _TestComic('shared-id'),
               ],
-            ),
-            SourceContentSection(
-              key: 'empty',
-              title: '空分区',
-              comics: const [],
-            ),
-            SourceContentSection(
-              key: 'latest',
-              title: '重复分区',
-              comics: const [_TestComic('ignored')],
+              moreQuery: firstMoreQuery,
             ),
             SourceContentSection(
               key: 'recommended',
               title: '推荐',
-              comics: const [_TestComic('pica-2')],
+              comics: const [_TestComic('recommended-1')],
+            ),
+            SourceContentSection(
+              key: 'latest',
+              title: '后续标题',
+              comics: const [
+                _TestComic('shared-id'),
+                _TestComic('pica-2'),
+              ],
+              moreQuery: laterMoreQuery,
             ),
           ]),
         ),
@@ -118,12 +127,53 @@ void main() {
         content.sections.map((section) => '${section.sourceKey}:${section.key}'),
         ['picacg:latest', 'picacg:recommended', 'jm:latest'],
       );
+      expect(content.sections.first.title, '首次标题');
+      expect(content.sections.first.moreQuery, firstMoreQuery);
       expect(
         content.sections.first.comics.map((comic) => comic.id),
-        ['pica-1', 'shared-id'],
+        ['pica-1', 'shared-id', 'pica-2'],
       );
       expect(content.sections.last.comics.single.id, 'shared-id');
       expect(content.errors, isEmpty);
+    });
+
+    test('keeps first position when an empty section gains later comics', () {
+      const moreQuery = SourceContentQuery(
+        categoryKey: 'promoted',
+        param: 'promoted-param',
+      );
+      final content = mergeHomeSections([
+        HomeSourceResult(
+          sourceKey: 'jm',
+          sourceName: '禁漫',
+          result: Res([
+            SourceContentSection(
+              key: 'promoted',
+              title: '先出现的空分区',
+              comics: const [],
+            ),
+            SourceContentSection(
+              key: 'latest',
+              title: '中间分区',
+              comics: const [_TestComic('middle')],
+            ),
+            SourceContentSection(
+              key: 'promoted',
+              title: '后续标题',
+              comics: const [_TestComic('late-comic')],
+              moreQuery: moreQuery,
+            ),
+          ]),
+        ),
+      ]);
+
+      expect(
+        content.sections.map((section) => section.key),
+        ['promoted', 'latest'],
+      );
+      expect(content.sections.first.title, '先出现的空分区');
+      expect(content.sections.first.comics.single.id, 'late-comic');
+      expect(content.sections.first.moreQuery, moreQuery);
     });
   });
 
