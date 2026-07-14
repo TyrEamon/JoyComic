@@ -1,5 +1,5 @@
 /// Generic paginated content page backed by a single [ComicSource].
-library source_content_page;
+library;
 
 import 'package:flutter/material.dart';
 import 'package:joycomic/theme/app_theme_context.dart';

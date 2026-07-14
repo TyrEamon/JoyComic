@@ -7,7 +7,7 @@
 /// - 使用 SauceNAO 第三方服务做反向图片搜索。
 /// - 拿到 SauceNAO 结果后，通过两源 search 二次匹配定位到禁漫/哔咔作品。
 /// - 未匹配的结果展示外部链接。
-library image_search_page;
+library;
 
 import 'dart:io';
 
@@ -35,7 +35,6 @@ class _ImageSearchPageState extends State<ImageSearchPage> {
   File? _picked;
   bool _searching = false;
   List<ComicGridItem> _results = const [];
-  List<SauceResult> _sauceResults = const [];
 
   Future<void> _pick(bool fromCamera) async {
     final picker = ImagePicker();
@@ -48,7 +47,6 @@ class _ImageSearchPageState extends State<ImageSearchPage> {
       _picked = File(x.path);
       _searching = true;
       _results = const [];
-      _sauceResults = const [];
     });
 
     await _sauceSearch(File(x.path));
@@ -58,7 +56,6 @@ class _ImageSearchPageState extends State<ImageSearchPage> {
     try {
       final sauceResults = await SauceNaoSearch.search(image);
       if (!mounted) return;
-      _sauceResults = sauceResults;
       Log.i('SauceNAO', '${sauceResults.length} results');
 
       // 二次匹配：用 SauceNAO 结果标题在两源搜
@@ -132,7 +129,7 @@ class _ImageSearchPageState extends State<ImageSearchPage> {
               hasScrollBody: false,
               child: Center(
                 child: Padding(
-                  padding: EdgeInsets.all(48),
+                  padding: const EdgeInsets.all(48),
                   child: CircularProgressIndicator(
                     color: context.colorScheme.primary,
                     strokeWidth: 2.5,
@@ -199,7 +196,7 @@ class _PickerArea extends StatelessWidget {
                             size: 48,
                             color: context.tertiaryTextColor,
                           ),
-                          SizedBox(height: AppSpacing.xs),
+                          const SizedBox(height: AppSpacing.xs),
                           Text(
                             '选择一张漫画截图',
                             style: TextStyle(color: context.tertiaryTextColor),

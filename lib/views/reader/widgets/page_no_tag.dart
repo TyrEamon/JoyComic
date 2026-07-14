@@ -1,5 +1,5 @@
 /// 页码角标（横向模式下覆盖在图片上的页码指示）。
-library page_no_tag;
+library;
 
 import 'package:flutter/material.dart';
 

@@ -2,7 +2,7 @@
 ///
 /// 使用 `archive` 包将阅读记录 + 收藏 → zip 打包，
 /// 上传到 WebDAV 服务器，或从服务器下载回本地恢复。
-library webdav_sync;
+library;
 
 import 'dart:convert';
 import 'dart:io';
@@ -35,15 +35,12 @@ class WebDavSync {
       // 2. 创建 zip
       final archive = Archive();
       for (final entry in data.entries) {
-        archive.addFile(ArchiveFile(
-          entry.key,
-          entry.value.length,
-          entry.value,
-        ));
+        archive.addFile(
+          ArchiveFile(entry.key, entry.value.length, entry.value),
+        );
       }
 
       final encoded = ZipEncoder().encode(archive);
-      if (encoded == null) return '压缩失败';
 
       // 3. 写临时文件
       final tmpDir = Directory.systemTemp;
@@ -140,33 +137,50 @@ class WebDavSync {
     final data = <String, List<int>>{};
 
     // 阅读记录
-    final records = JoyDatabase.instance.core.select('SELECT * FROM read_records');
-    final recordsJson = jsonEncode(records.map((r) => {
-      'comic_id': r['comic_id'],
-      'source_key': r['source_key'],
-      'chapter_id': r['chapter_id'],
-      'page_no': r['page_no'],
-      'updated_at': r['updated_at'],
-    }).toList());
+    final records = JoyDatabase.instance.core.select(
+      'SELECT * FROM read_records',
+    );
+    final recordsJson = jsonEncode(
+      records
+          .map(
+            (r) => {
+              'comic_id': r['comic_id'],
+              'source_key': r['source_key'],
+              'chapter_id': r['chapter_id'],
+              'page_no': r['page_no'],
+              'updated_at': r['updated_at'],
+            },
+          )
+          .toList(),
+    );
     data['read_records.json'] = utf8.encode(recordsJson);
 
     // 收藏
     final favs = JoyDatabase.instance.core.select('SELECT * FROM favorites');
-    final favsJson = jsonEncode(favs.map((r) => {
-      'comic_id': r['comic_id'],
-      'source_key': r['source_key'],
-      'title': r['title'],
-      'cover_url': r['cover_url'],
-      'favorited_at': r['favorited_at'],
-    }).toList());
+    final favsJson = jsonEncode(
+      favs
+          .map(
+            (r) => {
+              'comic_id': r['comic_id'],
+              'source_key': r['source_key'],
+              'title': r['title'],
+              'cover_url': r['cover_url'],
+              'favorited_at': r['favorited_at'],
+            },
+          )
+          .toList(),
+    );
     data['favorites.json'] = utf8.encode(favsJson);
 
     // 搜索历史
-    final history = JoyDatabase.instance.core.select('SELECT * FROM search_history');
-    final historyJson = jsonEncode(history.map((r) => {
-      'keyword': r['keyword'],
-      'created_at': r['created_at'],
-    }).toList());
+    final history = JoyDatabase.instance.core.select(
+      'SELECT * FROM search_history',
+    );
+    final historyJson = jsonEncode(
+      history
+          .map((r) => {'keyword': r['keyword'], 'created_at': r['created_at']})
+          .toList(),
+    );
     data['search_history.json'] = utf8.encode(historyJson);
 
     return data;
@@ -178,7 +192,13 @@ class WebDavSync {
       for (final item in list) {
         JoyDatabase.instance.core.execute(
           'INSERT OR REPLACE INTO read_records VALUES (?, ?, ?, ?, ?)',
-          [item['comic_id'], item['source_key'], item['chapter_id'], item['page_no'], item['updated_at']],
+          [
+            item['comic_id'],
+            item['source_key'],
+            item['chapter_id'],
+            item['page_no'],
+            item['updated_at'],
+          ],
         );
       }
     } else if (name == 'favorites.json') {
@@ -186,7 +206,13 @@ class WebDavSync {
       for (final item in list) {
         JoyDatabase.instance.core.execute(
           'INSERT OR REPLACE INTO favorites VALUES (?, ?, ?, ?, ?, ?)',
-          [item['comic_id'], item['source_key'], item['title'], item['cover_url'], item['favorited_at']],
+          [
+            item['comic_id'],
+            item['source_key'],
+            item['title'],
+            item['cover_url'],
+            item['favorited_at'],
+          ],
         );
       }
     } else if (name == 'search_history.json') {

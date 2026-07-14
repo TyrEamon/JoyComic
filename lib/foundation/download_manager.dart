@@ -56,6 +56,7 @@ class DownloadManager extends ChangeNotifier implements PartialDownloadStore {
   int maxConcurrent;
 
   List<DownloadTask> _tasks = <DownloadTask>[];
+  @override
   List<DownloadTask> get tasks => List<DownloadTask>.unmodifiable(_tasks);
 
   Directory? _downloadDirectory;

@@ -3,7 +3,7 @@
 /// 把 [PicacgNetwork] 与 [ComicSource] 契约连接起来：构造一个状态门面
 /// [PicacgStateImpl] 桥接源运行期 `data`，注入到网络层；并声明账号登录流。
 /// 分类、分页和首页分区通过源中立契约暴露，网络请求仍复用源内鉴权状态。
-library built_in_picacg;
+library;
 
 import '../../comic_source/comic_source.dart';
 import '../../network/base_comic.dart';
@@ -22,18 +22,15 @@ class PicacgStateImpl implements PicacgState {
   String get token => jsonString(source.data['token']);
 
   @override
-  String get channel =>
-      jsonString(source.data['appChannel'], fallback: '3');
+  String get channel => jsonString(source.data['appChannel'], fallback: '3');
 
   @override
   String get imageQuality =>
       jsonString(source.data['imageQuality'], fallback: 'original');
 
   @override
-  String get apiBaseUrl => jsonString(
-        source.data['apiBaseUrl'],
-        fallback: defaultPicacgApiUrl,
-      );
+  String get apiBaseUrl =>
+      jsonString(source.data['apiBaseUrl'], fallback: defaultPicacgApiUrl);
 
   @override
   void setApiBaseUrl(String url) {
@@ -85,16 +82,18 @@ ComicSource buildPicacgSource() {
     loadSourceCategories: () async {
       final res = await PicacgNetwork().getCategories();
       if (res.error) return Res(null, errorMessage: res.errorMessage);
-      return Res(normalizeCategories([
-        for (final category in res.data)
-          SourceCategory(
-            key: category.key,
-            title: category.title,
-            param: category.param,
-            cover: category.cover,
-            sortOptions: _picacgSortOptions,
-          ),
-      ]));
+      return Res(
+        normalizeCategories([
+          for (final category in res.data)
+            SourceCategory(
+              key: category.key,
+              title: category.title,
+              param: category.param,
+              cover: category.cover,
+              sortOptions: _picacgSortOptions,
+            ),
+        ]),
+      );
     },
     loadSourceContent: (query) async {
       final res = await PicacgNetwork().getCategoryComics(
@@ -103,18 +102,16 @@ ComicSource buildPicacgSource() {
         _picacgSort(query.sort),
       );
       if (res.error) return Res(null, errorMessage: res.errorMessage);
-      return Res(SourceContentPage(
-        query: query,
-        comics: <BaseComic>[...res.data],
-        maxPage: _optionalPageCount(res.subData),
-      ));
+      return Res(
+        SourceContentPage(
+          query: query,
+          comics: <BaseComic>[...res.data],
+          maxPage: _optionalPageCount(res.subData),
+        ),
+      );
     },
     loadHomeSections: () async {
-      const query = SourceContentQuery(
-        categoryKey: '',
-        page: 1,
-        sort: 'dd',
-      );
+      const query = SourceContentQuery(categoryKey: '', page: 1, sort: 'dd');
       final res = await PicacgNetwork().getCategoryComics('', 1, 'dd');
       if (res.error) return Res(null, errorMessage: res.errorMessage);
       return Res([
@@ -131,8 +128,9 @@ ComicSource buildPicacgSource() {
       loadPage: (keyword, page, options) async {
         final res = await PicacgNetwork().search(keyword, 'ua', page);
         if (res.error) return Res(null, errorMessage: res.errorMessage);
-        return Res<List<BaseComic>>(<BaseComic>[...res.data],
-            subData: res.subData);
+        return Res<List<BaseComic>>(<BaseComic>[
+          ...res.data,
+        ], subData: res.subData);
       },
       enableTagsSuggestions: true,
       loadHotTags: () => PicacgNetwork().getHotTags(),
@@ -158,8 +156,9 @@ ComicSource buildPicacgSource() {
       load: (page, [folder]) async {
         final res = await PicacgNetwork().getFavorites(page, true);
         if (res.error) return Res(null, errorMessage: res.errorMessage);
-        return Res<List<BaseComic>>(<BaseComic>[...res.data],
-            subData: res.subData);
+        return Res<List<BaseComic>>(<BaseComic>[
+          ...res.data,
+        ], subData: res.subData);
       },
       addOrDelFavorite: (comicId, folderId, isAdding) async {
         final res = await PicacgNetwork().favouriteOrUnfavourite(comicId);
@@ -172,14 +171,18 @@ ComicSource buildPicacgSource() {
     commentsLoader: (id, subId, page, replyTo) async {
       final res = await PicacgNetwork().getComments(id, page: page);
       if (res.error) return Res(null, errorMessage: res.errorMessage);
-      final comments = res.data.map((comment) => Comment(
-        jsonString(comment['userName']),
-        _optionalString(comment['avatar']),
-        jsonString(comment['content']),
-        _optionalString(comment['time']),
-        jsonInt(comment['replyCount']),
-        _optionalString(comment['id']),
-      )).toList();
+      final comments = res.data
+          .map(
+            (comment) => Comment(
+              jsonString(comment['userName']),
+              _optionalString(comment['avatar']),
+              jsonString(comment['content']),
+              _optionalString(comment['time']),
+              jsonInt(comment['replyCount']),
+              _optionalString(comment['id']),
+            ),
+          )
+          .toList();
       return Res(comments);
     },
     initData: (s) {
@@ -191,7 +194,7 @@ ComicSource buildPicacgSource() {
   );
 
   // 注入状态门面并注册到内置表。
-  PicacgNetwork()..state = PicacgStateImpl(source);
+  PicacgNetwork().state = PicacgStateImpl(source);
   return source;
 }
 
@@ -225,15 +228,15 @@ String? _optionalString(Object? value) {
 }
 
 Map<String, dynamic> _profileToMap(Profile p) => {
-      'id': p.id,
-      'email': p.email,
-      'name': p.name,
-      'level': p.level,
-      'exp': p.exp,
-      'avatarUrl': p.avatarUrl,
-      'title': p.title,
-      'slogan': p.slogan,
-    };
+  'id': p.id,
+  'email': p.email,
+  'name': p.name,
+  'level': p.level,
+  'exp': p.exp,
+  'avatarUrl': p.avatarUrl,
+  'title': p.title,
+  'slogan': p.slogan,
+};
 
 /// 哔咔详情 → 统一 [ComicInfoData]。
 ///

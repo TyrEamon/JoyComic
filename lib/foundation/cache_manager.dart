@@ -1,5 +1,5 @@
 /// Safe disk and Flutter image-cache management.
-library cache_manager;
+library;
 
 import 'dart:async';
 import 'dart:io';
@@ -37,17 +37,14 @@ class CacheManager {
     this.partialDownloadStore,
     ImageCache? imageCache,
     Iterable<Directory>? securityRoots,
-  })  : _rootDirectories = [
-          rootDirectory,
-          ...?securityRoots,
-        ],
-        _safeDirectories = [
-          cacheDirectory,
-          temporaryDirectory,
-          logDirectory,
-          downloadTemporaryDirectory,
-        ],
-        _imageCache = imageCache;
+  }) : _rootDirectories = [rootDirectory, ...?securityRoots],
+       _safeDirectories = [
+         cacheDirectory,
+         temporaryDirectory,
+         logDirectory,
+         downloadTemporaryDirectory,
+       ],
+       _imageCache = imageCache;
 
   /// Builds a manager for the real application directories.
   static Future<CacheManager> create({
@@ -194,7 +191,10 @@ class CacheManager {
         final entityPath = _normalize(entity.path);
         if (!_isAllowedPath(entityPath)) continue;
         try {
-          final type = await FileSystemEntity.type(entityPath, followLinks: false);
+          final type = await FileSystemEntity.type(
+            entityPath,
+            followLinks: false,
+          );
           if (type == FileSystemEntityType.file) {
             bytes += await _fileSize(
               File(entityPath),
@@ -255,7 +255,10 @@ class CacheManager {
         final entityPath = _normalize(entity.path);
         if (!_isAllowedPath(entityPath)) continue;
         try {
-          final type = await FileSystemEntity.type(entityPath, followLinks: false);
+          final type = await FileSystemEntity.type(
+            entityPath,
+            followLinks: false,
+          );
           if (type == FileSystemEntityType.file) {
             await File(entityPath).delete();
           } else if (type == FileSystemEntityType.directory) {
@@ -274,18 +277,22 @@ class CacheManager {
   String _normalize(String path) => p.normalize(p.absolute(path));
 
   bool _isAllowedPath(String path) {
-    return _rootDirectories.any((root) => _isWithin(_normalize(root.path), path));
+    return _rootDirectories.any(
+      (root) => _isWithin(_normalize(root.path), path),
+    );
   }
 
   bool _isInsideSafeDirectory(String path) {
-    return _safeDirectories.any((directory) =>
-        _isWithin(_normalize(directory.path), path));
+    return _safeDirectories.any(
+      (directory) => _isWithin(_normalize(directory.path), path),
+    );
   }
 
   bool _isWithin(String root, String path) {
     if (root == path) return true;
     final relative = p.relative(path, from: root);
-    return relative != '..' && !relative.startsWith('..${p.separator}') &&
+    return relative != '..' &&
+        !relative.startsWith('..${p.separator}') &&
         !p.isAbsolute(relative);
   }
 }

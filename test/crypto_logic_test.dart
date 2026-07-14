@@ -8,16 +8,28 @@ import 'package:joycomic/foundation/jm_image_recombine.dart';
 void main() {
   group('哔咔请求签名', () {
     test('相同输入应产生相同签名（确定性）', () {
-      final a = createSignature('comics/1/eps?page=1', '4ce7a7aa759b40f794d189a88b84aba8',
-          '1700000000', 'GET');
-      final b = createSignature('comics/1/eps?page=1', '4ce7a7aa759b40f794d189a88b84aba8',
-          '1700000000', 'GET');
+      final a = createSignature(
+        'comics/1/eps?page=1',
+        '4ce7a7aa759b40f794d189a88b84aba8',
+        '1700000000',
+        'GET',
+      );
+      final b = createSignature(
+        'comics/1/eps?page=1',
+        '4ce7a7aa759b40f794d189a88b84aba8',
+        '1700000000',
+        'GET',
+      );
       expect(a, equals(b));
     });
 
     test('签名为 64 位十六进制字符串', () {
-      final sig = createSignature('comics', 'nonce'.padLeft(32, '0'),
-          '1700000001', 'POST');
+      final sig = createSignature(
+        'comics',
+        'nonce'.padLeft(32, '0'),
+        '1700000001',
+        'POST',
+      );
       expect(sig.length, 64);
       expect(RegExp(r'^[0-9a-f]{64}$').hasMatch(sig), isTrue);
     });

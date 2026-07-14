@@ -2,7 +2,7 @@
 ///
 /// 左：返回 Icon；右：分享 + 更多操作 Icon 组合。
 /// 滚动时顶部叠加一层渐变（深色从透明到微实），保证白图标在亮封面上可读。
-library detail_app_bar;
+library;
 
 import 'package:flutter/material.dart';
 import 'package:joycomic/theme/app_theme_context.dart';

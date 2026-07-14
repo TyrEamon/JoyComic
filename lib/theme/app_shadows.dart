@@ -2,7 +2,7 @@
 ///
 /// 深色底上的阴影不能沿用 Material 默认黑色（会被背景吞没），
 /// 故统一用"上抬光晕"（浅紫低透明）+ 前景实体的"下沉暗影"双系。
-library app_shadows;
+library;
 
 import 'package:flutter/material.dart';
 
@@ -49,13 +49,13 @@ class AppShadows {
 
   /// 胶囊标签（热度 pill）的微光晕，营造"发光感"。
   static List<BoxShadow> pillGlow(Color glowColor) => [
-        BoxShadow(
-          color: glowColor.withValues(alpha: 0.45),
-          blurRadius: 12,
-          spreadRadius: -2,
-          offset: const Offset(0, 2),
-        ),
-      ];
+    BoxShadow(
+      color: glowColor.withValues(alpha: 0.45),
+      blurRadius: 12,
+      spreadRadius: -2,
+      offset: const Offset(0, 2),
+    ),
+  ];
 
   /// 品牌胶囊按钮的默认光晕（用于静态品牌色时段）。
   static List<BoxShadow> brandPillGlow() => pillGlow(AppColors.brandPink);

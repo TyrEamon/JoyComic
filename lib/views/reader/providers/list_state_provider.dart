@@ -2,7 +2,7 @@
 ///
 /// 管理 UI 层状态：Ctrl 键状态、ScrollPhysics、条漫列宽、菜单锁定、页码显隐。
 /// 与 [ReaderProvider]（内容态）分离，单一职责。持久化字段写入 [ReaderConf]。
-library list_state_provider;
+library;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';

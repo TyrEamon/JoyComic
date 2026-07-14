@@ -3,7 +3,7 @@
 /// 端点与解析对齐哔咔 API：登录取 token、分类、高级搜索、漫画详情、
 /// 章节/分章图片、收藏切换等。所有请求经 [PicacgHeaders.buildHeaders]
 /// 签名；遇 401 自动用已存账密重登并重试一次（避免登录态失效打回登录页）。
-library picacg_network;
+library;
 
 import 'dart:convert' as convert;
 
@@ -63,12 +63,14 @@ List<PicacgCategory> parsePicacgCategories(Object? value) {
       category['_id'] ?? category['id'] ?? category['title'],
     ).trim();
     if (key.isEmpty || title.isEmpty) continue;
-    categories.add(PicacgCategory(
-      key: key,
-      title: title,
-      param: title,
-      cover: _picacgMediaUrl(category['thumb']),
-    ));
+    categories.add(
+      PicacgCategory(
+        key: key,
+        title: title,
+        param: title,
+        cover: _picacgMediaUrl(category['thumb']),
+      ),
+    );
   }
   return categories;
 }
@@ -115,23 +117,30 @@ class PicacgNetwork {
   PicacgState? state;
 
   /// 当前生效的接入域名（go2778/picacomic 二选一，默认 go2778 中转）。
-  String get apiUrl =>
-      (state?.apiBaseUrl.isNotEmpty ?? false)
-          ? state!.apiBaseUrl
-          : defaultPicacgApiUrl;
+  String get apiUrl => (state?.apiBaseUrl.isNotEmpty ?? false)
+      ? state!.apiBaseUrl
+      : defaultPicacgApiUrl;
 
   String get _token => state?.token ?? '';
 
   // ============================ 通用 GET / POST ============================
 
-  Future<Res<Map<String, dynamic>>> get(String url,
-      {bool useCache = false}) async {
+  Future<Res<Map<String, dynamic>>> get(
+    String url, {
+    bool useCache = false,
+  }) async {
     if (_token == '') {
       await Future.delayed(const Duration(milliseconds: 500));
       return const Res(null, errorMessage: '未登录');
     }
-    final dio = Dio(_buildOptions('GET', _token,
-        url.replaceAll('${apiUrl}/', ''), useCache: useCache));
+    final dio = Dio(
+      _buildOptions(
+        'GET',
+        _token,
+        url.replaceAll('$apiUrl/', ''),
+        useCache: useCache,
+      ),
+    );
     dio.options.validateStatus = (i) => i == 200 || i == 400 || i == 401;
     try {
       final res = await dio.get<String>(url);
@@ -152,14 +161,18 @@ class PicacgNetwork {
   }
 
   Future<Res<Map<String, dynamic>>> post(
-      String url, Map<String, String>? data) async {
+    String url,
+    Map<String, String>? data,
+  ) async {
     final isAuth =
-        url == '${apiUrl}/auth/sign-in' || url == '${apiUrl}/auth/register';
+        url == '$apiUrl/auth/sign-in' || url == '$apiUrl/auth/register';
     if (_token == '' && !isAuth) {
       await Future.delayed(const Duration(milliseconds: 500));
       return const Res(null, errorMessage: '未登录');
     }
-    final dio = Dio(_buildOptions('POST', _token, url.replaceAll('${apiUrl}/', '')));
+    final dio = Dio(
+      _buildOptions('POST', _token, url.replaceAll('$apiUrl/', '')),
+    );
     dio.options.validateStatus = (i) => i == 200 || i == 400 || i == 401;
     try {
       final res = await dio.post<String>(url, data: data);
@@ -179,8 +192,12 @@ class PicacgNetwork {
     }
   }
 
-  BaseOptions _buildOptions(String method, String token, String path,
-      {bool useCache = false}) {
+  BaseOptions _buildOptions(
+    String method,
+    String token,
+    String path, {
+    bool useCache = false,
+  }) {
     return buildHeaders(
       method: method,
       token: token,
@@ -217,6 +234,7 @@ class PicacgNetwork {
     }
     return Res(null, errorMessage: 'Invalid Status Code ${res.statusCode}');
   }
+
   Future<bool> _reLogin() async => state?.reLogin() ?? false;
 
   String _dioErrMsg(DioException e) {
@@ -233,7 +251,7 @@ class PicacgNetwork {
 
   /// 登录成功返回 token。
   Future<Res<String>> login(String email, String password) async {
-    final response = await post('${apiUrl}/auth/sign-in', {
+    final response = await post('$apiUrl/auth/sign-in', {
       'email': email,
       'password': password,
     });
@@ -250,7 +268,7 @@ class PicacgNetwork {
 
   /// 用户档案。
   Future<Res<Profile>> getProfile() async {
-    final response = await get('${apiUrl}/users/profile');
+    final response = await get('$apiUrl/users/profile');
     if (response.error) return Res(null, errorMessage: response.errorMessage);
     final user = jsonMap(jsonMap(response.data['data'])['user']);
     final id = jsonString(user['_id'] ?? user['id']);
@@ -260,17 +278,19 @@ class PicacgNetwork {
     final avatar = user['avatar'] == null
         ? defaultAvatarUrl
         : _mediaUrl(user['avatar'], fallback: defaultAvatarUrl);
-    return Res(Profile.fromJson(<String, dynamic>{
-      ...user,
-      'id': id,
-      'avatarUrl': avatar,
-      'frameUrl': user['character'],
-    }));
+    return Res(
+      Profile.fromJson(<String, dynamic>{
+        ...user,
+        'id': id,
+        'avatarUrl': avatar,
+        'frameUrl': user['character'],
+      }),
+    );
   }
 
   /// 热门搜索词。
   Future<Res<List<String>>> getHotTags() async {
-    final response = await get('${apiUrl}/keywords');
+    final response = await get('$apiUrl/keywords');
     if (response.error) return Res(null, errorMessage: response.errorMessage);
     final data = jsonMap(response.data['data']);
     return Res(jsonStringList(data['keywords']));
@@ -278,7 +298,7 @@ class PicacgNetwork {
 
   /// 获取分类。分类筛选参数使用服务端 title，稳定 key 优先使用 id。
   Future<Res<List<PicacgCategory>>> getCategories() async {
-    final response = await get('${apiUrl}/categories');
+    final response = await get('$apiUrl/categories');
     if (response.error) return Res(null, errorMessage: response.errorMessage);
     final data = jsonMap(response.data['data']);
     if (data['categories'] is! List) {
@@ -293,11 +313,13 @@ class PicacgNetwork {
     int page,
     String sort,
   ) async {
-    final uri = Uri.parse('${apiUrl}/comics').replace(queryParameters: {
-      'page': page.toString(),
-      if (category.trim().isNotEmpty) 'c': category.trim(),
-      's': sort,
-    });
+    final uri = Uri.parse('$apiUrl/comics').replace(
+      queryParameters: {
+        'page': page.toString(),
+        if (category.trim().isNotEmpty) 'c': category.trim(),
+        's': sort,
+      },
+    );
     final response = await get(uri.toString());
     if (response.error) return Res(null, errorMessage: response.errorMessage);
     final comicsData = jsonMap(jsonMap(response.data['data'])['comics']);
@@ -313,7 +335,8 @@ class PicacgNetwork {
       comics.add(comic);
     }
     final rawPageCount = jsonInt(
-      comicsData['pages'] ?? comicsData['page_count'] ??
+      comicsData['pages'] ??
+          comicsData['page_count'] ??
           comicsData['total_page'],
     );
     final rawTotal = jsonInt(comicsData['total']);
@@ -335,9 +358,11 @@ class PicacgNetwork {
   /// 高级搜索。[passed] subData 承载 maxPage。
   /// [sort] 排序，'ua'（默认）/'aa'/'dd'。
   Future<Res<List<ComicItemBrief>>> search(
-      String keyword, String sort, int page) async {
-    final response =
-        await post('${apiUrl}/comics/advanced-search?page=$page', {
+    String keyword,
+    String sort,
+    int page,
+  ) async {
+    final response = await post('$apiUrl/comics/advanced-search?page=$page', {
       'keyword': keyword,
       'sort': sort,
     });
@@ -358,7 +383,7 @@ class PicacgNetwork {
 
   /// 漫画详情：合并详情 + 章节 + 推荐。
   Future<Res<ComicItem>> getComicInfo(String id) async {
-    final response = await get('${apiUrl}/comics/$id');
+    final response = await get('$apiUrl/comics/$id');
     if (response.error) return Res(null, errorMessage: response.errorMessage);
     final epsRes = await getEps(id);
     if (epsRes.error) return Res(null, errorMessage: epsRes.errorMessage);
@@ -368,27 +393,34 @@ class PicacgNetwork {
       return const Res(null, errorMessage: '漫画详情解析失败');
     }
     final creator = jsonMap(comic['_creator']);
-    return Res(ComicItem(
-      id: jsonString(comic['_id'], fallback: id),
-      title: jsonString(comic['title'], fallback: 'Unknown'),
-      author: jsonString(creator['name'] ?? comic['author'], fallback: 'Unknown'),
-      description: jsonString(comic['description']),
-      thumbUrl: _mediaUrl(comic['thumb']),
-      chineseTeam: jsonString(comic['chineseTeam']),
-      categories: jsonStringList(comic['categories']),
-      tags: jsonStringList(comic['tags']),
-      likes: jsonInt(comic['likesCount'] ?? comic['totalLikes'] ?? comic['likes']),
-      comments: jsonInt(
-        comic['commentsCount'] ?? comic['totalComments'] ?? comic['comments'],
+    return Res(
+      ComicItem(
+        id: jsonString(comic['_id'], fallback: id),
+        title: jsonString(comic['title'], fallback: 'Unknown'),
+        author: jsonString(
+          creator['name'] ?? comic['author'],
+          fallback: 'Unknown',
+        ),
+        description: jsonString(comic['description']),
+        thumbUrl: _mediaUrl(comic['thumb']),
+        chineseTeam: jsonString(comic['chineseTeam']),
+        categories: jsonStringList(comic['categories']),
+        tags: jsonStringList(comic['tags']),
+        likes: jsonInt(
+          comic['likesCount'] ?? comic['totalLikes'] ?? comic['likes'],
+        ),
+        comments: jsonInt(
+          comic['commentsCount'] ?? comic['totalComments'] ?? comic['comments'],
+        ),
+        isLiked: jsonBool(comic['isLiked']),
+        isFavourite: jsonBool(comic['isFavourite']),
+        epsCount: jsonInt(comic['epsCount']),
+        pagesCount: jsonInt(comic['pagesCount'] ?? comic['pages']),
+        time: jsonString(comic['created_at']),
+        episodes: epsRes.data,
+        recommendation: recRes.error ? <ComicItemBrief>[] : recRes.data,
       ),
-      isLiked: jsonBool(comic['isLiked']),
-      isFavourite: jsonBool(comic['isFavourite']),
-      epsCount: jsonInt(comic['epsCount']),
-      pagesCount: jsonInt(comic['pagesCount'] ?? comic['pages']),
-      time: jsonString(comic['created_at']),
-      episodes: epsRes.data,
-      recommendation: recRes.error ? <ComicItemBrief>[] : recRes.data,
-    ));
+    );
   }
 
   /// 获取章节列表。服务端序为倒序，这里按 order 升序整理返回。
@@ -398,7 +430,7 @@ class PicacgNetwork {
     try {
       while (true) {
         page++;
-        final res = await get('${apiUrl}/comics/$id/eps?page=$page');
+        final res = await get('$apiUrl/comics/$id/eps?page=$page');
         if (res.error) return Res(null, errorMessage: res.errorMessage);
         final parsed = parsePicacgEpisodePage(res.data);
         if (parsed == null) {
@@ -421,7 +453,9 @@ class PicacgNetwork {
     try {
       while (true) {
         page++;
-        final res = await get('${apiUrl}/comics/$id/order/$order/pages?page=$page');
+        final res = await get(
+          '$apiUrl/comics/$id/order/$order/pages?page=$page',
+        );
         if (res.error) return Res(null, errorMessage: res.errorMessage);
         final pages = jsonMap(jsonMap(res.data['data'])['pages']);
         if (pages.isEmpty) {
@@ -444,7 +478,7 @@ class PicacgNetwork {
 
   /// 推荐漫画（详情页底部相关推荐）。
   Future<Res<List<ComicItemBrief>>> getRecommendation(String id) async {
-    final res = await get('${apiUrl}/comics/$id/recommendation');
+    final res = await get('$apiUrl/comics/$id/recommendation');
     if (res.error) return Res(null, errorMessage: res.errorMessage);
     final data = jsonMap(res.data['data']);
     final comics = <ComicItemBrief>[];
@@ -462,7 +496,7 @@ class PicacgNetwork {
   /// [newToOld] = true 时按最新排序，false 按最早。
   Future<Res<List<BaseComic>>> getFavorites(int page, bool newToOld) async {
     final sort = newToOld ? 'dd' : 'da';
-    final res = await get('${apiUrl}/users/favourite?s=$sort&page=$page');
+    final res = await get('$apiUrl/users/favourite?s=$sort&page=$page');
     if (res.error) return Res(null, errorMessage: res.errorMessage);
     final comicsData = jsonMap(jsonMap(res.dataOrNull?['data'])['comics']);
     final comics = <BaseComic>[];
@@ -480,18 +514,20 @@ class PicacgNetwork {
 
   /// 收藏 / 取消收藏。
   Future<Res<bool>> favouriteOrUnfavourite(String id) async {
-    final res = await post('${apiUrl}/comics/$id/favourite', {});
+    final res = await post('$apiUrl/comics/$id/favourite', {});
     if (res.error) return Res(null, errorMessage: res.errorMessage);
     return const Res(true);
   }
 
   /// 获取评论列表。
-  Future<Res<List<Map<String, dynamic>>>> getComments(String id,
-      {int page = 1, String type = 'comics'}) async {
-    final res = await get('${apiUrl}/$type/$id/comments?page=$page');
+  Future<Res<List<Map<String, dynamic>>>> getComments(
+    String id, {
+    int page = 1,
+    String type = 'comics',
+  }) async {
+    final res = await get('$apiUrl/$type/$id/comments?page=$page');
     if (res.error) return Res(null, errorMessage: res.errorMessage);
-    final commentsData =
-        jsonMap(jsonMap(res.dataOrNull?['data'])['comments']);
+    final commentsData = jsonMap(jsonMap(res.dataOrNull?['data'])['comments']);
     final list = <Map<String, dynamic>>[];
     for (final rawComment in jsonList(commentsData['docs'])) {
       if (rawComment is! Map) continue;
@@ -514,9 +550,6 @@ class PicacgNetwork {
         ),
       });
     }
-    return Res(
-      list,
-      subData: jsonInt(commentsData['pages'], fallback: 1),
-    );
+    return Res(list, subData: jsonInt(commentsData['pages'], fallback: 1));
   }
 }

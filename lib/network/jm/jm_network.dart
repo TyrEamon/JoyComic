@@ -4,11 +4,10 @@
 /// 章节内文图（图片经分段重组还原）、收藏切换等。响应体中的 `data` 字段为
 /// base64 编码的 AES-ECB 密文，由 [convertData] 用 `md5(时间戳+数据盐)`
 /// 作密钥解密后得到 JSON。
-library jm_network;
+library;
 
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
@@ -213,7 +212,7 @@ class JmNetwork {
           final ok = await state!.reLogin();
           if (ok) return get(url, isRetry: true);
         }
-        return Res(null, errorMessage: '$msg');
+        return Res(null, errorMessage: msg);
       }
       final json = const JsonDecoder().convert(body);
       final data = json is Map ? json['data'] : null;
@@ -735,7 +734,7 @@ class JmNetwork {
     );
     if (res.error) return Res(null, errorMessage: res.errorMessage);
     final rawData = res.data;
-    if (rawData is! Map) return Res(<JmComicBrief>[]);
+    if (rawData is! Map) return const Res(<JmComicBrief>[]);
     final comics = <JmComicBrief>[];
     for (final rawComic in jsonList(jsonMap(rawData)['list'])) {
       if (rawComic is! Map) continue;

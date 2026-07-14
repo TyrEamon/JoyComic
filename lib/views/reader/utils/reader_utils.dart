@@ -2,7 +2,7 @@
 ///
 /// 收纳阅读器使用的页码换算、屏高、图片解码宽度、列表分割、平台判定与
 /// BuildContext 便捷访问。按需引入，不含下载/归档等非阅读器件。
-library reader_utils;
+library;
 
 import 'dart:io' show Platform;
 import 'dart:ui' as ui show PlatformDispatcher;

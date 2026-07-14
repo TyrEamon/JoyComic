@@ -11,7 +11,7 @@
 ///               ├── 图片项 × pageCount
 ///               └── "本章完" 占位项
 /// ```
-library vertical_list;
+library;
 
 import 'package:flutter/material.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
@@ -22,7 +22,6 @@ import '../../providers/list_state_provider.dart';
 import '../../utils/image_preload_controller.dart';
 import '../../utils/reader_utils.dart';
 import '../reader_image.dart';
-import '../retry_for_image.dart';
 import 'gesture.dart';
 import 'page_index.dart';
 
@@ -51,9 +50,7 @@ class _VerticalListState extends State<VerticalList> {
     _initPreloadController();
 
     // 监听位置变化→更新页码+预加载锚点。
-    itemPositionsListener.itemPositions.addListener(
-      _onItemPositionsChanged,
-    );
+    itemPositionsListener.itemPositions.addListener(_onItemPositionsChanged);
   }
 
   void _initPreloadController() {
@@ -69,9 +66,7 @@ class _VerticalListState extends State<VerticalList> {
 
   @override
   void dispose() {
-    itemPositionsListener.itemPositions.removeListener(
-      _onItemPositionsChanged,
-    );
+    itemPositionsListener.itemPositions.removeListener(_onItemPositionsChanged);
     _preloadController?.dispose();
     super.dispose();
   }

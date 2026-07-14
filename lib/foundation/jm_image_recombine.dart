@@ -5,7 +5,7 @@
 ///
 /// 本模块负责：根据章节 epsId 推算条带数量 → 解码图片 → 按逆序重组条带 →
 /// 重新编码为 JPEG。整个计算放在独立 Isolate 中执行，避免阻塞 UI。
-library jm_image_recombine;
+library;
 
 import 'dart:async';
 import 'dart:convert';
@@ -52,8 +52,12 @@ int getSegmentationNum(String epsId, String scrambleId, String pictureName) {
 ///
 /// 流程：解码原图 → 按高度均分为 num 个条带（末条带吸收余数）→
 /// 在新画布上以条带**逆序**重新拼接 → 编码 JPEG。
-Uint8List segmentPicture(Uint8List imgData, String epsId, String scrambleId,
-    String bookId) {
+Uint8List segmentPicture(
+  Uint8List imgData,
+  String epsId,
+  String scrambleId,
+  String bookId,
+) {
   final num = getSegmentationNum(epsId, scrambleId, bookId);
 
   if (num <= 1) {
@@ -65,7 +69,8 @@ Uint8List segmentPicture(Uint8List imgData, String epsId, String scrambleId,
     srcImg = image.decodeImage(imgData)!;
   } catch (e) {
     throw Exception(
-        "Failed to decode image: Data length is ${imgData.length} bytes");
+      "Failed to decode image: Data length is ${imgData.length} bytes",
+    );
   }
 
   final blockSize = srcImg.height ~/ num;
@@ -84,8 +89,12 @@ Uint8List segmentPicture(Uint8List imgData, String epsId, String scrambleId,
   for (var i = blocks.length - 1; i >= 0; i--) {
     final block = blocks[i];
     final currBlockHeight = block['end']! - block['start']!;
-    final srcRange =
-        srcImg.getRange(0, block['start']!, srcImg.width, currBlockHeight);
+    final srcRange = srcImg.getRange(
+      0,
+      block['start']!,
+      srcImg.width,
+      currBlockHeight,
+    );
     final dstRange = dstImg.getRange(0, y, srcImg.width, currBlockHeight);
     while (srcRange.moveNext() && dstRange.moveNext()) {
       dstRange.current.r = srcRange.current.r;
@@ -109,9 +118,14 @@ class _RecombinationTask {
   final String? savePath;
   final Completer<Uint8List>? completer;
 
-  _RecombinationTask(this.imgData, this.epsId, this.scrambleId, this.bookId,
-      this.completer,
-      [this.savePath]);
+  _RecombinationTask(
+    this.imgData,
+    this.epsId,
+    this.scrambleId,
+    this.bookId,
+    this.completer, [
+    this.savePath,
+  ]);
 
   _RecombinationTask detachCompleter() =>
       _RecombinationTask(imgData, epsId, scrambleId, bookId, null, savePath);
@@ -138,7 +152,13 @@ class JmRecombine {
   }) async {
     final completer = Completer<Uint8List>();
     final task = _RecombinationTask(
-        imgData, epsId, scrambleId, bookId, completer, savePath);
+      imgData,
+      epsId,
+      scrambleId,
+      bookId,
+      completer,
+      savePath,
+    );
     _tasks.add(task);
     if (_isolate == null && _receivePort == null) {
       _receivePort = ReceivePort();
@@ -157,8 +177,12 @@ class JmRecombine {
 
   static Future<void> _start() async {
     _errorPort = ReceivePort();
-    _isolate = await Isolate.spawn(_run, _receivePort!.sendPort,
-        onError: _errorPort!.sendPort, debugName: 'JmRecombine');
+    _isolate = await Isolate.spawn(
+      _run,
+      _receivePort!.sendPort,
+      onError: _errorPort!.sendPort,
+      debugName: 'JmRecombine',
+    );
     _listen();
   }
 
@@ -206,8 +230,12 @@ class JmRecombine {
     receivePort.listen((message) async {
       if (message is _RecombinationTask) {
         try {
-          final bytes =
-              segmentPicture(message.imgData, message.epsId, message.scrambleId, message.bookId);
+          final bytes = segmentPicture(
+            message.imgData,
+            message.epsId,
+            message.scrambleId,
+            message.bookId,
+          );
           port.send(bytes);
         } catch (e) {
           port.send(Exception(e.toString()));
@@ -226,6 +254,11 @@ Future<Uint8List> recombineJmImage(
   String bookId, {
   String? savePath,
 }) {
-  return JmRecombine.recombine(imgData, epsId, scrambleId, bookId,
-      savePath: savePath);
+  return JmRecombine.recombine(
+    imgData,
+    epsId,
+    scrambleId,
+    bookId,
+    savePath: savePath,
+  );
 }

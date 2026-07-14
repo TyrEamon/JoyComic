@@ -5,7 +5,7 @@
 ///   - 双击放大 / 双击恢复（[Matrix4Tween] 动画）
 ///   - 区域点击翻页（上 1/3→上一页、中 1/3→工具栏、下 1/3→下一页）
 ///   - 菜单锁定状态下的半屏翻页（锁定后上/下半屏分别翻上/下页）
-library gesture;
+library;
 
 import 'package:flutter/material.dart';
 import 'package:vector_math/vector_math_64.dart';
@@ -79,15 +79,17 @@ class _GestureWrapperState extends State<GestureWrapper>
   late Animation<Matrix4> _animation;
 
   void _handleDoubleTap() {
-    final currentScale =
-        _transformationController.value.getMaxScaleOnAxis();
+    final currentScale = _transformationController.value.getMaxScaleOnAxis();
 
     if (currentScale > 1.05) {
       // 已放大 → 恢复原始尺寸
-      _animation = Matrix4Tween(
-        begin: _transformationController.value,
-        end: Matrix4.identity(),
-      ).animate(CurveTween(curve: Curves.easeOut).animate(_animationController));
+      _animation =
+          Matrix4Tween(
+            begin: _transformationController.value,
+            end: Matrix4.identity(),
+          ).animate(
+            CurveTween(curve: Curves.easeOut).animate(_animationController),
+          );
     } else {
       // 以双击点为中心放大 3×
       final endMatrix = Matrix4.identity()
@@ -99,10 +101,13 @@ class _GestureWrapperState extends State<GestureWrapper>
           ),
         )
         ..scaleByVector3(Vector3(3.0, 3.0, 1.0));
-      _animation = Matrix4Tween(
-        begin: _transformationController.value,
-        end: endMatrix,
-      ).animate(CurveTween(curve: Curves.easeOut).animate(_animationController));
+      _animation =
+          Matrix4Tween(
+            begin: _transformationController.value,
+            end: endMatrix,
+          ).animate(
+            CurveTween(curve: Curves.easeOut).animate(_animationController),
+          );
     }
     _animationController.forward(from: 0);
   }
@@ -161,12 +166,13 @@ class _GestureWrapperState extends State<GestureWrapper>
   @override
   void initState() {
     super.initState();
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 200),
-    )..addListener(() {
-        _transformationController.value = _animation.value;
-      });
+    _animationController =
+        AnimationController(
+          vsync: this,
+          duration: const Duration(milliseconds: 200),
+        )..addListener(() {
+          _transformationController.value = _animation.value;
+        });
   }
 
   @override
@@ -191,9 +197,7 @@ class _GestureWrapperState extends State<GestureWrapper>
       onPointerCancel: (event) => _handlePointerChange(event, false),
       child: GestureDetector(
         onTap: () {
-          context.stateReader.lockMenu
-              ? _handleLockTap()
-              : _handleTap();
+          context.stateReader.lockMenu ? _handleLockTap() : _handleTap();
         },
         onTapDown: (details) => _tapDownDetails = details,
         onDoubleTapDown: _handleDoubleTapDown,

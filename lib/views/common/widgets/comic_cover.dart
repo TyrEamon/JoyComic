@@ -3,7 +3,7 @@
 /// 统一封装封面加载的占位/错误/微阴影/细边框/圆角，详情页前景封面与
 /// 列表卡片共用。网络图走 [cached_network_image_ce]（项目已锁 4.9.0），
 /// 本地路径走 [FileImage]。来源判定同阅读器：靠 url scheme。
-library comic_cover;
+library;
 
 import 'dart:io';
 
@@ -91,7 +91,7 @@ class ComicCover extends StatelessWidget {
       width: double.infinity,
       height: double.infinity,
       placeholder: (_, __) => _Skeleton(height: height),
-      errorWidget: (_, __, ___) => _Fallback(height),
+      errorBuilder: (_, __, ___) => _Fallback(height),
     );
   }
 }

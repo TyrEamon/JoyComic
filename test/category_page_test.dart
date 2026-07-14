@@ -88,7 +88,7 @@ void main() {
         loadSourceCategories: () async {
           loads++;
           if (loads == 1) {
-            return Res<List<SourceCategory>>(null, errorMessage: '网络错误');
+            return const Res<List<SourceCategory>>(null, errorMessage: '网络错误');
           }
           return Res([SourceCategory(key: 'ok', title: '重试成功')]);
         },
@@ -113,7 +113,7 @@ void main() {
         key: 'jm',
         name: '禁漫',
         filePath: 'test',
-        loadSourceCategories: () async => Res(<SourceCategory>[]),
+        loadSourceCategories: () async => const Res(<SourceCategory>[]),
       ),
     );
 

@@ -25,10 +25,9 @@ import 'picacg_models.dart';
     final order = jsonInt(episode['order'], fallback: -1);
     if (order <= 0) continue;
     final title = jsonString(episode['title']);
-    episodes.add(PicacgEpisode(
-      title: title.isEmpty ? '第$order' : title,
-      order: order,
-    ));
+    episodes.add(
+      PicacgEpisode(title: title.isEmpty ? '第$order' : title, order: order),
+    );
   }
   return (episodes: episodes, pages: pages);
 }

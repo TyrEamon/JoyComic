@@ -2,7 +2,7 @@
 ///
 /// 与禁漫 API 响应对齐：单曲列表项、单曲详情（含剧集/分章映射）、分类等。
 /// 列表项 [JmComicBrief] 与详情 [JmComicInfo] 均实现 [BaseComic]。
-library jm_models;
+library;
 
 import '../base_comic.dart';
 import '../json_value.dart';
@@ -92,8 +92,8 @@ class JmChapter {
 
 /// 禁漫单曲详情。
 class JmComicInfo extends BaseComic {
-  @override
   final String name;
+  @override
   final String id;
   final List<String> author;
   final String _description;
@@ -176,7 +176,7 @@ class JmCategory {
   final String slug;
   final List<JmSubCategory> subCategories;
 
-  JmCategory(this.name, this.slug, this.subCategories);
+  const JmCategory(this.name, this.slug, this.subCategories);
   // slug 为空表示服务端未提供可路由标识，由源适配层丢弃整组分类。
 }
 

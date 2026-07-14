@@ -1,5 +1,5 @@
 /// About and project information page.
-library about_page;
+library;
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -15,18 +15,16 @@ class AboutPage extends StatelessWidget {
 
   final Future<bool> Function(Uri) launchUrl;
 
-  static Future<bool> _launchExternal(Uri uri) => launcher.launchUrl(
-        uri,
-        mode: launcher.LaunchMode.externalApplication,
-      );
+  static Future<bool> _launchExternal(Uri uri) =>
+      launcher.launchUrl(uri, mode: launcher.LaunchMode.externalApplication);
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final bodyStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
-          color: scheme.onSurfaceVariant,
-          height: 1.6,
-        );
+      color: scheme.onSurfaceVariant,
+      height: 1.6,
+    );
 
     return Scaffold(
       appBar: AppBar(title: const Text('关于 JoyComic')),
@@ -45,22 +43,25 @@ class AboutPage extends StatelessWidget {
                       colors: [Color(0xFFFF7BA9), Color(0xFFB967FF)],
                     ),
                   ),
-                  child: const Icon(Icons.menu_book_rounded,
-                      size: 42, color: Colors.white),
+                  child: const Icon(
+                    Icons.menu_book_rounded,
+                    size: 42,
+                    color: Colors.white,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 Text(
                   joyComicAppName,
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 6),
                 Text(
                   '版本 $joyComicVersion ($joyComicBuildNumber)',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                      ),
+                    color: scheme.onSurfaceVariant,
+                  ),
                 ),
               ],
             ),
@@ -96,8 +97,7 @@ class AboutPage extends StatelessWidget {
                   onTap: () => showLicensePage(
                     context: context,
                     applicationName: joyComicAppName,
-                    applicationVersion:
-                        '$joyComicVersion+$joyComicBuildNumber',
+                    applicationVersion: '$joyComicVersion+$joyComicBuildNumber',
                   ),
                 ),
                 const Divider(height: 1),
@@ -115,9 +115,9 @@ class AboutPage extends StatelessWidget {
           Center(
             child: Text(
               'JoyComic · 仅供学习与个人使用',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
             ),
           ),
         ],
@@ -144,9 +144,9 @@ class _SectionCard extends StatelessWidget {
             Text(
               title,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: scheme.primary,
-                    fontWeight: FontWeight.w700,
-                  ),
+                color: scheme.primary,
+                fontWeight: FontWeight.w700,
+              ),
             ),
             const SizedBox(height: 8),
             child,

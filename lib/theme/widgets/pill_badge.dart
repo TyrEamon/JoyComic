@@ -4,7 +4,7 @@
 /// - 真胶囊圆角（半径=高度/2）
 /// - 半透明渐变底 + 微光晕阴影，营造发光感
 /// - 可选前缀图标点（小圆点）
-library pill_badge;
+library;
 
 import 'package:flutter/material.dart';
 
@@ -46,7 +46,8 @@ class PillBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final text = Text(
       label,
-      style: style ??
+      style:
+          style ??
           const TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w700,
@@ -79,7 +80,11 @@ class PillBadge extends StatelessWidget {
           color: backgroundColor ?? const Color(0x33FFFFFF),
           borderRadius: AppRadius.pill(padding.vertical + 14),
           border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
-          boxShadow: glow ? AppShadows.pillGlow(gradient?.colors.first ?? AppColors.brandPink) : null,
+          boxShadow: glow
+              ? AppShadows.pillGlow(
+                  gradient?.colors.first ?? AppColors.brandPink,
+                )
+              : null,
         ),
         child: content,
       ),
@@ -99,7 +104,9 @@ class _Dot extends StatelessWidget {
       decoration: BoxDecoration(
         color: color,
         shape: BoxShape.circle,
-        boxShadow: [BoxShadow(color: color.withValues(alpha: 0.6), blurRadius: 4)],
+        boxShadow: [
+          BoxShadow(color: color.withValues(alpha: 0.6), blurRadius: 4),
+        ],
       ),
     );
   }

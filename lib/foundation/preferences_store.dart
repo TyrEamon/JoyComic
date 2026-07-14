@@ -1,5 +1,5 @@
 /// Minimal preference access used by settings persistence.
-library preferences_store;
+library;
 
 import 'package:shared_preferences/shared_preferences.dart';
 

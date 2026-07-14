@@ -10,7 +10,7 @@
 /// 4. 信息叠加层 [InfoOverlay]：围绕前景封面展开。
 ///
 /// [palette] 注入封面取色，用于顶部暗化蒙版的品牌色微染（取色失败即品牌色）。
-library hero_header;
+library;
 
 import 'package:cached_network_image_ce/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -65,18 +65,19 @@ class HeroHeader extends StatelessWidget {
                 imageUrl: backgroundCover ?? frontCover ?? '',
                 httpHeaders: coverHeaders?.cast<String, String>(),
                 fit: BoxFit.cover,
-                placeholder: (_, __) => _SolidBG(color: AppColors.heroBase),
-                errorWidget: (_, __, ___) =>
-                    _SolidBG(color: AppColors.heroBase),
+                placeholder: (_, __) =>
+                    const _SolidBG(color: AppColors.heroBase),
+                errorBuilder: (_, __, ___) =>
+                    const _SolidBG(color: AppColors.heroBase),
               ),
             ),
             // 2a. 顶部暗化蒙版（导航可读性）。
-            Positioned(
+            const Positioned(
               top: 0,
               left: 0,
               right: 0,
               height: 120,
-              child: const IgnorePointer(
+              child: IgnorePointer(
                 child: DecoratedBox(
                   decoration: BoxDecoration(gradient: AppColors.heroTopMask),
                 ),
@@ -104,12 +105,12 @@ class HeroHeader extends StatelessWidget {
               ),
             ),
             // 2c. 底部大面积渐变深色蒙版（融入页面主体）。
-            Positioned(
+            const Positioned(
               left: 0,
               right: 0,
               bottom: 0,
               height: _height * 0.72,
-              child: const IgnorePointer(
+              child: IgnorePointer(
                 child: DecoratedBox(
                   decoration: BoxDecoration(gradient: AppColors.heroBottomMask),
                 ),

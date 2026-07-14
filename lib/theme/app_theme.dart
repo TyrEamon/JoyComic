@@ -2,7 +2,7 @@
 ///
 /// 提供深色与亮色双主题。切换由 `AppData.enableDarkMode` 控制，
 /// 亮色模式使用 [AppColors.lightScheme] 及配套亮色 token。
-library app_theme;
+library;
 
 import 'package:flutter/material.dart';
 
@@ -39,11 +39,10 @@ class AppTheme {
     final isDark = brightness == Brightness.dark;
     final bg = isDark ? AppColors.background : AppColors.lightBackground;
     final surface = isDark ? AppColors.surface : AppColors.lightSurface;
-    final surfaceElevated = isDark ? AppColors.surfaceElevated : AppColors.lightSurfaceElevated;
+    final surfaceElevated = isDark
+        ? AppColors.surfaceElevated
+        : AppColors.lightSurfaceElevated;
     final textHigh = isDark ? AppColors.textHigh : AppColors.lightTextHigh;
-    final textMedium = isDark ? AppColors.textMedium : AppColors.lightTextMedium;
-    final textLow = isDark ? AppColors.textLow : AppColors.lightTextLow;
-    final border = isDark ? AppColors.border : AppColors.lightBorder;
     final divider = isDark ? AppColors.divider : AppColors.lightDivider;
 
     return ThemeData(
@@ -73,16 +72,19 @@ class AppTheme {
         color: surface,
         elevation: 0,
         margin: EdgeInsets.zero,
-        shape: RoundedRectangleBorder(borderRadius: AppRadius.brMd),
+        shape: const RoundedRectangleBorder(borderRadius: AppRadius.brMd),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: surfaceElevated,
-        border: OutlineInputBorder(
+        border: const OutlineInputBorder(
           borderRadius: AppRadius.brMd,
           borderSide: BorderSide.none,
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 12,
+        ),
       ),
       progressIndicatorTheme: ProgressIndicatorThemeData(
         color: AppColors.brandPink,
@@ -92,11 +94,11 @@ class AppTheme {
         backgroundColor: surfaceElevated,
         contentTextStyle: TextStyle(color: textHigh),
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: AppRadius.brMd),
+        shape: const RoundedRectangleBorder(borderRadius: AppRadius.brMd),
       ),
-      textSelectionTheme: TextSelectionThemeData(
+      textSelectionTheme: const TextSelectionThemeData(
         cursorColor: AppColors.brandPink,
-        selectionColor: const Color(0x66FF7BA9),
+        selectionColor: Color(0x66FF7BA9),
         selectionHandleColor: AppColors.brandPink,
       ),
     );

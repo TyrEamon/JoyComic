@@ -1,5 +1,5 @@
 /// WebDAV synchronization configuration and actions.
-library webdav_settings_page;
+library;
 
 import 'package:flutter/material.dart';
 import 'package:joycomic/theme/app_theme_context.dart';
@@ -198,7 +198,7 @@ class _WebDavSettingsPageState extends State<WebDavSettingsPage> {
           : ListView(
               padding: const EdgeInsets.all(AppSpacing.md),
               children: [
-                _FieldLabel('服务器地址'),
+                const _FieldLabel('服务器地址'),
                 TextField(
                   key: const Key('webdav-url'),
                   controller: _urlCtrl,
@@ -208,14 +208,14 @@ class _WebDavSettingsPageState extends State<WebDavSettingsPage> {
                   ),
                 ),
                 const SizedBox(height: AppSpacing.md),
-                _FieldLabel('用户名'),
+                const _FieldLabel('用户名'),
                 TextField(
                   key: const Key('webdav-user'),
                   controller: _userCtrl,
                   decoration: _input('用户名'),
                 ),
                 const SizedBox(height: AppSpacing.md),
-                _FieldLabel('密码'),
+                const _FieldLabel('密码'),
                 TextField(
                   key: const Key('webdav-password'),
                   controller: _passCtrl,

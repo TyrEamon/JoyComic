@@ -3,7 +3,7 @@
 /// 与哔咔 API 响应对齐：用户档案、漫画列表项、漫画详情、评论等。
 /// 列表项 [ComicItemBrief] 与详情 [ComicItem] 均实现 [BaseComic]，
 /// 使 UI 与历史/收藏系统能以统一方式访问其标题、封面、作者等。
-library picacg_models;
+library;
 
 import '../base_comic.dart';
 import '../json_value.dart';
@@ -37,21 +37,17 @@ class Profile {
   });
 
   factory Profile.fromJson(Map<String, dynamic> json) => Profile(
-        id: jsonString(json['id'] ?? json['_id']),
-        title: jsonString(json['title']),
-        email: jsonString(json['email']),
-        name: jsonString(json['name']),
-        level: jsonInt(json['level']),
-        exp: jsonInt(json['exp']),
-        avatarUrl: jsonString(json['avatarUrl']),
-        frameUrl: json['frameUrl'] == null
-            ? null
-            : jsonString(json['frameUrl']),
-        isPunched: json['isPunched'] == null
-            ? null
-            : jsonBool(json['isPunched']),
-        slogan: json['slogan'] == null ? null : jsonString(json['slogan']),
-      );
+    id: jsonString(json['id'] ?? json['_id']),
+    title: jsonString(json['title']),
+    email: jsonString(json['email']),
+    name: jsonString(json['name']),
+    level: jsonInt(json['level']),
+    exp: jsonInt(json['exp']),
+    avatarUrl: jsonString(json['avatarUrl']),
+    frameUrl: json['frameUrl'] == null ? null : jsonString(json['frameUrl']),
+    isPunched: json['isPunched'] == null ? null : jsonBool(json['isPunched']),
+    slogan: json['slogan'] == null ? null : jsonString(json['slogan']),
+  );
 }
 
 /// 哔咔漫画列表项（搜索/分类/收藏/排行榜共用）。
@@ -87,14 +83,12 @@ class ComicItemBrief extends BaseComic {
     return ComicItemBrief(
       title: jsonString(json['title']),
       author: jsonString(json['author']),
-      likes: jsonInt(
-        json['totalLikes'] ?? json['likes'] ?? json['likesCount'],
-      ),
+      likes: jsonInt(json['totalLikes'] ?? json['likes'] ?? json['likesCount']),
       coverPath: rawThumb is String
           ? rawThumb
           : fileServer.isNotEmpty && path.isNotEmpty
-              ? '$fileServer/static/$path'
-              : jsonString(json['cover']),
+          ? '$fileServer/static/$path'
+          : jsonString(json['cover']),
       id: jsonString(json['_id'] ?? json['id']),
       tags: <String>{
         ...jsonStringList(json['tags']),
@@ -127,6 +121,7 @@ class PicacgEpisode {
 
 /// 哔咔漫画详情。
 class ComicItem extends BaseComic {
+  @override
   final String id;
   @override
   final String title;
@@ -164,16 +159,16 @@ class ComicItem extends BaseComic {
     required this.time,
     required this.episodes,
     required this.recommendation,
-  })  : _description = description,
-        tagList = tags;
+  }) : _description = description,
+       tagList = tags;
 
   ComicItemBrief toBrief() => ComicItemBrief(
-        title: title,
-        author: author,
-        likes: likes,
-        coverPath: thumbUrl,
-        id: id,
-      );
+    title: title,
+    author: author,
+    likes: likes,
+    coverPath: thumbUrl,
+    id: id,
+  );
 
   @override
   String get cover => thumbUrl;

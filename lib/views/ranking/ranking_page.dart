@@ -9,14 +9,13 @@
 /// - 哔咔：RankingData 契约提供排行端点（见 ComicSource.categoryComicsData.rankingData）。
 /// - query 参数 tab=latest|hot|rating 决定初始 Tab。
 /// - 当前：集成真实数据，禁漫用 search order，时间窗口对禁漫无效。
-library ranking_page;
+library;
 
 import 'package:flutter/material.dart';
 import 'package:joycomic/theme/app_theme_context.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../comic_source/comic_source.dart';
-import '../../foundation/log.dart';
 import '../../theme/app_spacing.dart';
 import '../common/widgets/comic_grid.dart';
 

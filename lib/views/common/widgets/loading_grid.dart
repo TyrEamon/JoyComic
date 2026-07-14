@@ -2,7 +2,7 @@
 ///
 /// 列表/首页/搜索结果等页加载时显示，呼应设计 token 的卡片质感。
 /// 与 EmptyState 一起覆盖 loading/empty/data 三态。
-library loading_grid;
+library;
 
 import 'package:flutter/material.dart';
 import 'package:joycomic/theme/app_theme_context.dart';

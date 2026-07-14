@@ -2,7 +2,7 @@
 ///
 /// 基于 Dio 实现 WebDAV 协议的基础操作：
 /// PROPFIND（列目录）、MKCOL（建文件夹）、PUT（上传）、GET（下载）、DELETE（删除）。
-library webdav_client;
+library;
 
 import 'dart:convert';
 import 'dart:io';
@@ -40,12 +40,14 @@ class WebDavClient {
   late final Dio _dio = _createDio();
 
   Dio _createDio() {
-    final dio = Dio(BaseOptions(
-      baseUrl: config.baseUrl,
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 30),
-      sendTimeout: const Duration(seconds: 60),
-    ));
+    final dio = Dio(
+      BaseOptions(
+        baseUrl: config.baseUrl,
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 30),
+        sendTimeout: const Duration(seconds: 60),
+      ),
+    );
     return dio;
   }
 
@@ -55,11 +57,13 @@ class WebDavClient {
   /// 测试连接（列出根目录）。
   Future<WebDavResult<bool>> testConnection() async {
     try {
-      final res = await _dio.request('',
-          options: Options(
-            method: 'PROPFIND',
-            headers: {'Authorization': _authHeader, 'Depth': '0'},
-          ));
+      final res = await _dio.request(
+        '',
+        options: Options(
+          method: 'PROPFIND',
+          headers: {'Authorization': _authHeader, 'Depth': '0'},
+        ),
+      );
       if (res.statusCode == 200 || res.statusCode == 207) {
         return const WebDavResult(data: true);
       }
@@ -76,13 +80,18 @@ class WebDavClient {
       var current = '';
       for (final part in parts) {
         current = '$current$part/';
-        await _dio
-            .request(current,
-                options: Options(
-                  method: 'MKCOL',
-                  headers: {'Authorization': _authHeader},
-                ))
-            .catchError((_) {});
+        try {
+          await _dio.request(
+            current,
+            options: Options(
+              method: 'MKCOL',
+              headers: {'Authorization': _authHeader},
+            ),
+          );
+        } on DioException {
+          // Existing parent directories may reject MKCOL; keep creating children.
+          continue;
+        }
       }
       return const WebDavResult(data: true);
     } on DioException catch (e) {
@@ -97,15 +106,17 @@ class WebDavClient {
     void Function(int, int)? onProgress,
   }) async {
     try {
-      await _dio.put(remotePath,
-          data: File(localPath).openRead(),
-          options: Options(
-            headers: {
-              'Authorization': _authHeader,
-              'Content-Type': 'application/octet-stream',
-            },
-          ),
-          onSendProgress: onProgress);
+      await _dio.put(
+        remotePath,
+        data: File(localPath).openRead(),
+        options: Options(
+          headers: {
+            'Authorization': _authHeader,
+            'Content-Type': 'application/octet-stream',
+          },
+        ),
+        onSendProgress: onProgress,
+      );
       return const WebDavResult(data: true);
     } on DioException catch (e) {
       return WebDavResult(error: _dioError(e));
@@ -119,9 +130,12 @@ class WebDavClient {
     void Function(int, int)? onProgress,
   }) async {
     try {
-      await _dio.download(remotePath, localPath,
-          options: Options(headers: {'Authorization': _authHeader}),
-          onReceiveProgress: onProgress);
+      await _dio.download(
+        remotePath,
+        localPath,
+        options: Options(headers: {'Authorization': _authHeader}),
+        onReceiveProgress: onProgress,
+      );
       return WebDavResult(data: File(localPath));
     } on DioException catch (e) {
       return WebDavResult(error: _dioError(e));
@@ -131,11 +145,13 @@ class WebDavClient {
   /// 列出目录内容。
   Future<WebDavResult<List<String>>> listDirectory(String path) async {
     try {
-      final res = await _dio.request(path,
-          options: Options(
-            method: 'PROPFIND',
-            headers: {'Authorization': _authHeader, 'Depth': '1'},
-          ));
+      final res = await _dio.request(
+        path,
+        options: Options(
+          method: 'PROPFIND',
+          headers: {'Authorization': _authHeader, 'Depth': '1'},
+        ),
+      );
       if (res.statusCode != 200 && res.statusCode != 207) {
         return WebDavResult(error: '状态码: ${res.statusCode}');
       }
@@ -152,9 +168,9 @@ class WebDavClient {
   }
 
   String _dioError(DioException e) => switch (e.type) {
-        DioExceptionType.connectionTimeout => '连接超时',
-        DioExceptionType.receiveTimeout => '接收超时',
-        DioExceptionType.badResponse => '服务器错误: ${e.response?.statusCode}',
-        _ => e.message ?? '未知错误',
-      };
+    DioExceptionType.connectionTimeout => '连接超时',
+    DioExceptionType.receiveTimeout => '接收超时',
+    DioExceptionType.badResponse => '服务器错误: ${e.response?.statusCode}',
+    _ => e.message ?? '未知错误',
+  };
 }

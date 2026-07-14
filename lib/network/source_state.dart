@@ -3,7 +3,7 @@
 /// 网络层需要读写源内设置（token、图床域名、图片质量等）与持久化，但不应
 /// 直接依赖全局源注册表（后者在阶段4的状态管理中才成型）。通过此接口解耦：
 /// 网络层只面向 [SourceState] 抽象，由调用方在源就绪后注入具体实现。
-library source_state;
+library;
 
 /// 哔咔源状态。
 abstract class PicacgState {

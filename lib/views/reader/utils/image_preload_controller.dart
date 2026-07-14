@@ -5,7 +5,7 @@
 ///
 /// 预加载的图片用与显示端相同的 [ResizeImage.resizeIfNeeded] + [cacheWidth] 包裹，
 /// 保证预加载缓存键与显示键一致，避免"白预加载"（预加载了解析度不同的副本）。
-library image_preload_controller;
+library;
 
 import 'dart:async';
 import 'dart:io';

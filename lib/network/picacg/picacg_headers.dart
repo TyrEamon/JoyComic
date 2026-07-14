@@ -3,7 +3,7 @@
 /// 哔咔服务端对每个请求做 HMAC-SHA256 签名校验：客户端用内置的 secret 字符串
 /// 作为 HMAC 密钥，对"路径+时间戳+nonce+方法+apiKey"（全小写）做摘要，得到
 /// 的十六进制串放入 `signature` 头。每次请求生成唯一 nonce 与当前时间戳。
-library picacg_headers;
+library;
 
 import 'dart:convert';
 

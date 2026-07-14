@@ -1,5 +1,5 @@
 /// Theme-derived semantic colors for JoyComic widgets.
-library app_theme_context;
+library;
 
 import 'package:flutter/material.dart';
 

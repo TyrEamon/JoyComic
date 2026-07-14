@@ -2,7 +2,7 @@
 ///
 /// 展示 Log 系统持久化的日志条目，按时间倒序排列。
 /// 支持：按级别筛选、单条复制、全部导出为 TXT。
-library log_viewer;
+library;
 
 import 'dart:io';
 
@@ -313,7 +313,7 @@ class _LogCard extends StatelessWidget {
               InkWell(
                 onTap: onCopy,
                 child: Padding(
-                  padding: EdgeInsets.all(4),
+                  padding: const EdgeInsets.all(4),
                   child: Icon(
                     Icons.copy_rounded,
                     size: 16,

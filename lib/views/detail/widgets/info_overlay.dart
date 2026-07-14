@@ -5,7 +5,7 @@
 /// - 主标题 + 两行副标题
 /// - 元数据组：作者名（带跳转箭头）/ tags / 热度·收藏量
 /// - 评分复合组件：大号数字 + 五星 + 评价人数
-library info_overlay;
+library;
 
 import 'package:flutter/material.dart';
 

@@ -2,7 +2,7 @@
 ///
 /// 包裹在占位容器外层，从左到右扫过一道微光，形成"加载中"的视觉暗示。
 /// 配合 [LoadingGrid] 使用，覆盖列表/首页/搜索结果/收藏等页的首屏加载。
-library shimmer;
+library;
 
 import 'package:flutter/material.dart';
 import 'package:joycomic/theme/app_theme_context.dart';

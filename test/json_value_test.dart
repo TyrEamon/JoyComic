@@ -38,7 +38,14 @@ void main() {
   group('jsonStringList', () {
     test('drops null and structured values and stringifies scalars', () {
       expect(
-        jsonStringList(['a', 2, true, null, {'nested': 'value'}, ['nested']]),
+        jsonStringList([
+          'a',
+          2,
+          true,
+          null,
+          {'nested': 'value'},
+          ['nested'],
+        ]),
         ['a', '2', 'true'],
       );
       expect(jsonStringList(null), isEmpty);
@@ -55,11 +62,7 @@ void main() {
     });
 
     test('jsonMap keeps string keys and defaults invalid values to empty', () {
-      final source = <Object?, Object?>{
-        'id': '42',
-        'count': 3,
-        7: 'ignored',
-      };
+      final source = <Object?, Object?>{'id': '42', 'count': 3, 7: 'ignored'};
       expect(jsonMap(source), {'id': '42', 'count': 3});
       expect(jsonMap(null), isEmpty);
       expect(jsonMap(['not a map']), isEmpty);

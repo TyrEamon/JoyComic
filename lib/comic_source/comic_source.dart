@@ -4,7 +4,7 @@
 /// 函数字段（typedef）描述契约，而非继承抽象类。这样：
 ///   - 每个源在自身文件里以 `ComicSource.named(...)` 声明即可注册；
 ///   - 阅读器 / 列表 / 详情页通过源 key 路由到对应实现，无需 if-else 硬编码。
-library comic_source;
+library;
 
 import 'dart:async';
 import 'dart:collection';
@@ -29,26 +29,49 @@ typedef LoginFunction = Future<Res<bool>> Function(String, String);
 typedef LoadComicFunc = Future<Res<ComicInfoData>> Function(String id);
 
 /// 加载某章节的图片地址列表（图片 key / url）。
-typedef LoadComicPagesFunc = Future<Res<List<String>>> Function(
-    String id, String? ep);
+typedef LoadComicPagesFunc =
+    Future<Res<List<String>>> Function(String id, String? ep);
 
-typedef CommentsLoader = Future<Res<List<Comment>>> Function(
-    String id, String? subId, int page, String? replyTo);
+typedef CommentsLoader =
+    Future<Res<List<Comment>>> Function(
+      String id,
+      String? subId,
+      int page,
+      String? replyTo,
+    );
 
-typedef SendCommentFunc = Future<Res<bool>> Function(
-    String id, String? subId, String content, String? replyTo);
+typedef SendCommentFunc =
+    Future<Res<bool>> Function(
+      String id,
+      String? subId,
+      String content,
+      String? replyTo,
+    );
 
 /// 单图加载配置覆写（url/method/headers 等），供自定义鉴权图片链路使用。
-typedef GetImageLoadingConfigFunc = Map<String, dynamic> Function(
-    String imageKey, String comicId, String epId)?;
-typedef GetThumbnailLoadingConfigFunc = Map<String, dynamic> Function(
-    String imageKey)?;
+typedef GetImageLoadingConfigFunc =
+    Map<String, dynamic> Function(
+      String imageKey,
+      String comicId,
+      String epId,
+    )?;
+typedef GetThumbnailLoadingConfigFunc =
+    Map<String, dynamic> Function(String imageKey)?;
 
-typedef SearchFunction = Future<Res<List<BaseComic>>> Function(
-    String keyword, int page, List<String> searchOption);
+typedef SearchFunction =
+    Future<Res<List<BaseComic>>> Function(
+      String keyword,
+      int page,
+      List<String> searchOption,
+    );
 
-typedef CategoryComicsLoader = Future<Res<List<BaseComic>>> Function(
-    String category, String? param, List<String> options, int page);
+typedef CategoryComicsLoader =
+    Future<Res<List<BaseComic>>> Function(
+      String category,
+      String? param,
+      List<String> options,
+      int page,
+    );
 
 // ============================ ComicSource ============================
 
@@ -265,10 +288,14 @@ enum ExplorePageType {
 
 class SearchPageData {
   final List<SearchOptions>? searchOptions;
-  final Widget Function(BuildContext, List<String> initialValues,
-      void Function(List<String>))? customOptionsBuilder;
+  final Widget Function(
+    BuildContext,
+    List<String> initialValues,
+    void Function(List<String>),
+  )?
+  customOptionsBuilder;
   final Widget Function(String keyword, List<String> options)?
-      overrideSearchResultBuilder;
+  overrideSearchResultBuilder;
   final SearchFunction? loadPage;
   final bool enableLanguageFilter;
   final bool enableTagsSuggestions;
@@ -326,8 +353,12 @@ class CategoryComicsOptions {
 class FavoriteData {
   final Future<Res<List<BaseComic>>> Function(int page, [String? folder]) load;
   final Future<Res<List<String>>> Function()? loadFolders;
-  final Future<Res<bool>> Function(String comicId, String folderId, bool isAdding)?
-      addOrDelFavorite;
+  final Future<Res<bool>> Function(
+    String comicId,
+    String folderId,
+    bool isAdding,
+  )?
+  addOrDelFavorite;
   final Future<Res<bool>> Function(String name)? addFolder;
   final Future<Res<bool>> Function(String id)? deleteFolder;
   final bool multiFolder;
@@ -349,15 +380,16 @@ class ComicInfoData with HistoryMixin {
   final String title;
   @override
   final String? subTitle;
-  @override
   final String cover;
+  @override
   final String? description;
   final Map<String, List<String>> tags;
 
   /// 章节映射，id -> name（无分章的漫画为 null）。
   final Map<String, String>? chapters;
   final List<String>? thumbnails;
-  final Future<Res<List<String>>> Function(String id, int page)? thumbnailLoader;
+  final Future<Res<List<String>>> Function(String id, int page)?
+  thumbnailLoader;
   final int thumbnailMaxPage;
   final List<BaseComic>? suggestions;
   final String sourceKey;
@@ -411,8 +443,14 @@ class Comment {
   final String? time;
   final int? replyCount;
   final String? id;
-  const Comment(this.userName, this.avatar, this.content, this.time,
-      this.replyCount, this.id);
+  const Comment(
+    this.userName,
+    this.avatar,
+    this.content,
+    this.time,
+    this.replyCount,
+    this.id,
+  );
 }
 
 // ============================ 分类页数据 ============================
@@ -456,8 +494,12 @@ class RandomCategoryPart extends BaseCategoryPart {
   final List<String> categories;
   final String key;
   final int randomNumber;
-  const RandomCategoryPart(this.title, this.categories, this.key,
-      {this.randomNumber = 0});
+  const RandomCategoryPart(
+    this.title,
+    this.categories,
+    this.key, {
+    this.randomNumber = 0,
+  });
 }
 
 /// 分类页上的自定义入口按钮。

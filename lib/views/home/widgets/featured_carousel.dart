@@ -1,5 +1,5 @@
 /// Featured home carousel with source-aware covers and navigation metadata.
-library featured_carousel;
+library;
 
 import 'package:flutter/material.dart';
 import 'package:joycomic/theme/app_theme_context.dart';

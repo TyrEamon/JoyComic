@@ -9,7 +9,7 @@
 /// - 下载       → /download           （已下载与队列）
 ///
 /// 每项直接注入已注册生产路由的导航动作。
-library home_tool_bar;
+library;
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';

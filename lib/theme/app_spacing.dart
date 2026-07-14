@@ -2,7 +2,7 @@
 ///
 /// 全部基于 4 的倍数，保证视觉节奏统一。命名用语义而非数值，
 /// 便于后续整体调栅格无需逐处改。
-library app_spacing;
+library;
 
 class AppSpacing {
   AppSpacing._();

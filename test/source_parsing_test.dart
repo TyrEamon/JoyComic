@@ -123,38 +123,44 @@ void main() {
       expect(info.epNames, ['第7話']);
     });
 
-    test('rejects malformed top-level structures and tolerates bad nesting', () {
-      expect(parseJmComicInfoResponse([], id: 'comic-3'), isNull);
+    test(
+      'rejects malformed top-level structures and tolerates bad nesting',
+      () {
+        expect(parseJmComicInfoResponse([], id: 'comic-3'), isNull);
 
-      final info = parseJmComicInfoResponse({
-        'name': '漫画',
-        'author': {'unexpected': true},
-        'series': 'not-a-list',
-        'related_list': {'unexpected': true},
-      }, id: 'comic-3');
+        final info = parseJmComicInfoResponse({
+          'name': '漫画',
+          'author': {'unexpected': true},
+          'series': 'not-a-list',
+          'related_list': {'unexpected': true},
+        }, id: 'comic-3');
 
-      expect(info, isNotNull);
-      expect(info!.author, ['未知']);
-      expect(info.series, isEmpty);
-      expect(info.relatedComics, isEmpty);
-    });
+        expect(info, isNotNull);
+        expect(info!.author, ['未知']);
+        expect(info.series, isEmpty);
+        expect(info.relatedComics, isEmpty);
+      },
+    );
 
-    test('skips chapters missing their required id and defaults missing fields', () {
-      final info = parseJmComicInfoResponse({
-        'series': [
-          {'sort': 1, 'name': 'missing id'},
-          {'id': null, 'sort': 2},
-        ],
-      }, id: 'comic-4');
+    test(
+      'skips chapters missing their required id and defaults missing fields',
+      () {
+        final info = parseJmComicInfoResponse({
+          'series': [
+            {'sort': 1, 'name': 'missing id'},
+            {'id': null, 'sort': 2},
+          ],
+        }, id: 'comic-4');
 
-      expect(info, isNotNull);
-      expect(info!.title, 'Unknown');
-      expect(info.author, ['未知']);
-      expect(info.likes, 0);
-      expect(info.views, 0);
-      expect(info.comments, 0);
-      expect(info.series, isEmpty);
-      expect(info.epNames, isEmpty);
-    });
+        expect(info, isNotNull);
+        expect(info!.title, 'Unknown');
+        expect(info.author, ['未知']);
+        expect(info.likes, 0);
+        expect(info.views, 0);
+        expect(info.comments, 0);
+        expect(info.series, isEmpty);
+        expect(info.epNames, isEmpty);
+      },
+    );
   });
 }

@@ -1,5 +1,5 @@
 /// Home page populated from each source's real discovery sections.
-library home_page;
+library;
 
 import 'package:flutter/material.dart';
 import 'package:joycomic/theme/app_theme_context.dart';

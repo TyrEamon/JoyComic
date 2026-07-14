@@ -1,5 +1,5 @@
 /// 下一章浮动按钮（页码接近末尾时淡入）。
-library next_chapter;
+library;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -16,9 +16,7 @@ class ReaderNextChapter extends StatelessWidget {
     final pageNo = provider.pageNo;
     final total = provider.pageCount;
 
-    return !provider.isLastChapter &&
-        images.isNotEmpty &&
-        pageNo >= total - 2;
+    return !provider.isLastChapter && images.isNotEmpty && pageNo >= total - 2;
   }
 
   @override

@@ -1,5 +1,5 @@
 /// 菜单锁定按钮（浮动锁图标）。
-library menu_lock;
+library;
 
 import 'package:flutter/material.dart';
 
@@ -38,9 +38,7 @@ class MenuLock extends StatelessWidget {
               GestureDetector(
                 onTap: () => context.stateReader.toggleLockMenu(),
                 child: Icon(
-                  context.stateReader.lockMenu
-                      ? Icons.lock
-                      : Icons.lock_open,
+                  context.stateReader.lockMenu ? Icons.lock : Icons.lock_open,
                   color: Colors.white,
                   size: 20,
                 ),

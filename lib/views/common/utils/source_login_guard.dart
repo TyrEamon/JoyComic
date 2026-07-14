@@ -1,7 +1,7 @@
 /// 源登录检测工具。
 ///
 /// 当用户操作某个源的内容（如点开哔咔漫画）但该源未登录时，弹出提示。
-library source_login_guard;
+library;
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -38,9 +38,7 @@ Future<bool> ensureSourceLoggedIn(
         ),
         FilledButton(
           onPressed: () => Navigator.pop(ctx, true),
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.brandPink,
-          ),
+          style: FilledButton.styleFrom(backgroundColor: AppColors.brandPink),
           child: const Text('去登录'),
         ),
       ],

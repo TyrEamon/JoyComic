@@ -1,5 +1,5 @@
 /// Dual-source category browser with independent source state.
-library category_page;
+library;
 
 import 'package:flutter/material.dart';
 import 'package:joycomic/theme/app_theme_context.dart';
@@ -68,7 +68,7 @@ class _CategoryPageState extends State<CategoryPage>
     if (_sources.isEmpty) {
       return Scaffold(
         backgroundColor: context.pageBackground,
-        body: SafeArea(
+        body: const SafeArea(
           child: EmptyState(
             icon: Icons.category_outlined,
             title: '暂无可用分类源',

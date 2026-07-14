@@ -31,12 +31,12 @@ class Res<T> {
   const Res(this._data, {this.errorMessage, this.subData});
 
   const Res.error(String err)
-      : _data = null,
-        subData = null,
-        errorMessage = err;
+    : _data = null,
+      subData = null,
+      errorMessage = err;
 
   /// 由另一个 [Res] 的错误构造，省去重复取错误信息。
   Res.fromErrorRes(Res another, {this.subData})
-      : _data = null,
-        errorMessage = another.errorMessageWithoutNull;
+    : _data = null,
+      errorMessage = another.errorMessageWithoutNull;
 }

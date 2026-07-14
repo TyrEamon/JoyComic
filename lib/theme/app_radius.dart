@@ -2,7 +2,7 @@
 ///
 /// 统一圆角语言，避免散落硬编码。胶囊（pill）= 高/2 动态，
 /// 其余按语义取值。
-library app_radius;
+library;
 
 import 'package:flutter/material.dart';
 

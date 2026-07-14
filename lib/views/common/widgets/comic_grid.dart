@@ -1,5 +1,5 @@
 /// Reusable comic grid with refresh and guarded load-more hooks.
-library comic_grid;
+library;
 
 import 'package:flutter/material.dart';
 

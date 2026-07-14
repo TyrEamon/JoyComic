@@ -3,7 +3,7 @@
 /// - 顶部栏："评论（总数）" + 右"更多评论 >"入口
 /// - 评论卡片：头像 / 昵称 / 等级勋章 / 星级评分 / 多行评论文本 /
 ///   底部发表时间 + 带数字点赞 Icon
-library comment_section;
+library;
 
 import 'package:cached_network_image_ce/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -97,7 +97,7 @@ class CommentSection extends StatelessWidget {
           const SizedBox(height: AppSpacing.sm),
           if (comments.isEmpty)
             Padding(
-              padding: EdgeInsets.symmetric(vertical: AppSpacing.lg),
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
               child: Center(
                 child: Text(
                   '还没有评论',
@@ -220,9 +220,9 @@ class _Avatar extends StatelessWidget {
               fit: BoxFit.cover,
               placeholder: (_, __) => ColoredBox(
                 color: context.elevatedSurfaceColor,
-                child: SizedBox.expand(),
+                child: const SizedBox.expand(),
               ),
-              errorWidget: (_, __, ___) => Icon(
+              errorBuilder: (_, __, ___) => Icon(
                 Icons.person,
                 size: 18,
                 color: context.disabledTextColor,

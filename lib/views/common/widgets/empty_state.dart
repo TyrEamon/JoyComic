@@ -2,7 +2,7 @@
 ///
 /// 统一空态/错误态的视觉：图标 + 标题 + 可选副文本 + 可选动作按钮。
 /// 详情/列表/收藏/下载等页的"无数据""无网络"场景复用。
-library empty_state;
+library;
 
 import 'package:flutter/material.dart';
 import 'package:joycomic/theme/app_theme_context.dart';

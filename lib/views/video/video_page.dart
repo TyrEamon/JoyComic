@@ -10,14 +10,13 @@
 ///   并行搜索合并结果。
 /// - 若禁漫 videos 端点未来实现（JmNetwork.fetchMovies），可切换为专用端点。
 /// - 当前已集成真实搜索。
-library video_page;
+library;
 
 import 'package:flutter/material.dart';
 import 'package:joycomic/theme/app_theme_context.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../comic_source/comic_source.dart';
-import '../../theme/app_spacing.dart';
 import '../common/widgets/comic_grid.dart';
 import '../common/widgets/loading_grid.dart';
 

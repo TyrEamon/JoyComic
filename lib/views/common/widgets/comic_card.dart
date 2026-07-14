@@ -4,7 +4,7 @@
 ///
 /// 文字统一用 [AppTypography]，卡片用 [context.surfaceColor] 暖紫黑面 +
 /// [AppShadows.card] 下沉暗影，整体深色基调一致。
-library comic_card;
+library;
 
 import 'package:flutter/material.dart';
 import 'package:joycomic/theme/app_theme_context.dart';
@@ -182,7 +182,7 @@ class _Poster extends StatelessWidget {
               const SizedBox(height: 2),
               Row(
                 children: [
-                  Icon(
+                  const Icon(
                     Icons.star_rounded,
                     size: 13,
                     color: AppColors.ratingStar,

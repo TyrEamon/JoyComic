@@ -1,5 +1,5 @@
 /// 应用全局设置与数据目录管理。
-library app_data;
+library;
 
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';

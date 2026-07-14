@@ -1,5 +1,5 @@
 /// Real source endpoint and image-host selection.
-library source_settings_page;
+library;
 
 import 'package:flutter/material.dart';
 import 'package:joycomic/theme/app_theme_context.dart';

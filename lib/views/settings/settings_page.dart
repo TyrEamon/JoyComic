@@ -11,7 +11,7 @@
 /// - 源管理数据来自 `ComicSource.sources` + `AppData.enabledSources`。
 /// - WebDAV、缓存与诊断入口均连接到真实页面或操作。
 /// - 主题模式由 AppData 持久化并即时通知应用。
-library settings_page;
+library;
 
 import 'package:flutter/material.dart';
 import 'package:joycomic/theme/app_theme_context.dart';
@@ -238,7 +238,7 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ],
           ),
-          _SettingsGroup(title: '外观', items: const [_ThemeModeItem()]),
+          const _SettingsGroup(title: '外观', items: [_ThemeModeItem()]),
           _SettingsGroup(
             title: '数据与存储',
             items: [
@@ -268,7 +268,7 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ],
           ),
-          _SettingsGroup(
+          const _SettingsGroup(
             title: '关于',
             items: [
               _SettingsItem(

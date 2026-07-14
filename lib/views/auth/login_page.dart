@@ -14,7 +14,7 @@
 /// - 登录态写 `source.data['account']` 持久化，reLogin 复用。
 /// - 测速选源入口 push /settings/source（禁漫 6 图床测速 + express 快速通道）。
 /// - 当前已集成真实登录。
-library login_page;
+library;
 
 import 'package:flutter/material.dart';
 import 'package:joycomic/theme/app_theme_context.dart';
@@ -24,7 +24,6 @@ import '../../comic_source/comic_source.dart';
 import '../../foundation/log.dart';
 
 import 'package:url_launcher/url_launcher.dart';
-import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
 
 class LoginPage extends StatefulWidget {
@@ -75,7 +74,7 @@ class _LoginPageState extends State<LoginPage> {
     if (!mounted) return;
     setState(() => _loading = false);
     if (res.error) {
-      Log.e('Login failed', error: '${_sourceKey}: ${res.errorMessage}');
+      Log.e('Login failed', error: '$_sourceKey: ${res.errorMessage}');
       if (context.mounted) {
         ScaffoldMessenger.of(
           context,
@@ -96,7 +95,7 @@ class _LoginPageState extends State<LoginPage> {
     return Scaffold(
       backgroundColor: context.pageBackground,
       appBar: AppBar(
-        title: Text('登录'),
+        title: const Text('登录'),
         backgroundColor: context.pageBackground,
         actions: [
           if (_sourceKey == 'jm')

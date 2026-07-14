@@ -2,9 +2,8 @@
 ///
 /// 通过 SauceNAO API 反向搜索图片，返回可能匹配的漫画/插画结果。
 /// 结果后通过两源搜索 title 做二次匹配，定位到禁漫/哔咔作品。
-library sauce_nao_search;
+library;
 
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -62,7 +61,8 @@ class SauceNaoSearch {
     return results.map<SauceResult>((r) {
       final header = r['header'] as Map? ?? {};
       final data = r['data'] as Map? ?? {};
-      final similarity = double.tryParse('${header['similarity'] ?? '0'}') ?? 0.0;
+      final similarity =
+          double.tryParse('${header['similarity'] ?? '0'}') ?? 0.0;
       final extUrls = (data['ext_urls'] as List?)?.cast<String>() ?? [];
       return SauceResult(
         similarity: similarity,
@@ -80,7 +80,8 @@ class SauceNaoSearch {
     if (results.isEmpty) return null;
     // 取相似度最高且有标题的结果
     results.sort((a, b) => b.similarity.compareTo(a.similarity));
-    return results.firstWhere((r) => r.title != null,
-        orElse: () => results.first).title;
+    return results
+        .firstWhere((r) => r.title != null, orElse: () => results.first)
+        .title;
   }
 }

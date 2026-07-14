@@ -1,12 +1,12 @@
 /// JoyComic 字体层级 token。
-library app_typography;
+library;
 
 import 'package:flutter/material.dart';
 
 import 'app_theme_context.dart';
 
-const String? kFontFamily = 'LXGWWenKai';
-const String? kMonoFontFamily = 'LXGWWenKaiMono';
+const String kFontFamily = 'LXGWWenKai';
+const String kMonoFontFamily = 'LXGWWenKaiMono';
 
 class AppTypography {
   AppTypography._();

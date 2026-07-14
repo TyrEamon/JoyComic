@@ -8,7 +8,7 @@
 /// 取色全程失败 → 回退静态品牌色，调用方无感。
 ///
 /// 与 [jm_image_recombine.dart] 同用 `package:image`，纯 Dart，Isolate 安全。
-library palette_extractor;
+library;
 
 import 'dart:async';
 import 'dart:io' as io;
@@ -40,17 +40,17 @@ class ComicPalette {
 
   /// 横向渐变（accent → accentVariant）。
   LinearGradient get gradient => LinearGradient(
-        begin: Alignment.centerLeft,
-        end: Alignment.centerRight,
-        colors: [accent, accentVariant],
-      );
+    begin: Alignment.centerLeft,
+    end: Alignment.centerRight,
+    colors: [accent, accentVariant],
+  );
 
   /// 垂直渐变（胶囊/底栏纵向容器）。
   LinearGradient get gradientVertical => LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [accent, accentVariant],
-      );
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: [accent, accentVariant],
+  );
 
   /// 兜底静态品牌色板（取色失败时回退）。
   static const ComicPalette fallback = ComicPalette(
@@ -133,10 +133,12 @@ class PaletteExtractor {
   }
 
   /// 单例 dio，复用连接池。
-  static final Dio _dio = Dio(BaseOptions(
-    connectTimeout: const Duration(seconds: 8),
-    receiveTimeout: const Duration(seconds: 10),
-  ));
+  static final Dio _dio = Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 8),
+      receiveTimeout: const Duration(seconds: 10),
+    ),
+  );
 
   static Future<Uint8List?> _dioFetch(
     String url,
@@ -172,9 +174,9 @@ class PaletteExtractor {
       while (row.moveNext()) {
         if (x % stepX == 0) {
           final p = row.current;
-          final r = (p.r as num).round();
-          final g = (p.g as num).round();
-          final b = (p.b as num).round();
+          final r = (p.r).round();
+          final g = (p.g).round();
+          final b = (p.b).round();
           final hsl = _rgbToHsl(r, g, b);
           // 过滤：低饱和（灰/白/黑）与过暗过亮跳过，避免主色脏。
           if (hsl[1] >= 0.18 && hsl[2] >= 0.12 && hsl[2] <= 0.92) {
@@ -214,21 +216,23 @@ class PaletteExtractor {
   static Color _sanitize(List<int> rgb) {
     final hsl = _rgbToHsl(rgb[0], rgb[1], rgb[2]);
     // 钳制亮度到 0.5~0.72、饱和度到 0.55~1.0，确保深底上够亮够艳。
-    final fixed = [
-      hsl[0],
-      hsl[1].clamp(0.55, 1.0),
-      hsl[2].clamp(0.5, 0.72),
-    ];
+    final fixed = [hsl[0], hsl[1].clamp(0.55, 1.0), hsl[2].clamp(0.5, 0.72)];
     final out = _hslToRgb(fixed[0], fixed[1], fixed[2]);
     return Color.fromARGB(255, out[0], out[1], out[2]);
   }
 
   /// 由 accent 派生一个冷暖对侧的副色（色调 +30°、提亮一点）。
   static Color _deriveVariant(Color c) {
-    final r = c.red, g = c.green, b = c.blue;
+    final r = (c.r * 255).round().clamp(0, 255);
+    final g = (c.g * 255).round().clamp(0, 255);
+    final b = (c.b * 255).round().clamp(0, 255);
     final hsl = _rgbToHsl(r, g, b);
     final h2 = (hsl[0] + 30) % 360;
-    final out = _hslToRgb(h2, hsl[1].clamp(0.5, 1.0), (hsl[2] + 0.06).clamp(0.5, 0.8));
+    final out = _hslToRgb(
+      h2,
+      hsl[1].clamp(0.5, 1.0),
+      (hsl[2] + 0.06).clamp(0.5, 0.8),
+    );
     return Color.fromARGB(255, out[0], out[1], out[2]);
   }
 
@@ -265,17 +269,29 @@ class PaletteExtractor {
     final m = l - c / 2;
     double r1, g1, b1;
     if (h < 60) {
-      r1 = c; g1 = x; b1 = 0;
+      r1 = c;
+      g1 = x;
+      b1 = 0;
     } else if (h < 120) {
-      r1 = x; g1 = c; b1 = 0;
+      r1 = x;
+      g1 = c;
+      b1 = 0;
     } else if (h < 180) {
-      r1 = 0; g1 = c; b1 = x;
+      r1 = 0;
+      g1 = c;
+      b1 = x;
     } else if (h < 240) {
-      r1 = 0; g1 = x; b1 = c;
+      r1 = 0;
+      g1 = x;
+      b1 = c;
     } else if (h < 300) {
-      r1 = x; g1 = 0; b1 = c;
+      r1 = x;
+      g1 = 0;
+      b1 = c;
     } else {
-      r1 = c; g1 = 0; b1 = x;
+      r1 = c;
+      g1 = 0;
+      b1 = x;
     }
     return [
       ((r1 + m) * 255).round().clamp(0, 255),

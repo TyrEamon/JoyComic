@@ -88,10 +88,7 @@ void main() {
             SourceContentSection(
               key: 'latest',
               title: '首次标题',
-              comics: const [
-                _TestComic('pica-1'),
-                _TestComic('shared-id'),
-              ],
+              comics: const [_TestComic('pica-1'), _TestComic('shared-id')],
               moreQuery: firstMoreQuery,
             ),
             SourceContentSection(
@@ -102,10 +99,7 @@ void main() {
             SourceContentSection(
               key: 'latest',
               title: '后续标题',
-              comics: const [
-                _TestComic('shared-id'),
-                _TestComic('pica-2'),
-              ],
+              comics: const [_TestComic('shared-id'), _TestComic('pica-2')],
               moreQuery: laterMoreQuery,
             ),
           ]),
@@ -124,15 +118,18 @@ void main() {
       ]);
 
       expect(
-        content.sections.map((section) => '${section.sourceKey}:${section.key}'),
+        content.sections.map(
+          (section) => '${section.sourceKey}:${section.key}',
+        ),
         ['picacg:latest', 'picacg:recommended', 'jm:latest'],
       );
       expect(content.sections.first.title, '首次标题');
       expect(content.sections.first.moreQuery, firstMoreQuery);
-      expect(
-        content.sections.first.comics.map((comic) => comic.id),
-        ['pica-1', 'shared-id', 'pica-2'],
-      );
+      expect(content.sections.first.comics.map((comic) => comic.id), [
+        'pica-1',
+        'shared-id',
+        'pica-2',
+      ]);
       expect(content.sections.last.comics.single.id, 'shared-id');
       expect(content.errors, isEmpty);
     });
@@ -167,10 +164,10 @@ void main() {
         ),
       ]);
 
-      expect(
-        content.sections.map((section) => section.key),
-        ['promoted', 'latest'],
-      );
+      expect(content.sections.map((section) => section.key), [
+        'promoted',
+        'latest',
+      ]);
       expect(content.sections.first.title, '先出现的空分区');
       expect(content.sections.first.comics.single.id, 'late-comic');
       expect(content.sections.first.moreQuery, moreQuery);
@@ -345,11 +342,7 @@ void main() {
       page: 4,
       sort: 'popular',
     );
-    final page = SourceContentPage(
-      query: query,
-      comics: const [],
-      maxPage: 9,
-    );
+    final page = SourceContentPage(query: query, comics: const [], maxPage: 9);
 
     expect(page.query.categoryKey, 'category-id');
     expect(page.query.param, 'category-slug');
@@ -391,7 +384,7 @@ void main() {
 
   test('discards an orphan JM subcategory with a real CID', () {
     final categories = adaptJmSourceCategories([
-      JmCategory('缺少父标识', '', const [
+      const JmCategory('缺少父标识', '', [
         JmSubCategory('42', '孤儿子分类', 'child-slug'),
       ]),
     ]);
@@ -401,17 +394,11 @@ void main() {
 
   group('jmCategoryMaxPage', () {
     test('uses the stable protocol page size for a partial final page', () {
-      expect(
-        jmCategoryMaxPage(total: 101, currentPage: 6, itemCount: 1),
-        6,
-      );
+      expect(jmCategoryMaxPage(total: 101, currentPage: 6, itemCount: 1), 6);
     });
 
     test('calculates max page from a full page', () {
-      expect(
-        jmCategoryMaxPage(total: 101, currentPage: 1, itemCount: 20),
-        6,
-      );
+      expect(jmCategoryMaxPage(total: 101, currentPage: 1, itemCount: 20), 6);
     });
 
     test('returns null for content without pagination metadata', () {
@@ -422,10 +409,7 @@ void main() {
     });
 
     test('stops at the current page when the response page is empty', () {
-      expect(
-        jmCategoryMaxPage(total: 0, currentPage: 2, itemCount: 0),
-        2,
-      );
+      expect(jmCategoryMaxPage(total: 0, currentPage: 2, itemCount: 0), 2);
     });
 
     test('prefers explicit page count or page size when available', () {
@@ -451,51 +435,59 @@ void main() {
   });
 
   group('parsePicacgCategories', () {
-    test('parses ids, titles, covers and filters web-only or malformed items', () {
-      final categories = parsePicacgCategories({
-        'data': {
-          'categories': [
-            {
-              '_id': 12,
-              'title': '数字分类',
-              'thumb': {
-                'fileServer': 'https://img.example.test',
-                'path': 'category/12.jpg',
+    test(
+      'parses ids, titles, covers and filters web-only or malformed items',
+      () {
+        final categories = parsePicacgCategories({
+          'data': {
+            'categories': [
+              {
+                '_id': 12,
+                'title': '数字分类',
+                'thumb': {
+                  'fileServer': 'https://img.example.test',
+                  'path': 'category/12.jpg',
+                },
               },
-            },
-            {'_id': 'web', 'title': '网页分类', 'isWeb': true},
-            {'_id': '', 'title': '空标识'},
-            {'_id': 'empty-title', 'title': ''},
-            {'title': '标题可作为标识'},
-            'not-a-map',
-          ],
-        },
-      });
+              {'_id': 'web', 'title': '网页分类', 'isWeb': true},
+              {'_id': '', 'title': '空标识'},
+              {'_id': 'empty-title', 'title': ''},
+              {'title': '标题可作为标识'},
+              'not-a-map',
+            ],
+          },
+        });
 
-      expect(categories, hasLength(2));
-      expect(categories.first.key, '12');
-      expect(categories.first.title, '数字分类');
-      expect(categories.first.param, '数字分类');
-      expect(
-        categories.first.cover,
-        'https://img.example.test/static/category/12.jpg',
-      );
-      expect(categories[1].key, '标题可作为标识');
-      expect(categories.map((category) => category.key), isNot(contains('web')));
-    });
+        expect(categories, hasLength(2));
+        expect(categories.first.key, '12');
+        expect(categories.first.title, '数字分类');
+        expect(categories.first.param, '数字分类');
+        expect(
+          categories.first.cover,
+          'https://img.example.test/static/category/12.jpg',
+        );
+        expect(categories[1].key, '标题可作为标识');
+        expect(
+          categories.map((category) => category.key),
+          isNot(contains('web')),
+        );
+      },
+    );
 
     test('returns empty for malformed category containers', () {
-      expect(parsePicacgCategories({'data': {'categories': 'bad'}}), isEmpty);
+      expect(
+        parsePicacgCategories({
+          'data': {'categories': 'bad'},
+        }),
+        isEmpty,
+      );
       expect(parsePicacgCategories([]), isEmpty);
     });
   });
 
   group('picacgMaxPage', () {
     test('returns null for content without pagination metadata', () {
-      expect(
-        picacgMaxPage(currentPage: 2, itemCount: 20),
-        isNull,
-      );
+      expect(picacgMaxPage(currentPage: 2, itemCount: 20), isNull);
     });
 
     test('stops at the current page when the response page is empty', () {
@@ -503,17 +495,9 @@ void main() {
     });
 
     test('uses explicit page count or total and page size', () {
+      expect(picacgMaxPage(currentPage: 1, itemCount: 20, pageCount: 5), 5);
       expect(
-        picacgMaxPage(currentPage: 1, itemCount: 20, pageCount: 5),
-        5,
-      );
-      expect(
-        picacgMaxPage(
-          currentPage: 1,
-          itemCount: 20,
-          total: 101,
-          pageSize: 20,
-        ),
+        picacgMaxPage(currentPage: 1, itemCount: 20, total: 101, pageSize: 20),
         6,
       );
     });

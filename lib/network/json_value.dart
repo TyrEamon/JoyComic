@@ -3,7 +3,7 @@
 /// Scalar helpers accept the common variants returned by the supported APIs.
 /// Structure helpers deliberately return empty collections for non-structures;
 /// callers that require a map or list must still validate that requirement.
-library json_value;
+library;
 
 /// Converts a JSON value to an integer, or returns [fallback].
 int jsonInt(Object? value, {int fallback = 0}) {
@@ -64,6 +64,6 @@ Map<String, dynamic> jsonMap(Object? value) {
 /// Null and structured entries are dropped rather than producing misleading
 /// display values such as `null` or `{...}`.
 List<String> jsonStringList(Object? value) => <String>[
-      for (final item in jsonList(value))
-        if (item is String || item is num || item is bool) item.toString(),
-    ];
+  for (final item in jsonList(value))
+    if (item is String || item is num || item is bool) item.toString(),
+];

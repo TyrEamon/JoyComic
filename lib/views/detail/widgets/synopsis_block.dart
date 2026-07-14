@@ -3,7 +3,7 @@
 /// - 顶部小标题"简介"
 /// - 多行文本框，默认折叠到 [maxLinesWhenCollapsed]
 /// - 右下角"展开/收起"文字切换按钮
-library synopsis_block;
+library;
 
 import 'package:flutter/material.dart';
 import 'package:joycomic/theme/app_theme_context.dart';
@@ -131,7 +131,7 @@ class _ToggleLink extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
-          colors: [Color(0x000E0B14), context.pageBackground],
+          colors: [const Color(0x000E0B14), context.pageBackground],
         ),
       ),
       child: Material(

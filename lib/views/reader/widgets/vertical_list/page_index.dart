@@ -2,7 +2,7 @@
 ///
 /// [ItemPositionsListener] 提供的索引经过过滤：只保留完全在可视区域内的项，
 /// 排除 itemLeadingEdge < 0（在顶部之上）和 itemTrailingEdge > 1（在底部之下）的项。
-library page_index;
+library;
 
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 

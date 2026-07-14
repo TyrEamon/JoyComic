@@ -4,7 +4,7 @@
 /// 搜索做 AppBar 右上角图标入口（push 独立搜索页），不占 Tab 位。
 ///
 /// 视觉：底部 Tab 栏半透明毛玻璃 + 品牌色选中态，沉浸式贴合深色基调。
-library main_scaffold;
+library;
 
 import 'dart:ui';
 
@@ -28,25 +28,25 @@ class _MainScaffoldState extends State<MainScaffold> {
   int _index = 0;
 
   late final List<_Tab> _tabs = [
-    _Tab(
+    const _Tab(
       label: '首页',
       icon: Icons.home_outlined,
       activeIcon: Icons.home_rounded,
       page: HomePage(),
     ),
-    _Tab(
+    const _Tab(
       label: '分类',
       icon: Icons.grid_view_outlined,
       activeIcon: Icons.grid_view_rounded,
       page: CategoryPage(),
     ),
-    _Tab(
+    const _Tab(
       label: '收藏',
       icon: Icons.favorite_border_rounded,
       activeIcon: Icons.favorite_rounded,
       page: FavoritesPage(),
     ),
-    _Tab(
+    const _Tab(
       label: '我的',
       icon: Icons.person_outline_rounded,
       activeIcon: Icons.person_rounded,

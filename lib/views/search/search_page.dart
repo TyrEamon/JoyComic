@@ -13,7 +13,7 @@
 /// - 热门词：两源 loadHotTags API。
 /// - 搜索历史已持久化到 sqlite3。
 /// - 当前已集成真实数据。
-library search_page;
+library;
 
 import 'package:flutter/material.dart';
 import 'package:joycomic/theme/app_theme_context.dart';
@@ -22,9 +22,6 @@ import 'package:go_router/go_router.dart';
 import '../../comic_source/comic_source.dart';
 import '../../database/search_history_helper.dart';
 import '../../foundation/log.dart';
-import '../../network/base_comic.dart';
-import '../../network/res.dart';
-import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
 import '../common/utils/source_login_guard.dart';
 import '../common/widgets/comic_grid.dart';
@@ -171,33 +168,10 @@ class _SearchPageState extends State<SearchPage> {
 
   // ============================ 搜索历史 ============================
 
-  static const _maxHistory = 20;
   final _historyHelper = SearchHistoryHelper();
-
-  List<String> _loadHistory() {
-    return _historyHelper.getHistory();
-  }
 
   void _saveHistory(String kw) {
     _historyHelper.addKeyword(kw);
-  }
-
-  // ============================ 热门词 ============================
-
-  Future<List<String>> _loadHotTags() async {
-    final tags = <String>{};
-    for (final s in ComicSource.sources) {
-      if (s.searchPageData?.loadHotTags == null) continue;
-      final res = await s.searchPageData!.loadHotTags!();
-      if (!res.error && res.dataOrNull != null) {
-        tags.addAll(res.data);
-      }
-    }
-    // 两源都没返回时用本地预设兜底
-    if (tags.isEmpty) {
-      tags.addAll(['校园恋爱', '奇幻冒险', '同人', '完结佳作', '新番改编', '百合']);
-    }
-    return tags.toList();
   }
 
   @override
@@ -293,7 +267,7 @@ class _SearchPageState extends State<SearchPage> {
     final sk = item.sourceKey ?? 'jm';
     final loggedIn = await ensureSourceLoggedIn(context, sk);
     if (!loggedIn && sk == 'picacg') return;
-    if (!context.mounted) return;
+    if (!mounted) return;
     context.push('/detail/$sk/${item.id}');
   }
 }
@@ -446,7 +420,7 @@ class _SearchHomeState extends State<_SearchHome> {
         const SizedBox(height: AppSpacing.xs),
         if (_loadingTags)
           Padding(
-            padding: EdgeInsets.symmetric(vertical: 8),
+            padding: const EdgeInsets.symmetric(vertical: 8),
             child: CircularProgressIndicator(
               color: context.colorScheme.primary,
               strokeWidth: 2,

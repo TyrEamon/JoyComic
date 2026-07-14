@@ -1,5 +1,5 @@
 /// 键盘快捷键监听（桌面端翻页支持）。
-library reader_keyboard_listener;
+library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -26,10 +26,7 @@ class ReaderKeyboardListener extends StatelessWidget {
           callback,
         ),
       ),
-      child: Focus(
-        autofocus: true,
-        child: child,
-      ),
+      child: Focus(autofocus: true, child: child),
     );
   }
 }

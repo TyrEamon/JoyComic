@@ -7,7 +7,7 @@
 ///
 /// 设计取向：藕粉 → 紫罗兰的品牌渐变，搭配深墨紫黑底与暖紫黑面卡片，
 /// 营造温暖高级、少女向但不甜腻的漫画阅读氛围。
-library app_colors;
+library;
 
 import 'package:flutter/material.dart';
 
@@ -112,13 +112,13 @@ class AppColors {
   // ============================ 亮色模式色值 ============================
 
   /// 亮色模式色板。
-  static final ColorScheme lightScheme = ColorScheme.light(
+  static final ColorScheme lightScheme = const ColorScheme.light(
     primary: brandPink,
     onPrimary: Colors.white,
     secondary: brandViolet,
     onSecondary: Colors.white,
-    surface: const Color(0xFFFFF8F5),
-    onSurface: const Color(0xFF2D2636),
+    surface: Color(0xFFFFF8F5),
+    onSurface: Color(0xFF2D2636),
     error: danger,
     onError: Colors.white,
   );

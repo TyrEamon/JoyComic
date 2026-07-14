@@ -1,5 +1,5 @@
 /// Mine page backed by enabled sources and persisted local statistics.
-library mine_page;
+library;
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';

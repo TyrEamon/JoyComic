@@ -1,5 +1,5 @@
 /// 阅读设置页，所有可用项均从 ReaderConf 初始化并即时持久化。
-library reader_settings_page;
+library;
 
 import 'package:flutter/material.dart';
 import 'package:joycomic/theme/app_theme_context.dart';

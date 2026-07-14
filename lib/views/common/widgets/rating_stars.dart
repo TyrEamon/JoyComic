@@ -2,7 +2,7 @@
 ///
 /// 支持 0~5 任意分值（含半星），[color] 默认品牌金星色，
 /// 详情页可注入封面取色 accent 用作星级强调。
-library rating_stars;
+library;
 
 import 'dart:math' show pi, cos, sin;
 

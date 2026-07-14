@@ -2,7 +2,7 @@
 ///
 /// - 顶部栏："相关推荐" + 右"换一换"（旋转 Icon）
 /// - 下方横向滑动卡片流，每卡 = 竖版海报(3:4) + 作品名 + 评分数字
-library recommendation_carousel;
+library;
 
 import 'package:flutter/material.dart';
 import 'package:joycomic/theme/app_theme_context.dart';

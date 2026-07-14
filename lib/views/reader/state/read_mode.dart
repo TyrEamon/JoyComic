@@ -2,7 +2,7 @@
 ///
 /// 决定内容列表的页面组织方式（单列连续流 / 单页或双页翻页），并由
 /// [HorizontalList] 据此选择单/双页与是否反向（RTL）。
-library read_mode;
+library;
 
 /// 禁漫 / 哔咔共用的五种阅读模式。
 enum ReadMode {

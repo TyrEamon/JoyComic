@@ -5,7 +5,7 @@
 ///
 /// 章节列表由外部传入 [chapters]（id->name 的有序映射），[onSelect]
 /// 回调打开阅读器。[palette] 用于 NEW 角标与跳转入口的品牌色强调。
-library chapter_grid;
+library;
 
 import 'package:flutter/material.dart';
 import 'package:joycomic/theme/app_theme_context.dart';
@@ -55,7 +55,7 @@ class ChapterGrid extends StatelessWidget {
           const SizedBox(height: AppSpacing.sm),
           if (chapters.isEmpty)
             Padding(
-              padding: EdgeInsets.symmetric(vertical: AppSpacing.xl),
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.xl),
               child: Center(
                 child: Text(
                   '暂无章节',
@@ -182,17 +182,17 @@ class _ChapterCard extends StatelessWidget {
                       httpHeaders: coverHeaders?.cast<String, String>(),
                       fit: BoxFit.cover,
                       placeholder: (_, __) => _ChapterPlaceholder(),
-                      errorWidget: (_, __, ___) => _ChapterPlaceholder(),
+                      errorBuilder: (_, __, ___) => _ChapterPlaceholder(),
                     )
                   : _ChapterPlaceholder(),
             ),
             // 16:9 封面之上的底部渐变，确保章节名可读。
-            Positioned(
+            const Positioned(
               left: 0,
               right: 0,
               bottom: 0,
               height: 34,
-              child: const IgnorePointer(
+              child: IgnorePointer(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(

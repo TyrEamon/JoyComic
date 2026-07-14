@@ -3,7 +3,7 @@
 /// 把 [JmNetwork] 与 [ComicSource] 契约连接：构造 [JmStateImpl] 桥接源
 /// 运行期 `data`（baseUrl 由域名选择后写入），注入到网络层；声明账号登录流。
 /// 登录时还会探测选用可用接口域名与图床。
-library built_in_jm;
+library;
 
 import '../../comic_source/comic_source.dart';
 import '../../network/base_comic.dart';
@@ -22,9 +22,9 @@ class JmStateImpl implements JmState {
 
   @override
   String get apiBaseUrl => jsonString(
-        source.data['apiBaseUrl'],
-        fallback: 'https://${jmBuiltInDomains.first}',
-      );
+    source.data['apiBaseUrl'],
+    fallback: 'https://${jmBuiltInDomains.first}',
+  );
 
   @override
   void setApiBaseUrl(String url) {
@@ -33,10 +33,8 @@ class JmStateImpl implements JmState {
   }
 
   @override
-  String get imageBaseUrl => jsonString(
-        source.data['imageBaseUrl'],
-        fallback: jmBuiltInImgUrls.first,
-      );
+  String get imageBaseUrl =>
+      jsonString(source.data['imageBaseUrl'], fallback: jmBuiltInImgUrls.first);
 
   @override
   void setImageBaseUrl(String url) {
@@ -66,6 +64,7 @@ class JmStateImpl implements JmState {
     }
     return shunts;
   }
+
   @override
   void setShunts(List<JmShunt> shunts) {
     source.data['shunts'] = [
@@ -75,10 +74,8 @@ class JmStateImpl implements JmState {
   }
 
   @override
-  int get selectedShuntKey => jsonInt(
-        source.data['selectedShuntKey'],
-        fallback: jmExpressShuntKey,
-      );
+  int get selectedShuntKey =>
+      jsonInt(source.data['selectedShuntKey'], fallback: jmExpressShuntKey);
 
   @override
   void setSelectedShuntKey(int key) {
@@ -157,11 +154,13 @@ ComicSource buildJmSource() {
         query.page,
       );
       if (res.error) return Res(null, errorMessage: res.errorMessage);
-      return Res(SourceContentPage(
-        query: query,
-        comics: <BaseComic>[...res.data],
-        maxPage: _optionalPageCount(res.subData),
-      ));
+      return Res(
+        SourceContentPage(
+          query: query,
+          comics: <BaseComic>[...res.data],
+          maxPage: _optionalPageCount(res.subData),
+        ),
+      );
     },
     loadHomeSections: () async {
       final res = await JmNetwork().getHomeSections();
@@ -232,14 +231,18 @@ ComicSource buildJmSource() {
     commentsLoader: (id, subId, page, replyTo) async {
       final res = await JmNetwork().getComment(id, page);
       if (res.error) return Res(null, errorMessage: res.errorMessage);
-      final comments = res.data.map((comment) => Comment(
-        jsonString(comment['userName']),
-        _optionalString(comment['avatar']),
-        jsonString(comment['content']),
-        _optionalString(comment['time']),
-        jsonInt(comment['replyCount']),
-        _optionalString(comment['id']),
-      )).toList();
+      final comments = res.data
+          .map(
+            (comment) => Comment(
+              jsonString(comment['userName']),
+              _optionalString(comment['avatar']),
+              jsonString(comment['content']),
+              _optionalString(comment['time']),
+              jsonInt(comment['replyCount']),
+              _optionalString(comment['id']),
+            ),
+          )
+          .toList();
       return Res(comments);
     },
     initData: (s) {
@@ -248,7 +251,7 @@ ComicSource buildJmSource() {
     },
   );
 
-  JmNetwork()..state = JmStateImpl(source);
+  JmNetwork().state = JmStateImpl(source);
   return source;
 }
 
@@ -261,28 +264,33 @@ List<SourceCategory> adaptJmSourceCategories(
     final parentTitle = category.name.trim();
     if (parentKey.isEmpty || parentTitle.isEmpty) continue;
 
-    categories.add(SourceCategory(
-      key: parentKey,
-      title: parentTitle,
-      param: parentKey,
-      sortOptions: _jmSortOptions,
-    ));
+    categories.add(
+      SourceCategory(
+        key: parentKey,
+        title: parentTitle,
+        param: parentKey,
+        sortOptions: _jmSortOptions,
+      ),
+    );
     for (final subCategory in category.subCategories) {
       final childKey = subCategory.cid.trim();
       final childTitle = subCategory.name.trim();
       if (childKey.isEmpty || childTitle.isEmpty) continue;
       final childParam = subCategory.slug.trim();
-      categories.add(SourceCategory(
-        key: childKey,
-        title: childTitle,
-        parentKey: parentKey,
-        param: childParam.isEmpty ? childKey : childParam,
-        sortOptions: _jmSortOptions,
-      ));
+      categories.add(
+        SourceCategory(
+          key: childKey,
+          title: childTitle,
+          parentKey: parentKey,
+          param: childParam.isEmpty ? childKey : childParam,
+          sortOptions: _jmSortOptions,
+        ),
+      );
     }
   }
   return normalizeCategories(categories);
 }
+
 const _jmSortOptions = <SourceSortOption>[
   SourceSortOption(key: 'latest', title: '最新'),
   SourceSortOption(key: 'popular', title: '总排行'),

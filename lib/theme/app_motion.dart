@@ -2,7 +2,7 @@
 ///
 /// 统一动画时长与曲线，避免散落魔法数字。曲线偏向 iOS 风格的
 /// easeOut（进场）/ easeIn（退场）。
-library app_motion;
+library;
 
 import 'package:flutter/animation.dart';
 

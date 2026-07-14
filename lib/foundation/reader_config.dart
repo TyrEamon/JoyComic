@@ -1,5 +1,5 @@
 /// 阅读器配置（应用偏好中阅读器相关字段的持久化实现）。
-library reader_config;
+library;
 
 import 'package:shared_preferences/shared_preferences.dart';
 

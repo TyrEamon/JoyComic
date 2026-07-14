@@ -5,7 +5,7 @@
 /// - debug 模式下控制台输出
 /// - JSON 格式化，可解析回顾
 /// - 5 级日志：d / i / w / e / f
-library log;
+library;
 
 import 'dart:async';
 import 'dart:convert';
@@ -118,45 +118,26 @@ class Log {
     Object? error,
     StackTrace? stackTrace,
     DateTime? time,
-  }) =>
-      _logger.t(message, error: error, stackTrace: stackTrace, time: time);
+  }) => _logger.t(message, error: error, stackTrace: stackTrace, time: time);
 
   /// debug — 开发调试用。
-  static void d(
-    String message, [
-    dynamic data,
-  ]) =>
+  static void d(String message, [dynamic data]) =>
       _logger.d('$message${data != null ? '\n$data' : ''}');
 
   /// info — 关键流程记录。
-  static void i(
-    String message, [
-    dynamic data,
-  ]) =>
+  static void i(String message, [dynamic data]) =>
       _logger.i('$message${data != null ? '\n$data' : ''}');
 
   /// warn — 警告。
-  static void w(
-    String message, {
-    Object? error,
-    StackTrace? stackTrace,
-  }) =>
+  static void w(String message, {Object? error, StackTrace? stackTrace}) =>
       _logger.w(message, error: error, stackTrace: stackTrace);
 
   /// error — 异常。
-  static void e(
-    String message, {
-    Object? error,
-    StackTrace? stackTrace,
-  }) =>
+  static void e(String message, {Object? error, StackTrace? stackTrace}) =>
       _logger.e(message, error: error, stackTrace: stackTrace);
 
   /// fatal — 致命错误。
-  static void f(
-    String message, {
-    Object? error,
-    StackTrace? stackTrace,
-  }) =>
+  static void f(String message, {Object? error, StackTrace? stackTrace}) =>
       _logger.f(message, error: error, stackTrace: stackTrace);
 }
 
@@ -172,10 +153,6 @@ class _JoyPrinter extends LogPrinter {
       'error': event.error?.toString(),
       'stackTrace': event.stackTrace?.toString(),
     };
-    return [
-      '<<<LOG_START>>>',
-      jsonEncode(json),
-      '<<<LOG_END>>>',
-    ];
+    return ['<<<LOG_START>>>', jsonEncode(json), '<<<LOG_END>>>'];
   }
 }

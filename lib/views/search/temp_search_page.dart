@@ -6,7 +6,7 @@
 ///
 /// 禁漫搜索免登录（token 仅 md5(时间戳+盐)），可直接验证动态取色。
 /// 哔咔搜索需登录。本页顶部有源切换。
-library temp_search_page;
+library;
 
 import 'package:flutter/material.dart';
 import 'package:joycomic/theme/app_theme_context.dart';

@@ -4,7 +4,7 @@
 /// - 次级（收藏）：较窄，心形 Icon + 状态文字，轻量化卡片
 /// - 主行动（阅读）：较宽，高亮品牌色圆角长胶囊，主标题 + 提示副文本
 ///   主按钮渐变跟随封面取色 [palette]（取色失败即静态品牌色）。
-library sticky_action_bar;
+library;
 
 import 'package:flutter/material.dart';
 import 'package:joycomic/theme/app_theme_context.dart';
@@ -149,7 +149,7 @@ class _ReadButton extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('开始阅读', style: AppTypography.buttonMainTitle),
+                const Text('开始阅读', style: AppTypography.buttonMainTitle),
                 if (hint.isNotEmpty)
                   Text(hint, style: AppTypography.buttonMainHint),
               ],

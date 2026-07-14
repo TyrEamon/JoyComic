@@ -4,7 +4,7 @@
 /// 作为头，配合 `tokenparam = "时间戳,App版本"`。响应体的业务数据是经
 /// AES-ECB 加密后再 base64 编码的字符串，客户端需用 `md5(时间戳 + 数据盐)`
 /// 作为 AES 密钥进行 ECB 解密，再 UTF8 解码并裁掉尾部乱码。
-library jm_headers;
+library;
 
 import 'dart:convert';
 import 'dart:typed_data';
@@ -23,8 +23,30 @@ const jmDataSecret = '185Hcomic3PAPP7R';
 
 /// 动态域名解密盐（字节序列，复原为字符串后用于解密域名清单 TXT）。
 const _domainSecret = <int>[
-  100, 105, 111, 115, 102, 106, 99, 107, 119, 112, 113, 112, 100, 102, 106,
-  107, 118, 110, 113, 81, 106, 115, 105, 107
+  100,
+  105,
+  111,
+  115,
+  102,
+  106,
+  99,
+  107,
+  119,
+  112,
+  113,
+  112,
+  100,
+  102,
+  106,
+  107,
+  118,
+  110,
+  113,
+  81,
+  106,
+  115,
+  105,
+  107,
 ];
 
 String get domainSecretString => String.fromCharCodes(_domainSecret);
@@ -37,17 +59,17 @@ const _jmUserAgent =
 
 /// 基础请求头（非加密接口通用部分）。
 Map<String, String> baseHeaders() => {
-      'Accept': '*/*',
-      'Accept-Encoding': 'gzip, deflate, br, zstd',
-      'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-      'Connection': 'keep-alive',
-      'Origin': 'https://localhost',
-      'Referer': 'https://localhost/',
-      'Sec-Fetch-Dest': 'empty',
-      'Sec-Fetch-Mode': 'cors',
-      'Sec-Fetch-Site': 'cross-site',
-      'X-Requested-With': _jmPkgName,
-    };
+  'Accept': '*/*',
+  'Accept-Encoding': 'gzip, deflate, br, zstd',
+  'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+  'Connection': 'keep-alive',
+  'Origin': 'https://localhost',
+  'Referer': 'https://localhost/',
+  'Sec-Fetch-Dest': 'empty',
+  'Sec-Fetch-Mode': 'cors',
+  'Sec-Fetch-Site': 'cross-site',
+  'X-Requested-With': _jmPkgName,
+};
 
 /// 构造禁漫 API 请求的 [BaseOptions]。
 ///
@@ -73,12 +95,12 @@ BaseOptions buildApiOptions(int time, {bool post = false, bool byte = true}) {
 
 /// 图片请求头（仿浏览器图片请求）。
 Map<String, String> imageHeaders() => {
-      ...baseHeaders(),
-      'user-agent': _jmUserAgent,
-      'Sec-Fetch-Dest': 'image',
-      'Sec-Fetch-Mode': 'no-cors',
-      'Sec-Fetch-Site': 'cross-site',
-    };
+  ...baseHeaders(),
+  'user-agent': _jmUserAgent,
+  'Sec-Fetch-Dest': 'image',
+  'Sec-Fetch-Mode': 'no-cors',
+  'Sec-Fetch-Site': 'cross-site',
+};
 
 /// 解密禁漫 API 响应体中的加密 data 字段。
 ///
@@ -90,7 +112,8 @@ String convertData(String input, String secret) {
   final keyHex = md5.convert(utf8.encode(secret));
   // md5 摘要为 32 位十六进制字符串，取其 UTF8 字节作为 AES 密钥（32 字节 = AES-256）。
   final keyBytes = utf8.encode(keyHex.toString());
-  final cipher = ECBBlockCipher(AESEngine())..init(false, KeyParameter(keyBytes));
+  final cipher = ECBBlockCipher(AESEngine())
+    ..init(false, KeyParameter(keyBytes));
 
   final data = base64Decode(input);
   final padded = Uint8List(data.length);

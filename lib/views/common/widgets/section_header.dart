@@ -6,7 +6,7 @@
 /// 与详情页内 SynopsisBlock/ChapterGrid 的内联标题区分：
 /// - 详情页区块标题在各自 widget 内联，因有展开/网格等强耦合布局；
 /// - 列表/首页的区块标题用本组件，跨页统一。
-library section_header;
+library;
 
 import 'package:flutter/material.dart';
 import 'package:joycomic/theme/app_theme_context.dart';

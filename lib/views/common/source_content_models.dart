@@ -1,5 +1,5 @@
 /// Source-neutral discovery models shared by built-in sources and discovery UI.
-library source_content_models;
+library;
 
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
@@ -64,15 +64,15 @@ class SourceCategory {
 
   @override
   int get hashCode => Object.hash(
-        key,
-        title,
-        parentKey,
-        param,
-        icon,
-        cover,
-        webOnly,
-        _deepCollectionEquality.hash(sortOptions),
-      );
+    key,
+    title,
+    parentKey,
+    param,
+    icon,
+    cover,
+    webOnly,
+    _deepCollectionEquality.hash(sortOptions),
+  );
 }
 
 /// Removes entries that cannot be routed or displayed, web-only entries, and
@@ -144,11 +144,8 @@ class SourceContentPage {
           _deepCollectionEquality.equals(comics, other.comics);
 
   @override
-  int get hashCode => Object.hash(
-        query,
-        maxPage,
-        _deepCollectionEquality.hash(comics),
-      );
+  int get hashCode =>
+      Object.hash(query, maxPage, _deepCollectionEquality.hash(comics));
 }
 
 @immutable
@@ -175,12 +172,8 @@ class SourceContentSection {
           _deepCollectionEquality.equals(comics, other.comics);
 
   @override
-  int get hashCode => Object.hash(
-        key,
-        title,
-        moreQuery,
-        _deepCollectionEquality.hash(comics),
-      );
+  int get hashCode =>
+      Object.hash(key, title, moreQuery, _deepCollectionEquality.hash(comics));
 }
 
 @immutable
@@ -247,8 +240,8 @@ class HomeContent {
   HomeContent({
     required List<HomeContentSection> sections,
     required List<HomeSourceError> errors,
-  })  : sections = List<HomeContentSection>.unmodifiable(sections),
-        errors = List<HomeSourceError>.unmodifiable(errors);
+  }) : sections = List<HomeContentSection>.unmodifiable(sections),
+       errors = List<HomeSourceError>.unmodifiable(errors);
 }
 
 class _HomeSectionAccumulator {
@@ -302,11 +295,13 @@ HomeContent mergeHomeSections(Iterable<HomeSourceResult> sourceResults) {
   for (final sourceResult in sourceResults) {
     final result = sourceResult.result;
     if (result.error) {
-      errors.add(HomeSourceError(
-        sourceKey: sourceResult.sourceKey,
-        sourceName: sourceResult.sourceName,
-        message: result.errorMessageWithoutNull,
-      ));
+      errors.add(
+        HomeSourceError(
+          sourceKey: sourceResult.sourceKey,
+          sourceName: sourceResult.sourceName,
+          message: result.errorMessageWithoutNull,
+        ),
+      );
       continue;
     }
 
@@ -421,7 +416,6 @@ SourceContentMergeResult mergeSourceContentPage({
 }
 
 typedef LoadSourceCategories = Future<Res<List<SourceCategory>>> Function();
-typedef LoadSourceContent = Future<Res<SourceContentPage>> Function(
-  SourceContentQuery query,
-);
+typedef LoadSourceContent =
+    Future<Res<SourceContentPage>> Function(SourceContentQuery query);
 typedef LoadHomeSections = Future<Res<List<SourceContentSection>>> Function();

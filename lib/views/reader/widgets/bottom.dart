@@ -1,11 +1,9 @@
 /// 阅读器底部工具栏。
-library bottom;
+library;
 
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 
 import '../providers/reader_provider.dart' hide ReaderImage;
-import '../providers/list_state_provider.dart';
 import '../state/read_mode.dart';
 import '../utils/reader_utils.dart';
 
@@ -32,20 +30,12 @@ class _ReaderBottomState extends State<ReaderBottom> {
       left: 0,
       right: 0,
       child: Container(
-        padding: EdgeInsets.fromLTRB(
-          16,
-          8,
-          16,
-          context.bottom + 8,
-        ),
+        padding: EdgeInsets.fromLTRB(16, 8, 16, context.bottom + 8),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.bottomCenter,
             end: Alignment.topCenter,
-            colors: [
-              Colors.black.withValues(alpha: 0.7),
-              Colors.transparent,
-            ],
+            colors: [Colors.black.withValues(alpha: 0.7), Colors.transparent],
           ),
         ),
         child: Column(
@@ -123,8 +113,8 @@ class _ReaderBottomState extends State<ReaderBottom> {
                 mode.isVertical
                     ? Icons.vertical_align_bottom
                     : mode.isDoublePage
-                        ? Icons.view_column
-                        : Icons.chevron_right,
+                    ? Icons.view_column
+                    : Icons.chevron_right,
               ),
               title: Text(mode.displayName),
               trailing: mode == current ? const Icon(Icons.check) : null,

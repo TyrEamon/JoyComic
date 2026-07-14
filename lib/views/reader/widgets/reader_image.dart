@@ -3,14 +3,13 @@
 /// 使用 [CachedNetworkImageProvider] 或 [FileImage] 加载，以
 /// [ResizeImage.resizeIfNeeded] 包裹保证缓存键与预加载一致。
 /// 集成 [RetryForImage] 提供自动重试、进度指示和容错。
-library reader_image;
+library;
 
 import 'dart:io';
 
 import 'package:cached_network_image_ce/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
-import '../utils/reader_utils.dart';
 import 'retry_for_image.dart';
 
 /// 漫画单图加载显示组件。

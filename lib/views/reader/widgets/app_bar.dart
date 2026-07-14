@@ -1,5 +1,5 @@
 /// 阅读器顶部工具栏。
-library app_bar;
+library;
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -21,20 +21,12 @@ class ReaderAppBar extends StatelessWidget {
       left: 0,
       right: 0,
       child: Container(
-        padding: EdgeInsets.fromLTRB(
-          0,
-          context.top + 4,
-          0,
-          4,
-        ),
+        padding: EdgeInsets.fromLTRB(0, context.top + 4, 0, 4),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Colors.black.withValues(alpha: 0.7),
-              Colors.transparent,
-            ],
+            colors: [Colors.black.withValues(alpha: 0.7), Colors.transparent],
           ),
         ),
         child: Row(
@@ -63,10 +55,7 @@ class ReaderAppBar extends StatelessWidget {
                   ),
                   Text(
                     getTextBeforeNewLine(context.reader.chapter.name),
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 12,
-                    ),
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
