@@ -645,7 +645,7 @@ class _FavoritesGrid extends StatelessWidget {
                     right: 4,
                     top: 4,
                     child: Material(
-                      color: Colors.black.withValues(alpha: 0.62),
+                      color: context.semanticColors.imageScrimSoft,
                       shape: const CircleBorder(),
                       child: IconButton(
                         tooltip: busy ? '取消收藏中' : '取消收藏',

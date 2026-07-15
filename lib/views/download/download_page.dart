@@ -7,7 +7,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../foundation/download_manager.dart';
 import '../../foundation/download_task.dart';
-import '../../theme/app_colors.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
 import '../common/widgets/comic_cover.dart';
@@ -165,7 +164,9 @@ class _TaskTile extends StatelessWidget {
             value: task.progress,
             minHeight: 3,
             backgroundColor: context.elevatedSurfaceColor,
-            color: completed ? AppColors.success : context.colorScheme.primary,
+            color: completed
+                ? context.successColor
+                : context.colorScheme.primary,
           ),
           const SizedBox(height: 4),
           Text(
@@ -174,7 +175,7 @@ class _TaskTile extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: task.status == DownloadStatus.failed
-                  ? Colors.redAccent
+                  ? context.colorScheme.error
                   : context.tertiaryTextColor,
               fontSize: 11,
             ),
@@ -200,10 +201,13 @@ class _TaskTile extends StatelessWidget {
             IconButton(
               tooltip: '重试',
               onPressed: () => DownloadManager.instance.retry(task.id!),
-              icon: const Icon(Icons.refresh_rounded, color: Colors.redAccent),
+              icon: Icon(
+                Icons.refresh_rounded,
+                color: context.colorScheme.error,
+              ),
             )
           else if (completed)
-            const Icon(Icons.menu_book_rounded, color: AppColors.success),
+            Icon(Icons.menu_book_rounded, color: context.successColor),
           IconButton(
             tooltip: '删除',
             onPressed: () => _showDeleteChoices(context),
@@ -241,9 +245,9 @@ class _TaskTile extends StatelessWidget {
               onTap: () => Navigator.pop(context, false),
             ),
             ListTile(
-              leading: const Icon(
+              leading: Icon(
                 Icons.delete_forever_rounded,
-                color: Colors.redAccent,
+                color: context.colorScheme.error,
               ),
               title: const Text('删除任务和文件'),
               subtitle: const Text('本地章节文件将一并删除'),

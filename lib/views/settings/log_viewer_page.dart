@@ -107,8 +107,8 @@ class _LogViewerPageState extends State<LogViewerPage> {
   }
 
   Color _levelColor(String level) => switch (level) {
-    'error' || 'fatal' => Colors.redAccent,
-    'warn' || 'warning' => Colors.orangeAccent,
+    'error' || 'fatal' => context.colorScheme.error,
+    'warn' || 'warning' => context.warningColor,
     'info' => context.colorScheme.primary,
     _ => context.secondaryTextColor,
   };
@@ -245,7 +245,7 @@ class _LevelChip extends StatelessWidget {
           color: active ? context.colorScheme.primary : context.surfaceColor,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: active ? Colors.transparent : context.borderColor,
+            color: active ? context.colorScheme.primary : context.borderColor,
           ),
         ),
         child: Text(
@@ -253,7 +253,9 @@ class _LevelChip extends StatelessWidget {
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: active ? Colors.white : context.secondaryTextColor,
+            color: active
+                ? context.colorScheme.onPrimary
+                : context.secondaryTextColor,
           ),
         ),
       ),
@@ -336,9 +338,9 @@ class _LogCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               log.error!,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 11,
-                color: Colors.redAccent,
+                color: context.colorScheme.error,
                 fontFamily: 'monospace',
               ),
             ),

@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:joycomic/foundation/preferences_store.dart';
 import 'package:joycomic/foundation/reader_config.dart';
+import 'package:joycomic/theme/app_theme.dart';
 import 'package:joycomic/views/reader/state/read_mode.dart';
 import 'package:joycomic/views/settings/reader_settings_page.dart';
 import 'package:joycomic/views/settings/settings_page.dart';
@@ -94,7 +95,9 @@ void main() {
       'menuLocked': true,
     });
 
-    await tester.pumpWidget(const MaterialApp(home: ReaderSettingsPage()));
+    await tester.pumpWidget(
+      MaterialApp(theme: AppTheme.light(), home: const ReaderSettingsPage()),
+    );
 
     final gestureSwitch = tester.widget<Switch>(
       find.byKey(const Key('reader-enable-gesture')),
@@ -122,6 +125,15 @@ void main() {
     expect(
       tester.widget<InkWell>(find.byKey(const Key('reader-preload-6'))).onTap,
       isNotNull,
+    );
+    final selectedPreload = tester.widget<Container>(
+      find.byKey(const Key('reader-preload-container-6')),
+    );
+    final selectedDecoration = selectedPreload.decoration as BoxDecoration;
+    expect(selectedDecoration.gradient, isNull);
+    expect(
+      selectedDecoration.color,
+      AppTheme.light().colorScheme.primaryContainer,
     );
     expect(find.textContaining('音量键'), findsNothing);
     expect(find.text('图片质量'), findsNothing);

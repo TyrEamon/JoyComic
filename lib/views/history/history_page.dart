@@ -195,7 +195,10 @@ class _HistoryCard extends StatelessWidget {
           color: context.colorScheme.error,
           borderRadius: AppRadius.brLg,
         ),
-        child: const Icon(Icons.delete_outline_rounded, color: Colors.white),
+        child: Icon(
+          Icons.delete_outline_rounded,
+          color: context.colorScheme.onError,
+        ),
       ),
       onDismissed: (_) => onDelete(),
       child: Material(

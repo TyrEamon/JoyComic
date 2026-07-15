@@ -12,7 +12,6 @@ extension AppThemeContext on BuildContext {
 
   AppSemanticColors get semanticColors {
     final colors = appTheme.extension<AppSemanticColors>();
-    assert(colors != null, 'AppSemanticColors must be installed in ThemeData');
     return colors ?? AppSemanticColors.fallback(colorScheme.brightness);
   }
 

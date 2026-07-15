@@ -8,7 +8,6 @@ import '../../foundation/log.dart';
 import '../../foundation/webdav_client.dart';
 import '../../foundation/webdav_config_store.dart';
 import '../../foundation/webdav_sync.dart';
-import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 
 class WebDavSettingsPage extends StatefulWidget {
@@ -255,7 +254,7 @@ class _WebDavSettingsPageState extends State<WebDavSettingsPage> {
                       _testResult!,
                       style: TextStyle(
                         color: _testResult!.startsWith('✅')
-                            ? AppColors.success
+                            ? context.successColor
                             : context.colorScheme.error,
                       ),
                     ),

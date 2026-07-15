@@ -7,7 +7,6 @@ import 'package:joycomic/theme/app_theme_context.dart';
 import '../../network/jm/jm_network.dart';
 import '../../network/picacg/picacg_network.dart';
 import '../../network/source_state.dart';
-import '../../theme/app_colors.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
 
@@ -123,12 +122,12 @@ class _SourceSettingsPageState extends State<SourceSettingsPage> {
     FilledButton.icon(
       onPressed: _testing ? null : _testAll,
       icon: _testing
-          ? const SizedBox(
+          ? SizedBox(
               width: 16,
               height: 16,
               child: CircularProgressIndicator(
                 strokeWidth: 2,
-                color: Colors.white,
+                color: context.colorScheme.onPrimary,
               ),
             )
           : const Icon(Icons.speed_rounded, size: 18),
@@ -363,8 +362,8 @@ class _ChoiceTile extends StatelessWidget {
                 color: latency! < 0
                     ? context.colorScheme.error
                     : latency! < 300
-                    ? AppColors.success
-                    : AppColors.hotAccent,
+                    ? context.successColor
+                    : context.warningColor,
                 fontWeight: FontWeight.w600,
               ),
             ),

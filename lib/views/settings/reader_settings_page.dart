@@ -357,19 +357,15 @@ class _SegmentRow extends StatelessWidget {
                     onTap: () => onChanged(i),
                     borderRadius: BorderRadius.circular(8),
                     child: Container(
+                      key: Key('$keyPrefix-container-${options[i]}'),
                       padding: const EdgeInsets.symmetric(
                         horizontal: 12,
                         vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        gradient: i == selected
-                            ? LinearGradient(
-                                colors: [
-                                  context.colorScheme.primary,
-                                  context.colorScheme.secondary,
-                                ],
-                              )
-                            : null,
+                        color: i == selected
+                            ? context.colorScheme.primaryContainer
+                            : Colors.transparent,
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
@@ -378,7 +374,7 @@ class _SegmentRow extends StatelessWidget {
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                           color: i == selected
-                              ? Colors.white
+                              ? context.colorScheme.onPrimaryContainer
                               : context.secondaryTextColor,
                         ),
                       ),
