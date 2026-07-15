@@ -16,12 +16,7 @@ class HeroHeader extends StatelessWidget {
     required this.subTitle,
     required this.backgroundCover,
     required this.frontCover,
-    required this.author,
-    required this.tags,
-    required this.hotValue,
-    required this.favoriteCount,
     required this.rating,
-    required this.ratingCount,
     this.coverHeaders,
   });
 
@@ -29,12 +24,7 @@ class HeroHeader extends StatelessWidget {
   final String? subTitle;
   final String? backgroundCover;
   final String? frontCover;
-  final String? author;
-  final List<String> tags;
-  final String? hotValue;
-  final String? favoriteCount;
-  final double rating;
-  final String ratingCount;
+  final double? rating;
   final Map<String, dynamic>? coverHeaders;
 
   static const double _height = 440;
@@ -98,12 +88,7 @@ class HeroHeader extends StatelessWidget {
                   title: title,
                   subTitle: subTitle,
                   frontCover: frontCover,
-                  author: author,
-                  tags: tags,
-                  hotValue: hotValue,
-                  favoriteCount: favoriteCount,
                   rating: rating,
-                  ratingCount: ratingCount,
                   coverHeaders: coverHeaders,
                 ),
               ),

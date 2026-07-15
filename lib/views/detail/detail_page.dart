@@ -8,6 +8,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:joycomic/theme/app_theme_context.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -18,10 +19,12 @@ import '../../foundation/download_manager.dart';
 import '../../foundation/download_task.dart';
 import '../../theme/app_spacing.dart';
 import '../reader/state/comic_state.dart';
+import 'detail_navigation.dart';
 import 'detail_view_model.dart';
 import 'widgets/chapter_grid.dart';
 import 'widgets/comment_section.dart';
 import 'widgets/detail_app_bar.dart';
+import 'widgets/detail_metadata.dart';
 import 'widgets/hero_header.dart';
 import 'widgets/recommendation_carousel.dart';
 import 'widgets/sticky_action_bar.dart';
@@ -176,9 +179,6 @@ class _ContentState extends State<_Content> {
         ? chapterEntries.last.name
         : null;
 
-    // 作者：tags 中"作者"/"author"键首个值；禁漫可能多作者，取第一个展示。
-    final author = (info.tags['作者'] ?? info.tags['author'])?.firstOrNull;
-
     // 相关推荐：从 ComicInfoData.suggestions 映射。
     final List<RecommendItem> recommends =
         info.suggestions
@@ -205,15 +205,10 @@ class _ContentState extends State<_Content> {
             // 1. 沉浸头。
             HeroHeader(
               title: info.title,
-              subTitle: info.subTitle,
+              subTitle: vm.author,
               backgroundCover: info.cover,
               frontCover: info.cover,
-              author: author,
-              tags: _flattenTags(info.tags),
-              hotValue: _hotValue(info.tags),
-              favoriteCount: _favCount(info.tags),
-              rating: _rating(info.tags),
-              ratingCount: _ratingCount(info.tags),
+              rating: vm.rating,
               coverHeaders: vm.coverHeaders,
             ),
             // 2. 内容主体。
@@ -221,6 +216,36 @@ class _ContentState extends State<_Content> {
               padding: const EdgeInsets.only(top: AppSpacing.xl),
               sliver: SliverList(
                 delegate: SliverChildListDelegate.fixed([
+                  DetailMetadata(
+                    authors: info.authors,
+                    categories: info.categories,
+                    labels: info.labels,
+                    rating: vm.rating,
+                    viewCount: info.viewCount,
+                    likeCount: info.likeCount,
+                    commentCount: info.commentCount,
+                    chapterCount: vm.chapters.length,
+                    jmNumber: vm.sourceKey == 'jm' ? info.comicId : null,
+                    onAuthorTap: (value) => openDetailKeywordSearch(
+                      context,
+                      sourceKey: vm.sourceKey,
+                      keyword: value,
+                    ),
+                    onCategoryTap: (value) => openDetailCategory(
+                      context,
+                      sourceKey: vm.sourceKey,
+                      category: value,
+                    ),
+                    onLabelTap: (value) => openDetailKeywordSearch(
+                      context,
+                      sourceKey: vm.sourceKey,
+                      keyword: value,
+                    ),
+                    onJmNumberTap: vm.sourceKey == 'jm'
+                        ? () => _copyJmNumber(context, info.comicId)
+                        : null,
+                  ),
+                  const SizedBox(height: AppSpacing.sectionGap),
                   SynopsisBlock(text: info.description),
                   const SizedBox(height: AppSpacing.sectionGap),
                   ChapterGrid(
@@ -566,26 +591,11 @@ class _ContentState extends State<_Content> {
     );
   }
 
-  List<String> _flattenTags(Map<String, List<String>> tags) {
-    final exclude = {'作者', 'author', '热度', '评分', '评价人数', '收藏'};
-    final out = <String>[];
-    tags.forEach((k, v) {
-      if (exclude.contains(k)) return;
-      out.addAll(v.take(2));
-    });
-    return out.take(4).toList();
+  Future<void> _copyJmNumber(BuildContext context, String comicId) async {
+    await Clipboard.setData(ClipboardData(text: comicId));
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('已复制车号 JM$comicId')));
   }
-
-  String? _hotValue(Map<String, List<String>> tags) =>
-      (tags['热度'] ?? tags['hot'])?.firstOrNull;
-  String? _favCount(Map<String, List<String>> tags) =>
-      (tags['收藏'] ?? tags['favorite'])?.firstOrNull;
-
-  double _rating(Map<String, List<String>> tags) {
-    final v = (tags['评分'] ?? tags['rating'])?.firstOrNull;
-    return double.tryParse(v ?? '') ?? 8.0;
-  }
-
-  String _ratingCount(Map<String, List<String>> tags) =>
-      (tags['评价人数'] ?? tags['ratingCount'])?.firstOrNull ?? '0';
 }

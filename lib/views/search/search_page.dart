@@ -28,18 +28,26 @@ import '../common/widgets/comic_grid.dart';
 import '../common/widgets/empty_state.dart';
 import '../common/widgets/loading_grid.dart';
 
+String? directJmComicId(String input) {
+  return RegExp(
+    r'^\s*(?:jm)?\s*(\d+)\s*$',
+    caseSensitive: false,
+  ).firstMatch(input)?.group(1);
+}
+
 class SearchPage extends StatefulWidget {
-  const SearchPage({super.key, this.sourceKey = 'all'});
+  const SearchPage({super.key, this.sourceKey = 'all', this.initialQuery});
 
   /// 'all' = 全部源并行；否则单源搜索。
   final String sourceKey;
+  final String? initialQuery;
 
   @override
   State<SearchPage> createState() => _SearchPageState();
 }
 
 class _SearchPageState extends State<SearchPage> {
-  final _controller = TextEditingController();
+  late final TextEditingController _controller;
   final _focus = FocusNode();
   List<ComicGridItem> _results = const [];
   bool _loading = false;
@@ -58,7 +66,16 @@ class _SearchPageState extends State<SearchPage> {
   @override
   void initState() {
     super.initState();
-    _controller.addListener(() => setState(() {}));
+    final initialQuery = widget.initialQuery?.trim() ?? '';
+    _controller = TextEditingController(text: initialQuery);
+    _controller.addListener(() {
+      if (mounted) setState(() {});
+    });
+    if (initialQuery.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _doSearch(initialQuery);
+      });
+    }
   }
 
   @override
@@ -82,8 +99,20 @@ class _SearchPageState extends State<SearchPage> {
     return s != null ? [s] : [];
   }
 
+  bool get _allowsDirectJm {
+    final filter = _filterSource ?? widget.sourceKey;
+    return filter == 'jm' ||
+        (filter == 'all' && ComicSource.find('jm') != null);
+  }
+
   Future<void> _doSearch(String kw) async {
-    if (kw.trim().isEmpty) return;
+    final normalized = kw.trim();
+    if (normalized.isEmpty) return;
+    final directId = directJmComicId(normalized);
+    if (directId != null && _allowsDirectJm) {
+      context.push('/detail/jm/$directId');
+      return;
+    }
     setState(() {
       _loading = true;
       _searched = true;
@@ -103,10 +132,10 @@ class _SearchPageState extends State<SearchPage> {
     }
 
     // 保存搜索历史
-    _saveHistory(kw);
+    _saveHistory(normalized);
 
     final futures = sources.map((s) async {
-      final res = await s.searchPageData!.loadPage!(kw, 1, const []);
+      final res = await s.searchPageData!.loadPage!(normalized, 1, const []);
       if (res.error) return <ComicGridItem>[];
       final items = res.data.map(
         (b) => ComicGridItem(
@@ -123,7 +152,7 @@ class _SearchPageState extends State<SearchPage> {
     final results = await Future.wait(futures);
     if (!mounted) return;
     final merged = results.expand((e) => e).toList();
-    Log.i('Search', 'keyword="$kw" → ${merged.length} results');
+    Log.i('Search', 'keyword="$normalized" → ${merged.length} results');
     setState(() {
       _loading = false;
       _results = merged;
@@ -348,7 +377,11 @@ class _SearchHomeState extends State<_SearchHome> {
   @override
   void initState() {
     super.initState();
-    _history = _historyHelper.getHistory();
+    try {
+      _history = _historyHelper.getHistory();
+    } catch (_) {
+      _history = const <String>[];
+    }
     _loadHotTags();
   }
 

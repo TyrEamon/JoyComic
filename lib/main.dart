@@ -45,11 +45,17 @@ final appRouter = GoRouter(
   initialLocation: '/',
   routes: [
     GoRoute(path: '/', builder: (context, state) => const MainScaffold()),
-    GoRoute(path: '/search', builder: (context, state) => const SearchPage()),
+    GoRoute(
+      path: '/search',
+      builder: (context, state) =>
+          SearchPage(initialQuery: state.uri.queryParameters['q']),
+    ),
     GoRoute(
       path: '/search/:sourceKey',
-      builder: (context, state) =>
-          SearchPage(sourceKey: state.pathParameters['sourceKey']!),
+      builder: (context, state) => SearchPage(
+        sourceKey: state.pathParameters['sourceKey']!,
+        initialQuery: state.uri.queryParameters['q'],
+      ),
     ),
     GoRoute(
       path: '/category/:sourceKey/:categoryKey',

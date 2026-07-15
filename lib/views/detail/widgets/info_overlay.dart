@@ -1,18 +1,11 @@
-/// 详情页信息叠加层。
-///
-/// 围绕前景完整封面展开排布：
-/// - 热度胶囊标签（[PillBadge]）置顶
-/// - 主标题 + 两行副标题
-/// - 元数据组：作者名（带跳转箭头）/ tags / 热度·收藏量
-/// - 评分复合组件：大号数字 + 五星 + 评价人数
+/// 详情页封面信息叠加层：标题、作者与可选评分。
 library;
 
 import 'package:flutter/material.dart';
 
-import '../../../theme/app_theme_context.dart';
 import '../../../theme/app_spacing.dart';
+import '../../../theme/app_theme_context.dart';
 import '../../../theme/app_typography.dart';
-import '../../../theme/widgets/pill_badge.dart';
 import '../../common/widgets/comic_cover.dart';
 import '../../common/widgets/rating_stars.dart';
 
@@ -22,36 +15,26 @@ class InfoOverlay extends StatelessWidget {
     required this.title,
     required this.subTitle,
     required this.frontCover,
-    required this.author,
-    required this.tags,
-    required this.hotValue,
-    required this.favoriteCount,
     required this.rating,
-    required this.ratingCount,
     this.coverHeaders,
   });
 
   final String title;
   final String? subTitle;
   final String? frontCover;
-  final String? author;
-  final List<String> tags;
-  final String? hotValue;
-  final String? favoriteCount;
-  final double rating;
-  final String ratingCount;
+  final double? rating;
   final Map<String, dynamic>? coverHeaders;
 
   static const double _coverWidth = 132;
 
   @override
   Widget build(BuildContext context) {
+    final onImage = context.onImageColor;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          // 前层完整封面。
           Padding(
             padding: const EdgeInsets.only(top: 56),
             child: ComicCover(
@@ -61,74 +44,48 @@ class InfoOverlay extends StatelessWidget {
             ),
           ),
           const SizedBox(width: AppSpacing.md),
-          // 信息文本列。
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (hotValue != null) ...[
-                  PillBadge(
-                    label: '热度 $hotValue',
-                    leadingDotColor: context.colorScheme.primary,
-                  ),
-                  const SizedBox(height: AppSpacing.sm),
-                ],
                 Text(
                   title,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: AppTypography.hero(context),
+                  style: AppTypography.hero(context).copyWith(color: onImage),
                 ),
-                if (subTitle != null && subTitle!.isNotEmpty) ...[
-                  const SizedBox(height: 4),
+                if (subTitle != null && subTitle!.trim().isNotEmpty) ...[
+                  const SizedBox(height: AppSpacing.xs),
                   Text(
                     subTitle!,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: AppTypography.subtitle(context),
+                    style: AppTypography.subtitle(
+                      context,
+                    ).copyWith(color: onImage.withValues(alpha: 0.82)),
                   ),
                 ],
-                const SizedBox(height: AppSpacing.sm),
-                _RatingChip(rating: rating, count: ratingCount),
+                if (rating != null) ...[
+                  const SizedBox(height: AppSpacing.sm),
+                  Row(
+                    children: [
+                      Text(
+                        rating!.toStringAsFixed(1),
+                        style: AppTypography.ratingNumber(
+                          context,
+                        ).copyWith(color: onImage),
+                      ),
+                      const SizedBox(width: AppSpacing.xs),
+                      RatingStars(rating: rating! / 2, size: 14),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
         ],
       ),
-    );
-  }
-}
-
-/// 评分复合组件：大号数字 + 五星 + 评价人数。
-class _RatingChip extends StatelessWidget {
-  const _RatingChip({required this.rating, required this.count});
-
-  final double rating;
-  final String count;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Text(
-          rating.toStringAsFixed(1),
-          style: AppTypography.ratingNumber(
-            context,
-          ).copyWith(color: context.ratingColor),
-        ),
-        const SizedBox(width: 6),
-        Padding(
-          padding: const EdgeInsets.only(bottom: 3),
-          child: RatingStars(rating: rating / 2, size: 13),
-        ),
-        const SizedBox(width: 6),
-        Padding(
-          padding: const EdgeInsets.only(bottom: 4),
-          child: Text('$count 人评价', style: AppTypography.ratingCount(context)),
-        ),
-      ],
     );
   }
 }
