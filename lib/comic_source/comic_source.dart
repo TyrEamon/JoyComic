@@ -16,7 +16,9 @@ import 'package:flutter/widgets.dart';
 import '../network/base_comic.dart';
 import '../network/res.dart';
 import '../views/common/source_content_models.dart';
-import 'history.dart';
+import 'detail_models.dart';
+
+export 'detail_models.dart';
 
 // ============================ typedefs：源契约函数签名 ============================
 
@@ -33,19 +35,18 @@ typedef LoadComicPagesFunc =
     Future<Res<List<String>>> Function(String id, String? ep);
 
 typedef CommentsLoader =
-    Future<Res<List<Comment>>> Function(
+    Future<Res<CommentPageData>> Function(
       String id,
       String? subId,
       int page,
-      String? replyTo,
+      String? replyToId,
     );
-
 typedef SendCommentFunc =
     Future<Res<bool>> Function(
       String id,
       String? subId,
       String content,
-      String? replyTo,
+      CommentReplyTarget? replyTo,
     );
 
 /// 单图加载配置覆写（url/method/headers 等），供自定义鉴权图片链路使用。
@@ -375,52 +376,6 @@ class FavoriteData {
 
 // ============================ 通用详情契约 / 设置项 / 评论 ============================
 
-class ComicInfoData with HistoryMixin {
-  @override
-  final String title;
-  @override
-  final String? subTitle;
-  final String cover;
-  @override
-  final String? description;
-  final Map<String, List<String>> tags;
-
-  /// 章节映射，id -> name（无分章的漫画为 null）。
-  final Map<String, String>? chapters;
-  final List<String>? thumbnails;
-  final Future<Res<List<String>>> Function(String id, int page)?
-  thumbnailLoader;
-  final int thumbnailMaxPage;
-  final List<BaseComic>? suggestions;
-  final String sourceKey;
-  final String comicId;
-  final bool? isFavorite;
-  final String? subId;
-
-  const ComicInfoData({
-    required this.title,
-    required this.subTitle,
-    required this.cover,
-    required this.description,
-    required this.tags,
-    required this.chapters,
-    required this.thumbnails,
-    this.thumbnailLoader,
-    this.thumbnailMaxPage = 0,
-    this.suggestions,
-    required this.sourceKey,
-    required this.comicId,
-    this.isFavorite,
-    this.subId,
-  });
-
-  @override
-  HistoryType get historyType => HistoryType.fromKey(sourceKey);
-
-  @override
-  String get target => comicId;
-}
-
 class SettingItem {
   final String name;
   final String iconName;
@@ -435,23 +390,6 @@ class SettingItem {
 }
 
 enum SettingType { switcher, selector, input }
-
-class Comment {
-  final String userName;
-  final String? avatar;
-  final String content;
-  final String? time;
-  final int? replyCount;
-  final String? id;
-  const Comment(
-    this.userName,
-    this.avatar,
-    this.content,
-    this.time,
-    this.replyCount,
-    this.id,
-  );
-}
 
 // ============================ 分类页数据 ============================
 

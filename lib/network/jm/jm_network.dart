@@ -13,14 +13,16 @@ import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 
-import '../res.dart';
-import '../json_value.dart';
+import '../../comic_source/detail_models.dart';
+import '../../foundation/detail_text.dart';
 import '../../foundation/log.dart';
+import '../json_value.dart';
+import '../res.dart';
+import '../source_state.dart';
 import 'jm_headers.dart';
 import 'jm_image.dart';
 import 'jm_models.dart';
 import 'jm_parsing.dart';
-import '../source_state.dart';
 
 export 'jm_models.dart';
 
@@ -136,6 +138,142 @@ int? jmCategoryMaxPage({
       : jmCategoryProtocolPageSize;
   final calculated = (total + size - 1) ~/ size;
   return calculated < page ? page : calculated;
+}
+
+/// Stable page size of the JM forum comment endpoint.
+const jmCommentProtocolPageSize = 20;
+
+Res<CommentPageData> parseJmCommentPage(Object? value, {required int page}) {
+  if (value is! Map || page < 1) return _jmCommentParseFailure();
+  final data = jsonMap(value);
+  if (data['list'] is! List || !data.containsKey('total')) {
+    return _jmCommentParseFailure();
+  }
+  final totalComments = _parseJmCommentInteger(data['total']);
+  if (totalComments == null || totalComments < 0) {
+    return _jmCommentParseFailure();
+  }
+
+  var resolvedPage = page;
+  if (data.containsKey('page')) {
+    final parsedPage = _parseJmCommentInteger(data['page']);
+    if (parsedPage == null || parsedPage < 1) {
+      return _jmCommentParseFailure();
+    }
+    resolvedPage = parsedPage;
+  }
+
+  int? explicitTotalPages;
+  for (final key in const <String>[
+    'pages',
+    'page_count',
+    'pageCount',
+    'total_page',
+    'totalPage',
+  ]) {
+    if (!data.containsKey(key)) continue;
+    final parsedTotalPages = _parseJmCommentInteger(data[key]);
+    if (parsedTotalPages == null ||
+        parsedTotalPages < 1 ||
+        (explicitTotalPages != null &&
+            explicitTotalPages != parsedTotalPages)) {
+      return _jmCommentParseFailure();
+    }
+    explicitTotalPages = parsedTotalPages;
+  }
+
+  int? explicitPageSize;
+  for (final key in const <String>['page_size', 'pageSize', 'per_page']) {
+    if (!data.containsKey(key)) continue;
+    final parsedPageSize = _parseJmCommentInteger(data[key]);
+    if (parsedPageSize == null ||
+        parsedPageSize < 1 ||
+        (explicitPageSize != null && explicitPageSize != parsedPageSize)) {
+      return _jmCommentParseFailure();
+    }
+    explicitPageSize = parsedPageSize;
+  }
+  final pageSize = explicitPageSize ?? jmCommentProtocolPageSize;
+
+  final rawComments = jsonList(data['list']);
+  if (rawComments.any(
+    (comment) => comment is! Map || !_hasValidJmReplies(jsonMap(comment)),
+  )) {
+    return _jmCommentParseFailure();
+  }
+  final comments = <Comment>[
+    for (final rawComment in rawComments) _parseJmComment(jsonMap(rawComment)),
+  ];
+  if (comments.length > totalComments) return _jmCommentParseFailure();
+
+  final calculatedTotalPages = totalComments == 0
+      ? 1
+      : (totalComments + pageSize - 1) ~/ pageSize;
+  final totalPages = explicitTotalPages ?? calculatedTotalPages;
+  if (resolvedPage > totalPages) return _jmCommentParseFailure();
+
+  return Res<CommentPageData>(
+    CommentPageData(
+      comments: comments,
+      page: resolvedPage,
+      totalPages: totalPages,
+      totalComments: totalComments,
+    ),
+  );
+}
+
+Res<CommentPageData> _jmCommentParseFailure() =>
+    const Res<CommentPageData>(null, errorMessage: '评论解析失败');
+
+int? _parseJmCommentInteger(Object? value) {
+  if (value is int) return value;
+  if (value is num) {
+    if (!value.isFinite || value != value.truncateToDouble()) return null;
+    return value.toInt();
+  }
+  if (value is String) return int.tryParse(value.trim());
+  return null;
+}
+
+bool _hasValidJmReplies(Map<String, dynamic> comment) {
+  for (final key in const <String>['replys', 'replies']) {
+    if (!comment.containsKey(key) || comment[key] == null) continue;
+    final value = comment[key];
+    if (value is! List) return false;
+    for (final rawReply in value) {
+      if (rawReply is! Map || !_hasValidJmReplies(jsonMap(rawReply))) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+Comment _parseJmComment(Map<String, dynamic> comment) {
+  final rawReplies = comment['replys'] ?? comment['replies'];
+  final replies = <Comment>[
+    for (final rawReply in jsonList(rawReplies))
+      if (rawReply is Map) _parseJmComment(jsonMap(rawReply)),
+  ];
+  final rawReplyCount =
+      comment['replyCount'] ?? comment['reply_count'] ?? comment['comments'];
+  final commentId = jsonString(comment['CID'] ?? comment['id']).trim();
+  final photo = jsonString(comment['photo']).trim();
+  final time = jsonString(comment['addtime']).trim();
+
+  return Comment.snapshot(
+    jsonString(comment['username']),
+    photo.isEmpty ? null : getJmAvatarUrl(photo),
+    normalizeDetailText(jsonString(comment['content'])),
+    time.isEmpty ? null : time,
+    rawReplyCount == null
+        ? replies.length
+        : jsonInt(rawReplyCount, fallback: replies.length),
+    commentId.isEmpty ? null : commentId,
+    jsonInt(comment['likeCount'] ?? comment['likesCount'] ?? comment['likes']),
+    jsonBool(comment['isLiked'] ?? comment['liked']),
+    replies,
+  );
 }
 
 typedef JmDioFactory = Dio Function(BaseOptions options);
@@ -769,51 +907,18 @@ class JmNetwork {
 
   // ============================ 评论相关 ============================
 
-  /// 获取评论原始数据。
-  ///
-  /// [id] 漫画 id，[page] 页码，[mode] 评论模式（默认 'manhua'）。
-  /// 返回解析后的行数据列表，每个 map 含：id / avatar / userName / content / time / replyCount。
-  Future<Res<List<Map<String, dynamic>>>> getComment(
+  /// 获取类型化评论分页数据。
+  Future<Res<CommentPageData>> getComment(
     String id,
     int page, [
     String mode = 'manhua',
   ]) async {
     final res = await get('$baseUrl/forum?mode=$mode&aid=$id&page=$page');
-    if (res.error) return Res(null, errorMessage: res.errorMessage);
-    final rawData = res.data;
-    if (rawData is! Map) {
-      return const Res(null, errorMessage: '评论解析失败');
+    if (res.error) {
+      return Res<CommentPageData>(null, errorMessage: res.errorMessage);
     }
-    final data = jsonMap(rawData);
-    final comments = <Map<String, dynamic>>[];
-    for (final rawComment in jsonList(data['list'])) {
-      if (rawComment is! Map) continue;
-      final comment = jsonMap(rawComment);
-      final replies = jsonList(comment['replys']);
-      final rawReplyCount =
-          comment['replyCount'] ??
-          comment['reply_count'] ??
-          comment['comments'];
-      final commentId = jsonString(comment['CID'] ?? comment['id']);
-      comments.add(<String, dynamic>{
-        'id': commentId.isEmpty ? null : commentId,
-        'avatar': comment['photo'] == null
-            ? null
-            : getJmAvatarUrl(jsonString(comment['photo'])),
-        'userName': jsonString(comment['username']),
-        'content': _stripHtml(jsonString(comment['content'])),
-        'time': comment['addtime'] == null
-            ? null
-            : jsonString(comment['addtime']),
-        'replyCount': jsonInt(rawReplyCount, fallback: replies.length),
-      });
-    }
-    return Res(comments, subData: jsonInt(data['total']));
+    return parseJmCommentPage(res.data, page: page);
   }
-
-  /// 简易 HTML 标签剥离。
-  String _stripHtml(String input) =>
-      input.replaceAll(RegExp(r'<[^>]*>'), '').trim();
 }
 
 /// 单个 shunt 的测速结果。

@@ -23,14 +23,18 @@ void main() {
         filePath: 'test',
         commentsLoader: (_, __, page, ___) async {
           requestedPages.add(page);
-          return Res<List<Comment>>(
-            page == 1
-                ? const <Comment>[
-                    Comment('A', null, 'one', null, 0, '1'),
-                    Comment('B', null, 'two', null, 0, '2'),
-                  ]
-                : const <Comment>[Comment('C', null, 'three', null, 0, '3')],
-            subData: 3,
+          return Res<CommentPageData>(
+            CommentPageData(
+              comments: page == 1
+                  ? const <Comment>[
+                      Comment('A', null, 'one', null, 0, '1'),
+                      Comment('B', null, 'two', null, 0, '2'),
+                    ]
+                  : const <Comment>[Comment('C', null, 'three', null, 0, '3')],
+              page: page,
+              totalPages: 2,
+              totalComments: 3,
+            ),
           );
         },
       );
@@ -48,6 +52,7 @@ void main() {
         '1',
         '2',
       ]);
+      expect(viewModel.commentTotal, 3);
       expect(viewModel.hasMoreComments, isTrue);
 
       await viewModel.loadMoreComments();
@@ -100,8 +105,8 @@ void main() {
     final database = sqlite3.openInMemory();
     addTearDown(database.dispose);
     JoyDatabase.migrateCore(database);
-    final oldComments = Completer<Res<List<Comment>>>();
-    final newComments = Completer<Res<List<Comment>>>();
+    final oldComments = Completer<Res<CommentPageData>>();
+    final newComments = Completer<Res<CommentPageData>>();
     var calls = 0;
     final source = ComicSource.named(
       name: 'Comment generations',
@@ -127,17 +132,31 @@ void main() {
     expect(calls, 2);
 
     newComments.complete(
-      const Res<List<Comment>>(<Comment>[
-        Comment('New', null, 'fresh', null, 0, 'new'),
-      ]),
+      Res<CommentPageData>(
+        CommentPageData(
+          comments: const <Comment>[
+            Comment('New', null, 'fresh', null, 0, 'new'),
+          ],
+          page: 1,
+          totalPages: 1,
+          totalComments: 1,
+        ),
+      ),
     );
     await Future<void>.delayed(Duration.zero);
     expect(viewModel.comments.single.id, 'new');
 
     oldComments.complete(
-      const Res<List<Comment>>(<Comment>[
-        Comment('Old', null, 'stale', null, 0, 'old'),
-      ]),
+      Res<CommentPageData>(
+        CommentPageData(
+          comments: const <Comment>[
+            Comment('Old', null, 'stale', null, 0, 'old'),
+          ],
+          page: 1,
+          totalPages: 1,
+          totalComments: 1,
+        ),
+      ),
     );
     await staleLoad;
     expect(viewModel.comments.single.id, 'new');

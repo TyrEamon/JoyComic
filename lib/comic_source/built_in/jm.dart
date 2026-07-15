@@ -231,23 +231,8 @@ ComicSource buildJmSource({JmFavoriteToggle? favoriteToggle}) {
       multiFolder: true,
     ),
     // 评论。
-    commentsLoader: (id, subId, page, replyTo) async {
-      final res = await JmNetwork().getComment(id, page);
-      if (res.error) return Res(null, errorMessage: res.errorMessage);
-      final comments = res.data
-          .map(
-            (comment) => Comment(
-              jsonString(comment['userName']),
-              _optionalString(comment['avatar']),
-              jsonString(comment['content']),
-              _optionalString(comment['time']),
-              jsonInt(comment['replyCount']),
-              _optionalString(comment['id']),
-            ),
-          )
-          .toList();
-      return Res(comments);
-    },
+    commentsLoader: (id, subId, page, replyToId) =>
+        JmNetwork().getComment(id, page),
     initData: (s) {
       s.data['apiBaseUrl'] ??= 'https://${jmBuiltInDomains.first}';
       s.data['selectedShuntKey'] ??= jmExpressShuntKey;
@@ -340,7 +325,7 @@ ComicInfoData _jmInfoToComicInfoData(JmComicInfo info) {
   for (final c in info.chapters) {
     chapters[c.chapterId] = c.title;
   }
-  return ComicInfoData(
+  return ComicInfoData.snapshot(
     title: info.name,
     subTitle: info.author.isNotEmpty ? info.author.first : null,
     cover: info.cover,

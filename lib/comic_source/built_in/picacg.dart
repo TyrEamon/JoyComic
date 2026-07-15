@@ -230,23 +230,8 @@ ComicSource buildPicacgSource({PicacgHomePageLoader? homePageLoader}) {
       multiFolder: false,
     ),
     // 评论。
-    commentsLoader: (id, subId, page, replyTo) async {
-      final res = await PicacgNetwork().getComments(id, page: page);
-      if (res.error) return Res(null, errorMessage: res.errorMessage);
-      final comments = res.data
-          .map(
-            (comment) => Comment(
-              jsonString(comment['userName']),
-              _optionalString(comment['avatar']),
-              jsonString(comment['content']),
-              _optionalString(comment['time']),
-              jsonInt(comment['replyCount']),
-              _optionalString(comment['id']),
-            ),
-          )
-          .toList();
-      return Res(comments);
-    },
+    commentsLoader: (id, subId, page, replyToId) =>
+        PicacgNetwork().getComments(id, page: page),
     initData: (s) {
       s.data['appChannel'] ??= '3';
       s.data['imageQuality'] ??= 'original';
@@ -283,12 +268,6 @@ List<String>? _storedAccount(Object? value) {
   return account.length >= 2 ? account : null;
 }
 
-String? _optionalString(Object? value) {
-  if (value == null) return null;
-  final text = jsonString(value);
-  return text.isEmpty ? null : text;
-}
-
 Map<String, dynamic> _profileToMap(Profile p) => {
   'id': p.id,
   'email': p.email,
@@ -309,7 +288,7 @@ ComicInfoData _picacgItemToComicInfoData(ComicItem info) {
   for (final ep in info.episodes) {
     chapters[ep.order.toString()] = ep.title;
   }
-  return ComicInfoData(
+  return ComicInfoData.snapshot(
     title: info.title,
     subTitle: info.author,
     cover: info.cover,

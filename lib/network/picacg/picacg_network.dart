@@ -9,14 +9,15 @@ import 'dart:convert' as convert;
 
 import 'package:dio/dio.dart';
 
-import '../res.dart';
-import '../json_value.dart';
-import '../base_comic.dart';
+import '../../comic_source/detail_models.dart';
 import '../../foundation/log.dart';
+import '../base_comic.dart';
+import '../json_value.dart';
+import '../res.dart';
+import '../source_state.dart';
 import 'picacg_headers.dart';
 import 'picacg_models.dart';
 import 'picacg_parsing.dart';
-import '../source_state.dart';
 
 export 'picacg_models.dart';
 
@@ -105,6 +106,120 @@ String? _picacgMediaUrl(Object? value) {
   final path = jsonString(media['path']).trim();
   if (fileServer.isEmpty || path.isEmpty) return null;
   return '$fileServer/static/$path';
+}
+
+Res<CommentPageData> parsePicacgCommentPage(
+  Object? value, {
+  required int requestedPage,
+}) {
+  if (value is! Map || requestedPage < 1) {
+    return _picacgCommentParseFailure();
+  }
+  final root = jsonMap(value);
+  if (root['data'] is! Map) return _picacgCommentParseFailure();
+  final data = jsonMap(root['data']);
+  if (data['comments'] is! Map) return _picacgCommentParseFailure();
+  final commentsData = jsonMap(data['comments']);
+  if (commentsData['docs'] is! List ||
+      !commentsData.containsKey('total') ||
+      !commentsData.containsKey('pages')) {
+    return _picacgCommentParseFailure();
+  }
+
+  final totalComments = _parsePicacgCommentInteger(commentsData['total']);
+  final totalPages = _parsePicacgCommentInteger(commentsData['pages']);
+  if (totalComments == null ||
+      totalComments < 0 ||
+      totalPages == null ||
+      totalPages < 1) {
+    return _picacgCommentParseFailure();
+  }
+
+  var page = requestedPage;
+  if (commentsData.containsKey('page')) {
+    final parsedPage = _parsePicacgCommentInteger(commentsData['page']);
+    if (parsedPage == null || parsedPage < 1) {
+      return _picacgCommentParseFailure();
+    }
+    page = parsedPage;
+  }
+  if (page > totalPages) return _picacgCommentParseFailure();
+
+  final rawComments = jsonList(commentsData['docs']);
+  if (rawComments.any(
+    (comment) => comment is! Map || !_hasValidPicacgReplies(jsonMap(comment)),
+  )) {
+    return _picacgCommentParseFailure();
+  }
+  final comments = <Comment>[
+    for (final rawComment in rawComments)
+      _parsePicacgComment(jsonMap(rawComment)),
+  ];
+  if (comments.length > totalComments) return _picacgCommentParseFailure();
+
+  return Res<CommentPageData>(
+    CommentPageData(
+      comments: comments,
+      page: page,
+      totalPages: totalPages,
+      totalComments: totalComments,
+    ),
+  );
+}
+
+Res<CommentPageData> _picacgCommentParseFailure() =>
+    const Res<CommentPageData>(null, errorMessage: '评论解析失败');
+
+int? _parsePicacgCommentInteger(Object? value) {
+  if (value is int) return value;
+  if (value is num) {
+    if (!value.isFinite || value != value.truncateToDouble()) return null;
+    return value.toInt();
+  }
+  if (value is String) return int.tryParse(value.trim());
+  return null;
+}
+
+bool _hasValidPicacgReplies(Map<String, dynamic> comment) {
+  for (final key in const <String>['childrens', 'replies']) {
+    if (!comment.containsKey(key) || comment[key] == null) continue;
+    final value = comment[key];
+    if (value is! List) return false;
+    for (final rawReply in value) {
+      if (rawReply is! Map || !_hasValidPicacgReplies(jsonMap(rawReply))) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+Comment _parsePicacgComment(Map<String, dynamic> comment) {
+  final user = jsonMap(comment['_user']);
+  final commentId = jsonString(comment['_id'] ?? comment['id']).trim();
+  final time = jsonString(comment['created_at']).trim();
+  final rawReplies = comment['childrens'] ?? comment['replies'];
+  final replies = <Comment>[
+    for (final rawReply in jsonList(rawReplies))
+      if (rawReply is Map) _parsePicacgComment(jsonMap(rawReply)),
+  ];
+
+  return Comment.snapshot(
+    jsonString(user['name'], fallback: 'Unknown'),
+    user['avatar'] == null ? null : _picacgMediaUrl(user['avatar']),
+    jsonString(comment['content']),
+    time.isEmpty ? null : time,
+    jsonInt(
+      comment['commentsCount'] ??
+          comment['replyCount'] ??
+          comment['reply_count'],
+      fallback: replies.length,
+    ),
+    commentId.isEmpty ? null : commentId,
+    jsonInt(comment['likesCount'] ?? comment['likeCount'] ?? comment['likes']),
+    jsonBool(comment['isLiked'] ?? comment['liked']),
+    replies,
+  );
 }
 
 /// 哔咔网络请求类。
@@ -519,37 +634,16 @@ class PicacgNetwork {
     return const Res(true);
   }
 
-  /// 获取评论列表。
-  Future<Res<List<Map<String, dynamic>>>> getComments(
+  /// 获取类型化评论分页数据。
+  Future<Res<CommentPageData>> getComments(
     String id, {
     int page = 1,
     String type = 'comics',
   }) async {
     final res = await get('$apiUrl/$type/$id/comments?page=$page');
-    if (res.error) return Res(null, errorMessage: res.errorMessage);
-    final commentsData = jsonMap(jsonMap(res.dataOrNull?['data'])['comments']);
-    final list = <Map<String, dynamic>>[];
-    for (final rawComment in jsonList(commentsData['docs'])) {
-      if (rawComment is! Map) continue;
-      final comment = jsonMap(rawComment);
-      final user = jsonMap(comment['_user']);
-      final avatar = user['avatar'] == null ? null : _mediaUrl(user['avatar']);
-      final commentId = jsonString(comment['_id'] ?? comment['id']);
-      list.add(<String, dynamic>{
-        'id': commentId.isEmpty ? null : commentId,
-        'avatar': avatar,
-        'userName': jsonString(user['name'], fallback: 'Unknown'),
-        'content': jsonString(comment['content']),
-        'time': comment['created_at'] == null
-            ? null
-            : jsonString(comment['created_at']),
-        'replyCount': jsonInt(
-          comment['commentsCount'] ??
-              comment['replyCount'] ??
-              comment['reply_count'],
-        ),
-      });
+    if (res.error) {
+      return Res<CommentPageData>(null, errorMessage: res.errorMessage);
     }
-    return Res(list, subData: jsonInt(commentsData['pages'], fallback: 1));
+    return parsePicacgCommentPage(res.dataOrNull, requestedPage: page);
   }
 }

@@ -53,7 +53,7 @@ class DetailViewModel extends ChangeNotifier {
   List<Comment> _comments = const [];
   List<Comment> get comments => _comments;
 
-  /// 评论总数（来自 subData）。
+  /// 评论总数（来自类型化分页数据）。
   int _commentTotal = 0;
   int get commentTotal => _commentTotal;
 
@@ -195,7 +195,7 @@ class DetailViewModel extends ChangeNotifier {
     await _loadCommentsPage(1, replace: true);
   }
 
-  /// Loads the next comment page when the remote total has not been reached.
+  /// Loads the next comment page when the typed page reports more data.
   Future<void> loadMoreComments() async {
     if (_disposed || _commentsLoading || !_hasMoreComments) return;
     await _loadCommentsPage(_commentPage + 1, replace: false);
@@ -212,7 +212,8 @@ class DetailViewModel extends ChangeNotifier {
     try {
       final res = await loader(comicId, null, page, null);
       if (_disposed || generation != _commentGeneration || res.error) return;
-      final incoming = res.data;
+      final pageData = res.data;
+      final incoming = pageData.comments;
       if (replace) {
         _comments = List<Comment>.of(incoming);
       } else {
@@ -226,14 +227,10 @@ class DetailViewModel extends ChangeNotifier {
             if (comment.id == null || knownIds.add(comment.id!)) comment,
         ];
       }
-      final remoteTotal = res.subData is int ? res.subData as int : null;
-      if (remoteTotal != null) _commentTotal = remoteTotal;
-      if (_commentTotal == 0) _commentTotal = _comments.length;
-      _commentPage = page;
+      _commentTotal = pageData.totalComments;
+      _commentPage = pageData.page;
       _commentsLoaded = true;
-      _hasMoreComments =
-          incoming.isNotEmpty &&
-          (remoteTotal == null || _comments.length < remoteTotal);
+      _hasMoreComments = pageData.hasMore;
     } finally {
       if (!_disposed && generation == _commentGeneration) {
         _commentsLoading = false;
