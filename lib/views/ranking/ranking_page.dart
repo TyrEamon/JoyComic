@@ -210,17 +210,11 @@ class _RangeChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          gradient: active
-              ? LinearGradient(
-                  colors: [
-                    context.colorScheme.primary,
-                    context.colorScheme.secondary,
-                  ],
-                )
-              : null,
-          color: active ? null : context.surfaceColor,
+          color: active
+              ? context.colorScheme.primaryContainer
+              : context.surfaceColor,
           borderRadius: BorderRadius.circular(16),
-          border: active ? null : Border.all(color: context.borderColor),
+          border: Border.all(color: context.borderColor),
         ),
         child: Text(
           label,
@@ -228,7 +222,7 @@ class _RangeChip extends StatelessWidget {
             fontSize: 12,
             fontWeight: FontWeight.w600,
             color: active
-                ? context.colorScheme.onPrimary
+                ? context.colorScheme.onPrimaryContainer
                 : context.secondaryTextColor,
           ),
         ),

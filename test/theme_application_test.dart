@@ -157,6 +157,22 @@ void main() {
     });
   }
 
+  test('discovery pages contain no decorative gradients', () {
+    const paths = <String>[
+      'lib/views/search/search_page.dart',
+      'lib/views/search/temp_search_page.dart',
+      'lib/views/ranking/ranking_page.dart',
+      'lib/views/category/category_page.dart',
+      'lib/views/common/source_content_page.dart',
+      'lib/views/image_search/image_search_page.dart',
+      'lib/views/video/video_page.dart',
+    ];
+    for (final path in paths) {
+      final source = File(path).readAsStringSync();
+      expect(source, isNot(contains('LinearGradient(')), reason: path);
+    }
+  });
+
   test('remaining feature pages contain no fixed dark semantic colors', () {
     const paths = <String>[
       'lib/views/auth/login_page.dart',
