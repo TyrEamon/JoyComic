@@ -10,7 +10,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../../foundation/palette_extractor.dart';
-import '../../../theme/app_colors.dart';
+import '../../../theme/app_theme_context.dart';
 import '../../../theme/app_spacing.dart';
 import '../../../theme/app_typography.dart';
 import '../../../theme/widgets/pill_badge.dart';
@@ -73,8 +73,7 @@ class InfoOverlay extends StatelessWidget {
                 if (hotValue != null) ...[
                   PillBadge(
                     label: '热度 $hotValue',
-                    gradient: palette.gradient,
-                    leadingDotColor: AppColors.hotAccent,
+                    leadingDotColor: context.colorScheme.primary,
                   ),
                   const SizedBox(height: AppSpacing.sm),
                 ],

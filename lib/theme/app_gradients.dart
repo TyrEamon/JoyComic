@@ -37,7 +37,13 @@ class AppGradients {
         colors: [colors.readerScrimStrong, colors.imageScrimClear],
       );
 
-  static LinearGradient shimmer(AppSemanticColors colors) => LinearGradient(
+  static LinearGradient shimmer(
+    AppSemanticColors colors, {
+    AlignmentGeometry begin = Alignment.centerLeft,
+    AlignmentGeometry end = Alignment.centerRight,
+  }) => LinearGradient(
+    begin: begin,
+    end: end,
     colors: [colors.shimmerBase, colors.shimmerHighlight, colors.shimmerBase],
     stops: const [0.1, 0.5, 0.9],
   );

@@ -38,16 +38,4 @@ class AppShadows {
       offset: Offset(0, -6),
     ),
   ];
-
-  /// Temporary compatibility for [PillBadge] during its Task 3 migration.
-  static List<BoxShadow> pillGlow(Color _) => const [
-    BoxShadow(
-      color: Color(0x33000000),
-      blurRadius: 10,
-      spreadRadius: -3,
-      offset: Offset(0, 2),
-    ),
-  ];
-
-  static List<BoxShadow> brandPillGlow() => pillGlow(Colors.black);
 }

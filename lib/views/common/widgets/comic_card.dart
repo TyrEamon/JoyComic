@@ -9,7 +9,6 @@ library;
 import 'package:flutter/material.dart';
 import 'package:joycomic/theme/app_theme_context.dart';
 
-import '../../../theme/app_colors.dart';
 import '../../../theme/app_radius.dart';
 import '../../../theme/app_shadows.dart';
 import '../../../theme/app_spacing.dart';
@@ -182,16 +181,16 @@ class _Poster extends StatelessWidget {
               const SizedBox(height: 2),
               Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.star_rounded,
                     size: 13,
-                    color: AppColors.ratingStar,
+                    color: context.ratingColor,
                   ),
                   const SizedBox(width: 2),
                   Text(
                     rating!.toStringAsFixed(1),
                     style: AppTypography.cardMeta(context).copyWith(
-                      color: AppColors.ratingStar,
+                      color: context.ratingColor,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -390,20 +389,20 @@ class _SourceBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isJm = sourceKey == 'jm';
-    final isPicacg = sourceKey == 'picacg';
+    final label = sourceKey == 'jm'
+        ? 'JM'
+        : (sourceKey == 'picacg' ? 'Pica' : sourceKey.toUpperCase());
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
       decoration: BoxDecoration(
-        color: isJm
-            ? const Color(0xFF6E56CF).withValues(alpha: 0.85)
-            : const Color(0xFFFF7BA9).withValues(alpha: 0.85),
+        color: context.elevatedSurfaceColor,
         borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: context.borderColor),
       ),
       child: Text(
-        isJm ? 'JM' : (isPicacg ? 'Pica' : sourceKey.toUpperCase()),
-        style: const TextStyle(
-          color: Colors.white,
+        label,
+        style: TextStyle(
+          color: context.secondaryTextColor,
           fontSize: 9,
           fontWeight: FontWeight.w700,
           letterSpacing: 0.5,

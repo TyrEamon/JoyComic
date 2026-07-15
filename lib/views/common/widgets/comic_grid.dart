@@ -2,6 +2,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 
 import '../../../theme/app_spacing.dart';
 import '../source_content_models.dart';
@@ -86,12 +87,12 @@ class _ComicGridState extends State<ComicGrid> {
       itemCount: widget.items.length + (widget.loading ? 1 : 0),
       itemBuilder: (context, index) {
         if (index >= widget.items.length) {
-          return const Center(
+          return Center(
             child: Padding(
-              padding: EdgeInsets.all(16),
+              padding: const EdgeInsets.all(16),
               child: CircularProgressIndicator(
                 strokeWidth: 2,
-                color: Color(0xFF8A8298),
+                color: context.colorScheme.primary,
               ),
             ),
           );
@@ -116,7 +117,7 @@ class _ComicGridState extends State<ComicGrid> {
     final refresh = widget.onRefresh;
     if (refresh != null) {
       grid = RefreshIndicator(
-        color: const Color(0xFFFF7BA9),
+        color: context.colorScheme.primary,
         onRefresh: refresh,
         child: grid,
       );

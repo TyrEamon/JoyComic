@@ -59,10 +59,7 @@ class ComicCover extends StatelessWidget {
           decoration: BoxDecoration(
             color: context.elevatedSurfaceColor,
             border: border
-                ? Border.all(
-                    color: Colors.white.withValues(alpha: 0.10),
-                    width: 0.8,
-                  )
+                ? Border.all(color: context.borderColor, width: 0.8)
                 : null,
           ),
           child: _image(height),
