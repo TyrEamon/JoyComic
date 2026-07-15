@@ -83,10 +83,14 @@ class JmChapter {
   /// 章节标题。
   final String title;
 
+  /// 远端提供的章节页数；缺失时为 null。
+  final int? pageCount;
+
   const JmChapter({
     required this.order,
     required this.chapterId,
     required this.title,
+    this.pageCount,
   });
 }
 
@@ -101,10 +105,19 @@ class JmComicInfo extends BaseComic {
   final int views;
   final int comments;
 
+  /// 专辑系列标识；单行本通常为 0 或缺失。
+  final int? seriesId;
+
+  /// 详情响应内联的原始图片 key 或绝对 URL。
+  final List<String> images;
+
+  /// 一级、二级分类名称，与 [tags] 标签分开保存。
+  final List<String> categories;
+
   /// 章节映射：章节序号 → 章节id。
   final Map<int, String> series;
 
-  /// 章节标题列表（与 series 按 order 对齐）。
+  /// 章节标题列表（按远端 order 排序，与 [series] 的有序 entries 对齐）。
   final List<String> epNames;
   @override
   final List<String> tags;
@@ -113,39 +126,55 @@ class JmComicInfo extends BaseComic {
   final List<JmComicBrief> relatedComics;
   final bool liked;
   final bool favorite;
+  final List<JmChapter> _chapters;
 
   JmComicInfo({
     required this.name,
     required this.id,
-    required this.author,
+    required List<String> author,
     required String description,
     required this.likes,
     required this.views,
-    required this.series,
-    required this.tags,
-    required this.works,
-    required this.actors,
-    required this.relatedComics,
+    required Map<int, String> series,
+    required List<String> tags,
+    required List<String> works,
+    required List<String> actors,
+    required List<JmComicBrief> relatedComics,
     required this.liked,
     required this.favorite,
     required this.comments,
-    required this.epNames,
-  }) : _description = description;
+    required List<String> epNames,
+    this.seriesId,
+    List<String> images = const <String>[],
+    List<String> categories = const <String>[],
+    List<JmChapter> chapters = const <JmChapter>[],
+  }) : author = List<String>.unmodifiable(author),
+       _description = description,
+       series = Map<int, String>.unmodifiable(Map<int, String>.of(series)),
+       epNames = List<String>.unmodifiable(epNames),
+       tags = List<String>.unmodifiable(tags),
+       works = List<String>.unmodifiable(works),
+       actors = List<String>.unmodifiable(actors),
+       relatedComics = List<JmComicBrief>.unmodifiable(relatedComics),
+       images = List<String>.unmodifiable(images),
+       categories = List<String>.unmodifiable(categories),
+       _chapters = List<JmChapter>.unmodifiable(chapters);
 
-  /// 由 series 映射构造可遍历的章节列表。
+  /// 可遍历的章节列表，优先使用解析器保留的远端顺序和页数。
   List<JmChapter> get chapters {
+    if (_chapters.isNotEmpty || series.isEmpty) return _chapters;
     final entries = series.entries.toList()
       ..sort((a, b) => a.key.compareTo(b.key));
-    return [
-      for (final e in entries)
+    return List<JmChapter>.unmodifiable([
+      for (var index = 0; index < entries.length; index++)
         JmChapter(
-          order: e.key,
-          chapterId: e.value,
-          title: (e.key <= epNames.length && e.key >= 1)
-              ? epNames[e.key - 1]
-              : '第${e.key}话',
+          order: entries[index].key,
+          chapterId: entries[index].value,
+          title: index < epNames.length
+              ? epNames[index]
+              : '第${entries[index].key}话',
         ),
-    ];
+    ]);
   }
 
   JmComicBrief toBrief() => JmComicBrief(

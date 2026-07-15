@@ -5,6 +5,8 @@
 /// 登录时还会探测选用可用接口域名与图床。
 library;
 
+import 'package:flutter/foundation.dart';
+
 import '../../comic_source/comic_source.dart';
 import '../../network/base_comic.dart';
 import '../../network/jm/jm_headers.dart';
@@ -94,6 +96,8 @@ class JmStateImpl implements JmState {
 }
 
 typedef JmFavoriteToggle = Future<Res<bool>> Function(String comicId);
+typedef JmCommentSender =
+    Future<Res<bool>> Function(String comicId, String content);
 
 /// Adapts the JM toggle endpoint without replacing its error or boolean data.
 Future<Res<bool>> adaptJmFavoriteToggle(
@@ -102,8 +106,12 @@ Future<Res<bool>> adaptJmFavoriteToggle(
 ) => toggleFavorite(comicId);
 
 /// 禁漫内置源声明。
-ComicSource buildJmSource({JmFavoriteToggle? favoriteToggle}) {
+ComicSource buildJmSource({
+  JmFavoriteToggle? favoriteToggle,
+  JmCommentSender? commentSender,
+}) {
   final toggleFavoriteRequest = favoriteToggle ?? JmNetwork().toggleFavorite;
+  final sendCommentRequest = commentSender ?? JmNetwork().sendComment;
   final source = ComicSource.named(
     name: '禁漫',
     key: 'jm',
@@ -204,14 +212,10 @@ ComicSource buildJmSource({JmFavoriteToggle? favoriteToggle}) {
     loadComicInfo: (id) async {
       final res = await JmNetwork().getComicInfo(id);
       if (res.error) return Res(null, errorMessage: res.errorMessage);
-      return Res(_jmInfoToComicInfoData(res.data));
+      return Res(jmInfoToComicInfoData(res.data));
     },
-    // 章节图：ep 为 chapterId（来自 series 映射值）。
-    loadComicPages: (comicId, ep) async {
-      final res = await JmNetwork().getChapter(ep ?? comicId);
-      if (res.error) return Res(null, errorMessage: res.errorMessage);
-      return Res(res.data);
-    },
+    // 单卷优先复用详情内联页，分章继续调用 chapter 端点。
+    loadComicPages: (comicId, ep) => JmNetwork().getComicPages(comicId, ep),
     // 禁漫图片（封面/内文）统一带仿浏览器头，部分图床校验 UA/Referer。
     getImageLoadingConfig: (imageKey, comicId, epId) => imageHeaders(),
     getThumbnailLoadingConfig: (imageKey) => imageHeaders(),
@@ -233,9 +237,17 @@ ComicSource buildJmSource({JmFavoriteToggle? favoriteToggle}) {
     // 评论。
     commentsLoader: (id, subId, page, replyToId) =>
         JmNetwork().getComment(id, page),
+    sendCommentFunc: (id, subId, content, replyTo) {
+      final trimmedContent = content.trim();
+      final payload = replyTo == null
+          ? trimmedContent
+          : '@${replyTo.userName} $trimmedContent';
+      return sendCommentRequest(id, payload);
+    },
     initData: (s) {
       s.data['apiBaseUrl'] ??= 'https://${jmBuiltInDomains.first}';
       s.data['selectedShuntKey'] ??= jmExpressShuntKey;
+      jmBaseUrl = JmStateImpl(s).imageBaseUrl;
     },
   );
 
@@ -315,28 +327,45 @@ String? _optionalString(Object? value) {
 }
 
 /// 禁漫详情 → 统一 [ComicInfoData]。
-///
-/// 章节映射：JmComicInfo.series（order→chapterId）+ epNames（按 order 对齐）
-/// → {chapterId: 章节名}。tags 组装为 Map（作者/标签/作品/演员 + 热度/收藏
-/// 数值化，供详情页元数据组与热度 pill 取用）。禁漫无封面级评分数据，
-/// 评分留空（详情页用默认占位，不强行编造）。
-ComicInfoData _jmInfoToComicInfoData(JmComicInfo info) {
-  final chapters = <String, String>{};
-  for (final c in info.chapters) {
-    chapters[c.chapterId] = c.title;
+@visibleForTesting
+ComicInfoData jmInfoToComicInfoData(JmComicInfo info) {
+  final jmChapters = <JmChapter>[...info.chapters];
+  if (jmChapters.isEmpty &&
+      info.series.isEmpty &&
+      (info.seriesId == null || info.seriesId == 0)) {
+    jmChapters.add(
+      JmChapter(
+        order: 1,
+        chapterId: info.id,
+        title: info.name.trim().isEmpty ? '第 1 话' : info.name,
+      ),
+    );
   }
+
+  final chapters = <String, String>{
+    for (final chapter in jmChapters) chapter.chapterId: chapter.title,
+  };
+  final chapterList = <ComicChapter>[
+    for (final chapter in jmChapters)
+      ComicChapter(
+        id: chapter.chapterId,
+        title: chapter.title,
+        order: chapter.order,
+        pageCount: chapter.pageCount,
+      ),
+  ];
+
   return ComicInfoData.snapshot(
     title: info.name,
     subTitle: info.author.isNotEmpty ? info.author.first : null,
     cover: info.cover,
     description: info.description,
-    tags: {
-      '作者': info.author,
-      '标签': info.tags,
+    tags: <String, List<String>>{
+      if (info.author.isNotEmpty) '作者': info.author,
+      if (info.categories.isNotEmpty) '分类': info.categories,
+      if (info.tags.isNotEmpty) '标签': info.tags,
       if (info.works.isNotEmpty) '作品': info.works,
       if (info.actors.isNotEmpty) '演员': info.actors,
-      '热度': [_formatCount(info.views)],
-      '收藏': [_formatCount(info.likes)],
     },
     chapters: chapters,
     thumbnails: null,
@@ -344,12 +373,14 @@ ComicInfoData _jmInfoToComicInfoData(JmComicInfo info) {
     sourceKey: 'jm',
     comicId: info.id,
     isFavorite: info.favorite,
+    authors: info.author,
+    categories: info.categories,
+    labels: info.tags,
+    viewCount: info.views,
+    likeCount: info.likes,
+    commentCount: info.comments,
+    isLiked: info.liked,
+    chapterList: chapterList,
+    singleChapterPages: info.images.isEmpty ? null : info.images,
   );
-}
-
-/// 数值量化：>=1 亿显示"X.X 亿"，>=1 万显示"X.X 万"，否则原数。
-String _formatCount(int n) {
-  if (n >= 100000000) return '${(n / 100000000).toStringAsFixed(1)}亿';
-  if (n >= 10000) return '${(n / 10000).toStringAsFixed(1)}万';
-  return n.toString();
 }

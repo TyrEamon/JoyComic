@@ -277,19 +277,44 @@ Comment _parseJmComment(Map<String, dynamic> comment) {
 }
 
 typedef JmDioFactory = Dio Function(BaseOptions options);
+typedef JmGetRequest = Future<Res<dynamic>> Function(String url);
+typedef JmPostRequest = Future<Res<dynamic>> Function(String url, String data);
 
 /// 禁漫网络请求类。
 class JmNetwork {
-  JmNetwork._create([JmDioFactory? dioFactory])
-    : _dioFactory = dioFactory ?? Dio.new;
+  JmNetwork._create({
+    JmDioFactory? dioFactory,
+    JmGetRequest? getRequest,
+    JmPostRequest? postRequest,
+  }) : _dioFactory = dioFactory ?? Dio.new,
+       _getRequest = getRequest,
+       _postRequest = postRequest;
 
   static JmNetwork? _cache;
 
-  factory JmNetwork({JmDioFactory? dioFactory}) => dioFactory == null
-      ? _cache ??= JmNetwork._create()
-      : JmNetwork._create(dioFactory);
+  factory JmNetwork({
+    JmDioFactory? dioFactory,
+    JmGetRequest? getRequest,
+    JmPostRequest? postRequest,
+  }) {
+    if (dioFactory == null && getRequest == null && postRequest == null) {
+      return _cache ??= JmNetwork._create();
+    }
+    return JmNetwork._create(
+      dioFactory: dioFactory,
+      getRequest: getRequest,
+      postRequest: postRequest,
+    );
+  }
 
   final JmDioFactory _dioFactory;
+  final JmGetRequest? _getRequest;
+  final JmPostRequest? _postRequest;
+  static const int _inlinePageCacheLimit = 64;
+
+  // Dart map literals preserve insertion order; cache hits remove/reinsert for LRU.
+  final Map<String, List<String>> _inlinePagesByComicId =
+      <String, List<String>>{};
 
   /// 由源注册流程注入状态门面。
   JmState? state;
@@ -437,6 +462,8 @@ class JmNetwork {
   }
 
   Future<Res<dynamic>> get(String url, {bool isRetry = false}) async {
+    final request = _getRequest;
+    if (request != null) return request(url);
     final res = await _withDomainFailover(
       url,
       (u, t) => _doGet(u, t, isRetry: isRetry),
@@ -445,6 +472,8 @@ class JmNetwork {
   }
 
   Future<Res<dynamic>> post(String url, String data) async {
+    final request = _postRequest;
+    if (request != null) return request(url, data);
     final res = await _withDomainFailover(url, (u, t) => _doPost(u, data, t));
     return res;
   }
@@ -823,22 +852,109 @@ class JmNetwork {
       return Res(null, errorMessage: res.errorMessage);
     }
     final info = parseJmComicInfoResponse(res.data, id: id);
-    return info == null ? const Res(null, errorMessage: '漫画详情解析失败') : Res(info);
+    if (info == null) {
+      _inlinePagesByComicId.remove(id);
+      return const Res(null, errorMessage: '漫画详情解析失败');
+    }
+    _replaceInlinePages(id, info.images);
+    return Res(info);
   }
 
   /// 章节内文图文件名列表（图片重组用 scrambleId 与 bookId 由调用方推算）。
   Future<Res<List<String>>> getChapter(String id) async {
-    final res = await get('$baseUrl/chapter?&id=$id');
+    final res = await get('$baseUrl/chapter?id=$id');
     if (res.error) return Res(null, errorMessage: res.errorMessage);
     final rawData = res.data;
     if (rawData is! Map) {
       return const Res(null, errorMessage: '章节内容解析失败');
     }
-    final images = <String>[];
-    for (final image in jsonStringList(jsonMap(rawData)['images'])) {
-      images.add(getJmImageUrl(image, id));
+    return Res(
+      _resolveJmPageImages(
+        jsonStringList(jsonMap(rawData)['images']),
+        id,
+        state?.imageBaseUrl ?? jmBaseUrl,
+      ),
+    );
+  }
+
+  /// 优先返回详情接口内联页；冷缓存先刷新详情，再按需回退章节端点。
+  Future<Res<List<String>>> getComicPages(
+    String comicId,
+    String? chapterId,
+  ) async {
+    if (chapterId != null && chapterId != comicId) {
+      return getChapter(chapterId);
     }
-    return Res(images);
+
+    var inlinePages = _takeCachedInlinePages(comicId);
+    if (inlinePages == null) {
+      final detail = await getComicInfo(comicId);
+      if (detail.error) {
+        return Res<List<String>>.fromErrorRes(detail);
+      }
+      inlinePages = _takeCachedInlinePages(comicId);
+    }
+    if (inlinePages != null) {
+      return Res(
+        _resolveJmPageImages(
+          inlinePages,
+          comicId,
+          state?.imageBaseUrl ?? jmBaseUrl,
+        ),
+      );
+    }
+    return getChapter(comicId);
+  }
+
+  void _replaceInlinePages(String comicId, List<String> rawImages) {
+    _inlinePagesByComicId.remove(comicId);
+    if (rawImages.isEmpty) return;
+    _inlinePagesByComicId[comicId] = List<String>.unmodifiable(rawImages);
+    while (_inlinePagesByComicId.length > _inlinePageCacheLimit) {
+      _inlinePagesByComicId.remove(_inlinePagesByComicId.keys.first);
+    }
+  }
+
+  List<String>? _takeCachedInlinePages(String comicId) {
+    final pages = _inlinePagesByComicId.remove(comicId);
+    if (pages != null) _inlinePagesByComicId[comicId] = pages;
+    return pages;
+  }
+
+  List<String> _resolveJmPageImages(
+    Iterable<String> rawImages,
+    String comicId,
+    String imageBaseUrl,
+  ) {
+    final normalizedBaseUrl = imageBaseUrl.endsWith('/')
+        ? imageBaseUrl.substring(0, imageBaseUrl.length - 1)
+        : imageBaseUrl;
+    return List<String>.unmodifiable([
+      for (final image in rawImages)
+        if (_isAbsoluteHttpUrl(image))
+          image
+        else
+          '$normalizedBaseUrl/media/photos/$comicId/$image',
+    ]);
+  }
+
+  bool _isAbsoluteHttpUrl(String image) {
+    final uri = Uri.tryParse(image);
+    return uri != null && (uri.scheme == 'http' || uri.scheme == 'https');
+  }
+
+  /// 发送漫画评论，保留底层请求错误。
+  Future<Res<bool>> sendComment(String comicId, String content) async {
+    final body = Uri(
+      queryParameters: <String, String>{
+        'video_id': comicId,
+        'comment': content,
+        'status': 'true',
+      },
+    ).query;
+    final res = await post('$baseUrl/comment', body);
+    if (res.error) return Res(null, errorMessage: res.errorMessage);
+    return const Res(true);
   }
 
   /// 点赞。
