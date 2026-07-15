@@ -1,12 +1,8 @@
-/// JoyComic 色板 token。
+/// JoyComic color tokens.
 ///
-/// 全局骨架色（背景/卡片/文字层级/描边）恒定，不随漫画封面变化。
-/// 详情页头部渐变 / 底栏主按钮 / 星级强调色则由 [PaletteExtractor] 从
-/// 封面实时提取主色后注入（取色失败回退 [AppColors.brandPink] /
-/// [AppColors.brandViolet] 渐变，故静态主色本身即兜底色）。
-///
-/// 设计取向：藕粉 → 紫罗兰的品牌渐变，搭配深墨紫黑底与暖紫黑面卡片，
-/// 营造温暖高级、少女向但不甜腻的漫画阅读氛围。
+/// The approved Warm Paper + Coral schemes are the final theme authority.
+/// Legacy pink-purple constants below remain temporarily while page consumers
+/// are migrated and are removed by the source-policy task.
 library;
 
 import 'package:flutter/material.dart';

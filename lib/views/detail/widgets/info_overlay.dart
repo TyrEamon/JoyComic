@@ -9,7 +9,6 @@ library;
 
 import 'package:flutter/material.dart';
 
-import '../../../foundation/palette_extractor.dart';
 import '../../../theme/app_theme_context.dart';
 import '../../../theme/app_spacing.dart';
 import '../../../theme/app_typography.dart';
@@ -29,7 +28,6 @@ class InfoOverlay extends StatelessWidget {
     required this.favoriteCount,
     required this.rating,
     required this.ratingCount,
-    required this.palette,
     this.coverHeaders,
   });
 
@@ -42,7 +40,6 @@ class InfoOverlay extends StatelessWidget {
   final String? favoriteCount;
   final double rating;
   final String ratingCount;
-  final ComicPalette palette;
   final Map<String, dynamic>? coverHeaders;
 
   static const double _coverWidth = 132;
@@ -93,11 +90,7 @@ class InfoOverlay extends StatelessWidget {
                   ),
                 ],
                 const SizedBox(height: AppSpacing.sm),
-                _RatingChip(
-                  rating: rating,
-                  count: ratingCount,
-                  palette: palette,
-                ),
+                _RatingChip(rating: rating, count: ratingCount),
               ],
             ),
           ),
@@ -109,15 +102,10 @@ class InfoOverlay extends StatelessWidget {
 
 /// 评分复合组件：大号数字 + 五星 + 评价人数。
 class _RatingChip extends StatelessWidget {
-  const _RatingChip({
-    required this.rating,
-    required this.count,
-    required this.palette,
-  });
+  const _RatingChip({required this.rating, required this.count});
 
   final double rating;
   final String count;
-  final ComicPalette palette;
 
   @override
   Widget build(BuildContext context) {
@@ -128,16 +116,12 @@ class _RatingChip extends StatelessWidget {
           rating.toStringAsFixed(1),
           style: AppTypography.ratingNumber(
             context,
-          ).copyWith(color: palette.accent),
+          ).copyWith(color: context.ratingColor),
         ),
         const SizedBox(width: 6),
         Padding(
           padding: const EdgeInsets.only(bottom: 3),
-          child: RatingStars(
-            rating: rating / 2,
-            color: palette.accent,
-            size: 13,
-          ),
+          child: RatingStars(rating: rating / 2, size: 13),
         ),
         const SizedBox(width: 6),
         Padding(

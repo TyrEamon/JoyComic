@@ -7,7 +7,6 @@ library;
 import 'package:flutter/material.dart';
 import 'package:joycomic/theme/app_theme_context.dart';
 
-import '../../../foundation/palette_extractor.dart';
 import '../../../theme/app_spacing.dart';
 import '../../../theme/app_typography.dart';
 import '../../common/widgets/comic_card.dart';
@@ -19,18 +18,16 @@ class RecommendationCarousel extends StatelessWidget {
     this.onRefresh,
     this.onSelect,
     this.coverHeaders,
-    this.palette,
   });
 
   final List<RecommendItem> items;
   final VoidCallback? onRefresh;
   final void Function(RecommendItem item)? onSelect;
   final Map<String, dynamic>? coverHeaders;
-  final ComicPalette? palette;
 
   @override
   Widget build(BuildContext context) {
-    final accent = palette?.accent ?? context.colorScheme.primary;
+    final accent = context.colorScheme.primary;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

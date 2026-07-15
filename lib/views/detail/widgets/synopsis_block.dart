@@ -10,18 +10,15 @@ import 'package:joycomic/theme/app_theme_context.dart';
 
 import '../../../theme/app_spacing.dart';
 import '../../../theme/app_typography.dart';
-import '../../../foundation/palette_extractor.dart';
 
 class SynopsisBlock extends StatefulWidget {
   const SynopsisBlock({
     super.key,
     required this.text,
-    this.palette,
     this.maxLinesWhenCollapsed = 4,
   });
 
   final String? text;
-  final ComicPalette? palette;
   final int maxLinesWhenCollapsed;
 
   @override
@@ -36,7 +33,7 @@ class _SynopsisBlockState extends State<SynopsisBlock>
   @override
   Widget build(BuildContext context) {
     final text = (widget.text ?? '').trim();
-    final accent = widget.palette?.accent ?? context.colorScheme.primary;
+    final accent = context.colorScheme.primary;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
       child: Column(
@@ -124,16 +121,10 @@ class _ToggleLink extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 给文字按钮加个渐变底，避免压住正文末字不可读。
+    // Solid surface keeps the action readable without decorative gradients.
     return Container(
       padding: const EdgeInsets.only(left: 24),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-          colors: [const Color(0x000E0B14), context.pageBackground],
-        ),
-      ),
+      color: context.pageBackground,
       child: Material(
         color: Colors.transparent,
         child: InkWell(

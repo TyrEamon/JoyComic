@@ -158,7 +158,6 @@ class _ContentState extends State<_Content> {
   Widget build(BuildContext context) {
     final vm = context.watch<DetailViewModel>();
     final info = vm.data!.info;
-    final palette = vm.data!.palette;
 
     // 章节映射 → 有序列表 + chapter entry 列表。
     // 注意 ComicInfoData.chapters 的 key 是各源章节标识（禁漫=chapterId，
@@ -218,7 +217,6 @@ class _ContentState extends State<_Content> {
               favoriteCount: _favCount(info.tags),
               rating: _rating(info.tags),
               ratingCount: _ratingCount(info.tags),
-              palette: palette,
               coverHeaders: vm.coverHeaders,
             ),
             // 2. 内容主体。
@@ -226,7 +224,7 @@ class _ContentState extends State<_Content> {
               padding: const EdgeInsets.only(top: AppSpacing.xl),
               sliver: SliverList(
                 delegate: SliverChildListDelegate.fixed([
-                  SynopsisBlock(text: info.description, palette: palette),
+                  SynopsisBlock(text: info.description),
                   const SizedBox(height: AppSpacing.sectionGap),
                   ChapterGrid(
                     chapters: chapterEntries,
@@ -234,7 +232,6 @@ class _ContentState extends State<_Content> {
                     onSelect: (e) => _openReader(context, vm, e, chapters),
                     onShowAll: () =>
                         _showDownloadSheet(context, vm, chapterEntries),
-                    palette: palette,
                     coverHeaders: vm.coverHeaders,
                   ),
                   const SizedBox(height: AppSpacing.sectionGap),
@@ -259,7 +256,6 @@ class _ContentState extends State<_Content> {
                   RecommendationCarousel(
                     items: visibleRecommends,
                     coverHeaders: vm.coverHeaders,
-                    palette: palette,
                     onRefresh: recommends.length > 1
                         ? () => setState(() {
                             _recommendationOffset =
@@ -285,7 +281,6 @@ class _ContentState extends State<_Content> {
           child: StickyActionBar(
             isFavorite: vm.isFavorite,
             readHint: latestName != null ? '最新 $latestName' : '',
-            palette: palette,
             onFavorite: vm.toggleFavorite,
             onRead: () => _openReader(context, vm, null, chapters),
           ),

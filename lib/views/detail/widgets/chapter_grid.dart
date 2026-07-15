@@ -4,13 +4,13 @@
 /// - 内容网格：2 列 Grid 卡片，16:9 章节封面 + 最新章节 NEW 角标 + 单行名
 ///
 /// 章节列表由外部传入 [chapters]（id->name 的有序映射），[onSelect]
-/// 回调打开阅读器。[palette] 用于 NEW 角标与跳转入口的品牌色强调。
+/// 回调打开阅读器，选中与 NEW 状态由当前主题强调。
 library;
 
 import 'package:flutter/material.dart';
 import 'package:joycomic/theme/app_theme_context.dart';
 
-import '../../../foundation/palette_extractor.dart';
+import '../../../theme/app_gradients.dart';
 import '../../../theme/app_radius.dart';
 import '../../../theme/app_spacing.dart';
 import '../../../theme/app_typography.dart';
@@ -23,7 +23,6 @@ class ChapterGrid extends StatelessWidget {
     required this.latestChapterName,
     required this.onSelect,
     this.onShowAll,
-    this.palette,
     this.coverHeaders,
   });
 
@@ -36,12 +35,11 @@ class ChapterGrid extends StatelessWidget {
   final void Function(ChapterEntry entry) onSelect;
   final VoidCallback? onShowAll;
 
-  final ComicPalette? palette;
   final Map<String, dynamic>? coverHeaders;
 
   @override
   Widget build(BuildContext context) {
-    final accent = palette?.accent ?? context.colorScheme.primary;
+    final accent = context.colorScheme.primary;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
       child: Column(
@@ -187,18 +185,16 @@ class _ChapterCard extends StatelessWidget {
                   : _ChapterPlaceholder(),
             ),
             // 16:9 封面之上的底部渐变，确保章节名可读。
-            const Positioned(
+            Positioned(
               left: 0,
               right: 0,
               bottom: 0,
-              height: 34,
+              height: 42,
               child: IgnorePointer(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [Color(0x00000000), Color(0xE6000000)],
+                    gradient: AppGradients.imageScrimBottom(
+                      context.semanticColors,
                     ),
                   ),
                 ),
@@ -212,22 +208,14 @@ class _ChapterCard extends StatelessWidget {
                 entry.name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                  shadows: [
-                    Shadow(
-                      color: Colors.black54,
-                      blurRadius: 4,
-                      offset: Offset(0, 1),
-                    ),
-                  ],
+                  color: context.onImageColor,
                 ),
               ),
             ),
-            if (isNew)
-              Positioned(top: 8, right: 8, child: _NewBadge(accent: accent)),
+            if (isNew) const Positioned(top: 8, right: 8, child: _NewBadge()),
           ],
         ),
       ),
@@ -236,28 +224,23 @@ class _ChapterCard extends StatelessWidget {
 }
 
 class _NewBadge extends StatelessWidget {
-  const _NewBadge({required this.accent});
-  final Color accent;
+  const _NewBadge();
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [accent, context.colorScheme.secondary],
-        ),
+        color: context.colorScheme.primaryContainer,
         borderRadius: BorderRadius.circular(4),
-        boxShadow: [
-          BoxShadow(color: accent.withValues(alpha: 0.5), blurRadius: 6),
-        ],
+        border: Border.all(color: context.borderColor),
       ),
-      child: const Text(
+      child: Text(
         'NEW',
         style: TextStyle(
           fontSize: 9,
           fontWeight: FontWeight.w800,
-          color: Colors.white,
+          color: context.colorScheme.onPrimaryContainer,
           letterSpacing: 0.6,
         ),
       ),

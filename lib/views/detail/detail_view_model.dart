@@ -1,8 +1,7 @@
-/// 详情页 ViewModel：编排数据加载与封面取色。
+/// 详情页 ViewModel：编排漫画详情、收藏与评论加载。
 ///
 /// 职责：
 /// - 接收 [ComicSource] key + comicId，调 `loadComicInfo` 拿 [ComicInfoData]
-/// - 异步从封面取色 [ComicPalette]（失败回退品牌色）
 /// - 暴露加载态 [DetailLoadState]
 ///
 /// 不直接依赖具体源网络层，全部走 ComicSource 声明式契约。
@@ -14,16 +13,14 @@ import 'package:flutter/foundation.dart';
 import '../../comic_source/comic_source.dart';
 import '../../database/favorites_helper.dart';
 import '../../foundation/log.dart';
-import '../../foundation/palette_extractor.dart';
 
 /// 详情页加载状态。
 enum DetailLoadState { idle, loading, success, error }
 
 /// 详情页 UI 数据快照（与 ComicInfoData 解耦的视图模型）。
 class DetailUiData {
-  const DetailUiData({required this.info, required this.palette});
+  const DetailUiData({required this.info});
   final ComicInfoData info;
-  final ComicPalette palette;
 }
 
 class DetailViewModel extends ChangeNotifier {
@@ -122,22 +119,9 @@ class DetailViewModel extends ChangeNotifier {
       _applyFavoriteState(info);
       Log.i('Detail loaded', '$comicId - ${info.title}');
 
-      // 先以兜底色铺好，UI 立即可渲染；取色完成后再平滑替换。
-      _data = DetailUiData(info: info, palette: ComicPalette.fallback);
+      _data = DetailUiData(info: info);
       _state = DetailLoadState.success;
       _notifyListeners();
-
-      // 后台取色（不阻塞首屏）。
-      final headers = source.getThumbnailLoadingConfig?.call(info.cover);
-      final palette = await PaletteExtractor.extract(
-        info.cover,
-        headers: headers,
-      );
-      if (_disposed) return;
-      if (_data != null && _data!.info == info) {
-        _data = DetailUiData(info: info, palette: palette);
-        _notifyListeners();
-      }
 
       // 后台加载评论（不阻塞首屏）。
       loadComments();

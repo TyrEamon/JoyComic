@@ -241,17 +241,15 @@ class _LevelBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [context.colorScheme.primary, context.colorScheme.secondary],
-        ),
+        color: context.colorScheme.primaryContainer,
         borderRadius: BorderRadius.circular(3),
       ),
       child: Text(
         'Lv.$level',
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 9,
           fontWeight: FontWeight.w700,
-          color: Colors.white,
+          color: context.colorScheme.onPrimaryContainer,
         ),
       ),
     );

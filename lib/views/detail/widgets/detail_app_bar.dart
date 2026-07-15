@@ -7,6 +7,8 @@ library;
 import 'package:flutter/material.dart';
 import 'package:joycomic/theme/app_theme_context.dart';
 
+import '../../../theme/app_gradients.dart';
+
 class DetailAppBar extends StatelessWidget {
   const DetailAppBar({
     super.key,
@@ -58,16 +60,10 @@ class _Bar extends StatelessWidget {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: scrolledUnder
-              ? [
-                  context.pageBackground,
-                  context.pageBackground.withValues(alpha: 0.0),
-                ]
-              : [const Color(0x66000000), const Color(0x00000000)],
-        ),
+        color: scrolledUnder ? context.pageBackground : Colors.transparent,
+        gradient: scrolledUnder
+            ? null
+            : AppGradients.imageScrimTop(context.semanticColors),
       ),
       height: 52,
       padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -95,11 +91,11 @@ class _IconBtn extends StatelessWidget {
       borderRadius: BorderRadius.circular(20),
       child: Container(
         padding: const EdgeInsets.all(8),
-        decoration: const BoxDecoration(
-          color: Color(0x33000000),
+        decoration: BoxDecoration(
+          color: context.semanticColors.imageScrimSoft,
           shape: BoxShape.circle,
         ),
-        child: Icon(icon, size: 20, color: Colors.white),
+        child: Icon(icon, size: 20, color: context.onImageColor),
       ),
     );
   }
