@@ -111,11 +111,15 @@ _loadPicacgHomeSection(
 }
 
 /// 哔咔内置源声明。
-ComicSource buildPicacgSource({PicacgHomePageLoader? homePageLoader}) {
+ComicSource buildPicacgSource({
+  PicacgHomePageLoader? homePageLoader,
+  PicacgNetwork? network,
+}) {
+  final client = network ?? PicacgNetwork();
   final loadHomePage =
       homePageLoader ??
       (String sort) async {
-        final result = await PicacgNetwork().getCategoryComics('', 1, sort);
+        final result = await client.getCategoryComics('', 1, sort);
         if (result.error) {
           return Res<List<BaseComic>>.error(result.errorMessageWithoutNull);
         }
@@ -129,12 +133,11 @@ ComicSource buildPicacgSource({PicacgHomePageLoader? homePageLoader}) {
     version: '2.2.1.3.3.4',
     account: AccountConfig.named(
       login: (account, pwd) async {
-        final network = PicacgNetwork();
-        final res = await network.login(account, pwd);
+        final res = await client.login(account, pwd);
         if (res.error) return Res.fromErrorRes(res);
         final s = ComicSource.find('picacg')!;
         s.data['token'] = res.data;
-        final profile = await network.getProfile();
+        final profile = await client.getProfile();
         if (profile.error) {
           s.data['token'] = null;
           return Res.fromErrorRes(profile);
@@ -154,7 +157,7 @@ ComicSource buildPicacgSource({PicacgHomePageLoader? homePageLoader}) {
       loginWebsite: 'https://picacomic.com',
     ),
     loadSourceCategories: () async {
-      final res = await PicacgNetwork().getCategories();
+      final res = await client.getCategories();
       if (res.error) return Res(null, errorMessage: res.errorMessage);
       return Res(
         normalizeCategories([
@@ -170,7 +173,7 @@ ComicSource buildPicacgSource({PicacgHomePageLoader? homePageLoader}) {
       );
     },
     loadSourceContent: (query) async {
-      final res = await PicacgNetwork().getCategoryComics(
+      final res = await client.getCategoryComics(
         query.param ?? query.categoryKey,
         query.page,
         _picacgSort(query.sort),
@@ -188,25 +191,25 @@ ComicSource buildPicacgSource({PicacgHomePageLoader? homePageLoader}) {
     // 哔咔搜索：高级搜索，sort='ua' 默认排序。
     searchPageData: SearchPageData.named(
       loadPage: (keyword, page, options) async {
-        final res = await PicacgNetwork().search(keyword, 'ua', page);
+        final res = await client.search(keyword, 'ua', page);
         if (res.error) return Res(null, errorMessage: res.errorMessage);
         return Res<List<BaseComic>>(<BaseComic>[
           ...res.data,
         ], subData: res.subData);
       },
       enableTagsSuggestions: true,
-      loadHotTags: () => PicacgNetwork().getHotTags(),
+      loadHotTags: () => client.getHotTags(),
     ),
     // 详情：ComicItem → ComicInfoData 统一形态。
     loadComicInfo: (id) async {
-      final res = await PicacgNetwork().getComicInfo(id);
+      final res = await client.getComicInfo(id);
       if (res.error) return Res(null, errorMessage: res.errorMessage);
-      return Res(_picacgItemToComicInfoData(res.data));
+      return Res(picacgItemToComicInfoData(res.data));
     },
     // 章节图：ep 为 PicacgEpisode.order（章节序号，整数）。
     loadComicPages: (comicId, ep) async {
       final order = int.tryParse(ep ?? '1') ?? 1;
-      final res = await PicacgNetwork().getComicContent(comicId, order);
+      final res = await client.getComicContent(comicId, order);
       if (res.error) return Res(null, errorMessage: res.errorMessage);
       return Res(res.data);
     },
@@ -216,22 +219,26 @@ ComicSource buildPicacgSource({PicacgHomePageLoader? homePageLoader}) {
     // 收藏。
     favoriteData: FavoriteData.named(
       load: (page, [folder]) async {
-        final res = await PicacgNetwork().getFavorites(page, true);
+        final res = await client.getFavorites(page, true);
         if (res.error) return Res(null, errorMessage: res.errorMessage);
         return Res<List<BaseComic>>(<BaseComic>[
           ...res.data,
         ], subData: res.subData);
       },
       addOrDelFavorite: (comicId, folderId, isAdding) async {
-        final res = await PicacgNetwork().favouriteOrUnfavourite(comicId);
+        final res = await client.favouriteOrUnfavourite(comicId);
         if (res.error) return Res(null, errorMessage: res.errorMessage);
         return const Res(true);
       },
       multiFolder: false,
     ),
-    // 评论。
-    commentsLoader: (id, subId, page, replyToId) =>
-        PicacgNetwork().getComments(id, page: page),
+    // 评论与回复。
+    commentsLoader: (id, subId, page, replyToId) => replyToId == null
+        ? client.getComments(id, page: page)
+        : client.getCommentChildren(replyToId, page: page),
+    sendCommentFunc: (id, subId, content, replyTo) => replyTo == null
+        ? client.sendComment(id, content)
+        : client.replyComment(replyTo.id, content),
     initData: (s) {
       s.data['appChannel'] ??= '3';
       s.data['imageQuality'] ??= 'original';
@@ -241,7 +248,7 @@ ComicSource buildPicacgSource({PicacgHomePageLoader? homePageLoader}) {
   );
 
   // 注入状态门面并注册到内置表。
-  PicacgNetwork().state = PicacgStateImpl(source);
+  client.state = PicacgStateImpl(source);
   return source;
 }
 
@@ -282,23 +289,31 @@ Map<String, dynamic> _profileToMap(Profile p) => {
 /// 哔咔详情 → 统一 [ComicInfoData]。
 ///
 /// 章节映射：episodes（order→title）→ {order: title}，epId = order.toString()
-/// 供 loadComicPages 调用。tags 含作者/分类/汉化组 + 热度/收藏数值化。
-ComicInfoData _picacgItemToComicInfoData(ComicItem info) {
-  final chapters = <String, String>{};
-  for (final ep in info.episodes) {
-    chapters[ep.order.toString()] = ep.title;
-  }
+/// 供 loadComicPages 调用。兼容 tags 只保留作者、汉化组、分类与标签；
+/// 阅读、喜欢与评论数量通过类型化字段暴露。
+ComicInfoData picacgItemToComicInfoData(ComicItem info) {
+  final chapters = <String, String>{
+    for (final episode in info.episodes)
+      episode.order.toString(): episode.title,
+  };
+  final chapterList = <ComicChapter>[
+    for (final episode in info.episodes)
+      ComicChapter(
+        id: episode.order.toString(),
+        title: episode.title,
+        order: episode.order,
+      ),
+  ];
   return ComicInfoData.snapshot(
     title: info.title,
     subTitle: info.author,
     cover: info.cover,
     description: info.description,
-    tags: {
-      '作者': [info.author],
-      if (info.chineseTeam.isNotEmpty) '汉化组': [info.chineseTeam],
-      '标签': info.categories,
-      '热度': [_formatCount(info.likes)],
-      '评价人数': [_formatCount(info.comments)],
+    tags: <String, List<String>>{
+      if (info.author.trim().isNotEmpty) '作者': <String>[info.author],
+      if (info.chineseTeam.trim().isNotEmpty) '汉化组': <String>[info.chineseTeam],
+      if (info.categories.isNotEmpty) '分类': info.categories,
+      if (info.tagList.isNotEmpty) '标签': info.tagList,
     },
     chapters: chapters,
     thumbnails: null,
@@ -306,12 +321,15 @@ ComicInfoData _picacgItemToComicInfoData(ComicItem info) {
     sourceKey: 'picacg',
     comicId: info.id,
     isFavorite: info.isFavourite,
+    authors: info.author.trim().isEmpty
+        ? const <String>[]
+        : <String>[info.author],
+    categories: info.categories,
+    labels: info.tagList,
+    viewCount: info.views,
+    likeCount: info.likes,
+    commentCount: info.comments,
+    isLiked: info.isLiked,
+    chapterList: chapterList,
   );
-}
-
-/// 数值量化：>=1 亿显示"X.X 亿"，>=1 万显示"X.X 万"，否则原数。
-String _formatCount(int n) {
-  if (n >= 100000000) return '${(n / 100000000).toStringAsFixed(1)}亿';
-  if (n >= 10000) return '${(n / 10000).toStringAsFixed(1)}万';
-  return n.toString();
 }

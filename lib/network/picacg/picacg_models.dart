@@ -131,6 +131,7 @@ class ComicItem extends BaseComic {
   final String chineseTeam;
   final List<String> categories;
   final List<String> tagList;
+  final int? views;
   final int likes;
   final int comments;
   final bool isLiked;
@@ -148,8 +149,9 @@ class ComicItem extends BaseComic {
     required String description,
     required this.thumbUrl,
     required this.chineseTeam,
-    required this.categories,
+    required List<String> categories,
     required List<String> tags,
+    this.views,
     required this.likes,
     required this.comments,
     required this.isLiked,
@@ -157,10 +159,13 @@ class ComicItem extends BaseComic {
     required this.epsCount,
     required this.pagesCount,
     required this.time,
-    required this.episodes,
-    required this.recommendation,
+    required List<PicacgEpisode> episodes,
+    required List<ComicItemBrief> recommendation,
   }) : _description = description,
-       tagList = tags;
+       categories = List<String>.unmodifiable(categories),
+       tagList = List<String>.unmodifiable(tags),
+       episodes = List<PicacgEpisode>.unmodifiable(episodes),
+       recommendation = List<ComicItemBrief>.unmodifiable(recommendation);
 
   ComicItemBrief toBrief() => ComicItemBrief(
     title: title,

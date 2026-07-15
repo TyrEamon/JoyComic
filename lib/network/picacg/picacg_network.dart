@@ -170,6 +170,12 @@ Res<CommentPageData> parsePicacgCommentPage(
 Res<CommentPageData> _picacgCommentParseFailure() =>
     const Res<CommentPageData>(null, errorMessage: '评论解析失败');
 
+int? _optionalPicacgInteger(Object? value) {
+  if (value == null) return null;
+  final parsed = _parsePicacgCommentInteger(value);
+  return parsed == null || parsed < 0 ? null : parsed;
+}
+
 int? _parsePicacgCommentInteger(Object? value) {
   if (value is int) return value;
   if (value is num) {
@@ -223,10 +229,38 @@ Comment _parsePicacgComment(Map<String, dynamic> comment) {
 }
 
 /// 哔咔网络请求类。
+typedef PicacgGetRequest =
+    Future<Res<Map<String, dynamic>>> Function(String url);
+typedef PicacgPostRequest =
+    Future<Res<Map<String, dynamic>>> Function(
+      String url,
+      Map<String, String>? data,
+    );
+
 class PicacgNetwork {
-  PicacgNetwork._create();
+  PicacgNetwork._create({
+    PicacgGetRequest? getRequest,
+    PicacgPostRequest? postRequest,
+  }) : _getRequest = getRequest,
+       _postRequest = postRequest;
+
   static PicacgNetwork? _cache;
-  factory PicacgNetwork() => _cache ??= PicacgNetwork._create();
+
+  factory PicacgNetwork({
+    PicacgGetRequest? getRequest,
+    PicacgPostRequest? postRequest,
+  }) {
+    if (getRequest == null && postRequest == null) {
+      return _cache ??= PicacgNetwork._create();
+    }
+    return PicacgNetwork._create(
+      getRequest: getRequest,
+      postRequest: postRequest,
+    );
+  }
+
+  final PicacgGetRequest? _getRequest;
+  final PicacgPostRequest? _postRequest;
 
   /// 由源注册流程在初始化时注入状态门面。
   PicacgState? state;
@@ -244,6 +278,8 @@ class PicacgNetwork {
     String url, {
     bool useCache = false,
   }) async {
+    final request = _getRequest;
+    if (request != null) return request(url);
     if (_token == '') {
       await Future.delayed(const Duration(milliseconds: 500));
       return const Res(null, errorMessage: '未登录');
@@ -279,6 +315,8 @@ class PicacgNetwork {
     String url,
     Map<String, String>? data,
   ) async {
+    final request = _postRequest;
+    if (request != null) return request(url, data);
     final isAuth =
         url == '$apiUrl/auth/sign-in' || url == '$apiUrl/auth/register';
     if (_token == '' && !isAuth) {
@@ -521,6 +559,9 @@ class PicacgNetwork {
         chineseTeam: jsonString(comic['chineseTeam']),
         categories: jsonStringList(comic['categories']),
         tags: jsonStringList(comic['tags']),
+        views: _optionalPicacgInteger(
+          comic['viewsCount'] ?? comic['totalViews'] ?? comic['views'],
+        ),
         likes: jsonInt(
           comic['likesCount'] ?? comic['totalLikes'] ?? comic['likes'],
         ),
@@ -645,5 +686,35 @@ class PicacgNetwork {
       return Res<CommentPageData>(null, errorMessage: res.errorMessage);
     }
     return parsePicacgCommentPage(res.dataOrNull, requestedPage: page);
+  }
+
+  /// 获取指定顶级评论的子评论分页。
+  Future<Res<CommentPageData>> getCommentChildren(
+    String commentId, {
+    int page = 1,
+  }) async {
+    final res = await get('$apiUrl/comments/$commentId/childrens?page=$page');
+    if (res.error) {
+      return Res<CommentPageData>(null, errorMessage: res.errorMessage);
+    }
+    return parsePicacgCommentPage(res.dataOrNull, requestedPage: page);
+  }
+
+  /// 向漫画发表评论。
+  Future<Res<bool>> sendComment(String comicId, String content) =>
+      _sendCommentRequest('$apiUrl/comics/$comicId/comments', content);
+
+  /// 回复指定评论。
+  Future<Res<bool>> replyComment(String commentId, String content) =>
+      _sendCommentRequest('$apiUrl/comments/$commentId', content);
+
+  Future<Res<bool>> _sendCommentRequest(String url, String content) async {
+    final normalized = content.trim();
+    if (normalized.isEmpty) {
+      return const Res<bool>(null, errorMessage: '评论内容不能为空');
+    }
+    final res = await post(url, <String, String>{'content': normalized});
+    if (res.error) return Res<bool>(null, errorMessage: res.errorMessage);
+    return const Res<bool>(true);
   }
 }
