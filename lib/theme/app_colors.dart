@@ -14,6 +14,28 @@ import 'package:flutter/material.dart';
 class AppColors {
   AppColors._();
 
+  // Approved Warm Paper + Coral theme. Legacy tokens below remain only while
+  // existing consumers are migrated and are removed by the source-policy task.
+  static const Color darkBackground = Color(0xFF111315);
+
+  static const ColorScheme darkScheme = ColorScheme.dark(
+    primary: Color(0xFFF08A82),
+    onPrimary: Color(0xFF3B0B08),
+    primaryContainer: Color(0xFF32110E),
+    onPrimaryContainer: Color(0xFFFFDAD6),
+    secondary: Color(0xFFD5C2B7),
+    onSecondary: Color(0xFF392E28),
+    secondaryContainer: Color(0xFF51453E),
+    onSecondaryContainer: Color(0xFFF2DED3),
+    surface: Color(0xFF191C1F),
+    onSurface: Color(0xFFF2F3F4),
+    onSurfaceVariant: Color(0xFFB7BDC3),
+    outline: Color(0xFF60676E),
+    outlineVariant: Color(0xFF2E3338),
+    error: Color(0xFFFFB4AB),
+    onError: Color(0xFF690005),
+  );
+
   // ============================ 品牌色（静态主调，取色兜底） ============================
 
   /// 藕粉，品牌渐变起点。
@@ -112,19 +134,26 @@ class AppColors {
   // ============================ 亮色模式色值 ============================
 
   /// 亮色模式色板。
-  static final ColorScheme lightScheme = const ColorScheme.light(
-    primary: brandPink,
-    onPrimary: Colors.white,
-    secondary: brandViolet,
-    onSecondary: Colors.white,
-    surface: Color(0xFFFFF8F5),
-    onSurface: Color(0xFF2D2636),
-    error: danger,
-    onError: Colors.white,
+  static const ColorScheme lightScheme = ColorScheme.light(
+    primary: Color(0xFFB7463F),
+    onPrimary: Color(0xFFFFFFFF),
+    primaryContainer: Color(0xFFF6DEDA),
+    onPrimaryContainer: Color(0xFF5A1713),
+    secondary: Color(0xFF6A5E57),
+    onSecondary: Color(0xFFFFFFFF),
+    secondaryContainer: Color(0xFFEFE4DC),
+    onSecondaryContainer: Color(0xFF2C251F),
+    surface: Color(0xFFFFFFFF),
+    onSurface: Color(0xFF1D1E20),
+    onSurfaceVariant: Color(0xFF62666B),
+    outline: Color(0xFFC9C3BB),
+    outlineVariant: Color(0xFFE1DDD7),
+    error: Color(0xFFB3261E),
+    onError: Color(0xFFFFFFFF),
   );
 
   /// 亮色背景（暖白）。
-  static const Color lightBackground = Color(0xFFF5F0F8);
+  static const Color lightBackground = Color(0xFFF7F5F2);
 
   /// 亮色卡片表面。
   static const Color lightSurface = Color(0xFFFFF8F5);
