@@ -1,13 +1,14 @@
-/// 阅读器底部工具栏。
+/// Reader bottom control overlay.
 library;
 
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 
+import '../../../theme/app_gradients.dart';
 import '../providers/reader_provider.dart' hide ReaderImage;
 import '../state/read_mode.dart';
 import '../utils/reader_utils.dart';
 
-/// 阅读器底部工具栏：页码滑块、阅读模式切换、设置入口、自动翻页开关。
 class ReaderBottom extends StatefulWidget {
   const ReaderBottom({super.key});
 
@@ -23,6 +24,7 @@ class _ReaderBottomState extends State<ReaderBottom> {
     final pageCount = context.selector((p) => p.pageCount);
     final readMode = context.selector((p) => p.readMode);
     final isPageTurning = context.selector((p) => p.isPageTurning);
+    final foreground = context.semanticColors.readerControlForeground;
 
     return AnimatedPositioned(
       duration: const Duration(milliseconds: 200),
@@ -30,23 +32,19 @@ class _ReaderBottomState extends State<ReaderBottom> {
       left: 0,
       right: 0,
       child: Container(
+        key: const Key('reader-bottom-scrim'),
         padding: EdgeInsets.fromLTRB(16, 8, 16, context.bottom + 8),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.bottomCenter,
-            end: Alignment.topCenter,
-            colors: [Colors.black.withValues(alpha: 0.7), Colors.transparent],
-          ),
+          gradient: AppGradients.readerScrimBottom(context.semanticColors),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // 页码滑块区域
             Row(
               children: [
                 Text(
                   '${pageNo + 1}',
-                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                  style: TextStyle(color: foreground, fontSize: 12),
                 ),
                 Expanded(
                   child: Slider(
@@ -54,21 +52,19 @@ class _ReaderBottomState extends State<ReaderBottom> {
                     min: 0,
                     max: (pageCount - 1).clamp(0, double.infinity).toDouble(),
                     divisions: pageCount > 1 ? pageCount - 1 : null,
-                    activeColor: Colors.white,
-                    inactiveColor: Colors.white30,
-                    onChanged: (value) {
-                      context.reader.onSliderChanged(value.round());
-                    },
+                    activeColor: foreground,
+                    inactiveColor: foreground.withValues(alpha: 0.3),
+                    onChanged: (value) =>
+                        context.reader.onSliderChanged(value.round()),
                   ),
                 ),
                 Text(
                   '$pageCount',
-                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                  style: TextStyle(color: foreground, fontSize: 12),
                 ),
               ],
             ),
             const SizedBox(height: 4),
-            // 操作按钮行
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
@@ -80,13 +76,9 @@ class _ReaderBottomState extends State<ReaderBottom> {
                 _ActionButton(
                   icon: isPageTurning ? Icons.pause : Icons.play_arrow,
                   tooltip: isPageTurning ? '停止自动翻页' : '自动翻页',
-                  onTap: () {
-                    if (isPageTurning) {
-                      context.reader.stopPageTurn();
-                    } else {
-                      context.reader.startPageTurn();
-                    }
-                  },
+                  onTap: () => isPageTurning
+                      ? context.reader.stopPageTurn()
+                      : context.reader.startPageTurn(),
                 ),
                 _ActionButton(
                   icon: Icons.menu,
@@ -104,7 +96,7 @@ class _ReaderBottomState extends State<ReaderBottom> {
   void _showReadModePicker(BuildContext context, ReadMode current) {
     showModalBottomSheet(
       context: context,
-      builder: (ctx) => SafeArea(
+      builder: (sheetContext) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: ReadMode.values.map((mode) {
@@ -120,7 +112,7 @@ class _ReaderBottomState extends State<ReaderBottom> {
               trailing: mode == current ? const Icon(Icons.check) : null,
               onTap: () {
                 context.reader.readMode = mode;
-                Navigator.pop(ctx);
+                Navigator.pop(sheetContext);
               },
             );
           }).toList(),
@@ -144,7 +136,7 @@ class _ActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return IconButton(
-      icon: Icon(icon, color: Colors.white),
+      icon: Icon(icon, color: context.semanticColors.readerControlForeground),
       tooltip: tooltip,
       onPressed: onTap,
     );

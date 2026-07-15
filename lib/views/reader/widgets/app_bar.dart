@@ -1,19 +1,21 @@
-/// 阅读器顶部工具栏。
+/// Reader top control overlay.
 library;
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 
+import '../../../theme/app_gradients.dart';
 import '../providers/reader_provider.dart' hide ReaderImage;
 import '../utils/reader_utils.dart';
 
-/// 阅读器顶部工具栏：返回按钮 + 漫画标题 + 章节名。
 class ReaderAppBar extends StatelessWidget {
   const ReaderAppBar({super.key});
 
   @override
   Widget build(BuildContext context) {
     final showToolbar = context.selector((p) => p.showToolbar);
+    final foreground = context.semanticColors.readerControlForeground;
 
     return AnimatedPositioned(
       duration: const Duration(milliseconds: 200),
@@ -21,18 +23,19 @@ class ReaderAppBar extends StatelessWidget {
       left: 0,
       right: 0,
       child: Container(
+        key: const Key('reader-top-scrim'),
         padding: EdgeInsets.fromLTRB(0, context.top + 4, 0, 4),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Colors.black.withValues(alpha: 0.7), Colors.transparent],
-          ),
+          gradient: AppGradients.readerScrimTop(context.semanticColors),
         ),
         child: Row(
           children: [
             IconButton(
-              icon: const Icon(Icons.arrow_back, color: Colors.white),
+              icon: Icon(
+                Icons.arrow_back,
+                key: const Key('reader-back-icon'),
+                color: foreground,
+              ),
               onPressed: () {
                 context.reader.stopPageTurn();
                 context.pop();
@@ -45,8 +48,8 @@ class ReaderAppBar extends StatelessWidget {
                 children: [
                   Text(
                     context.reader.title,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: foreground,
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
                     ),
@@ -55,7 +58,10 @@ class ReaderAppBar extends StatelessWidget {
                   ),
                   Text(
                     getTextBeforeNewLine(context.reader.chapter.name),
-                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                    style: TextStyle(
+                      color: foreground.withValues(alpha: 0.72),
+                      fontSize: 12,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),

@@ -2,6 +2,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 
 import '../providers/reader_provider.dart' hide ReaderImage;
 import '../providers/list_state_provider.dart';
@@ -29,7 +30,7 @@ class MenuLock extends StatelessWidget {
           duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: Colors.black54,
+            color: context.semanticColors.readerScrimStrong,
             borderRadius: BorderRadius.circular(20),
           ),
           child: Row(
@@ -39,7 +40,7 @@ class MenuLock extends StatelessWidget {
                 onTap: () => context.stateReader.toggleLockMenu(),
                 child: Icon(
                   context.stateReader.lockMenu ? Icons.lock : Icons.lock_open,
-                  color: Colors.white,
+                  color: context.semanticColors.readerControlForeground,
                   size: 20,
                 ),
               ),
@@ -47,7 +48,11 @@ class MenuLock extends StatelessWidget {
                 const SizedBox(width: 6),
                 GestureDetector(
                   onTap: () => context.reader.collapseMenuLock(),
-                  child: const Icon(Icons.close, color: Colors.white, size: 16),
+                  child: Icon(
+                    Icons.close,
+                    color: context.semanticColors.readerControlForeground,
+                    size: 16,
+                  ),
                 ),
               ],
             ],

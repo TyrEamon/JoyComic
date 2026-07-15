@@ -42,18 +42,14 @@ class Toast {
 
     _overlayEntry = OverlayEntry(
       builder: (context) {
-        var brightness = Theme.of(context).brightness;
+        final scheme = Theme.of(context).colorScheme;
         return _ToastWidget(
           message: message,
           position: position,
-          backgroundColor:
-              backgroundColor ??
-              (brightness == Brightness.light ? Colors.black87 : Colors.white),
+          backgroundColor: backgroundColor ?? scheme.inverseSurface,
           textStyle:
               textStyle ??
-              (brightness == Brightness.light
-                  ? const TextStyle(color: Colors.white, fontSize: 14)
-                  : const TextStyle(color: Colors.black87, fontSize: 14)),
+              TextStyle(color: scheme.onInverseSurface, fontSize: 14),
           padding: padding,
           borderRadius: borderRadius,
         );

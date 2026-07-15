@@ -22,6 +22,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 
 import '../../comic_source/comic_source.dart';
 import '../../database/read_record_helper.dart';
@@ -30,7 +31,6 @@ import 'providers/list_state_provider.dart';
 import 'providers/reader_provider.dart';
 import 'state/comic_state.dart';
 import 'state/read_mode.dart';
-import 'utils/reader_utils.dart';
 import 'widgets/app_bar.dart';
 import 'widgets/bottom.dart';
 import 'widgets/error_page.dart';
@@ -181,7 +181,7 @@ class _ReaderContent extends StatelessWidget {
     );
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: context.semanticColors.readerCanvas,
       body: Stack(
         children: [
           Positioned.fill(
@@ -232,7 +232,7 @@ class _ReaderContent extends StatelessWidget {
                 child: Text(
                   '章节列表',
                   textAlign: TextAlign.center,
-                  style: context.textTheme.titleLarge,
+                  style: Theme.of(context).textTheme.titleLarge,
                 ),
               ),
               Expanded(

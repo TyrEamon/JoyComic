@@ -2,6 +2,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 
 import '../utils/reader_utils.dart';
 import '../providers/reader_provider.dart' hide ReaderImage;
@@ -21,12 +22,15 @@ class ReaderPageNoTag extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
-          color: Colors.black54,
+          color: context.semanticColors.readerScrimStrong,
           borderRadius: BorderRadius.circular(4),
         ),
         child: Text(
           '${pageNo + 1} / $pageCount',
-          style: const TextStyle(color: Colors.white, fontSize: 12),
+          style: TextStyle(
+            color: context.semanticColors.readerControlForeground,
+            fontSize: 12,
+          ),
         ),
       ),
     );
