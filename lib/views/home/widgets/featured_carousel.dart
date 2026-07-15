@@ -4,7 +4,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:joycomic/theme/app_theme_context.dart';
 
-import '../../../theme/app_colors.dart';
+import '../../../theme/app_gradients.dart';
 import '../../../theme/app_radius.dart';
 import '../../../theme/app_spacing.dart';
 
@@ -81,24 +81,20 @@ class _FeaturedCard extends StatelessWidget {
               colorBlendMode: BlendMode.dstATop,
               color: context.surfaceColor,
               errorBuilder: (_, __, ___) => Container(
-                decoration: const BoxDecoration(
-                  gradient: AppColors.brandGradient,
+                color: context.elevatedSurfaceColor,
+                alignment: Alignment.center,
+                child: Icon(
+                  Icons.image_not_supported_outlined,
+                  color: context.secondaryTextColor,
                 ),
               ),
             ),
-            const Positioned.fill(
+            Positioned.fill(
               child: IgnorePointer(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.bottomLeft,
-                      end: Alignment.topRight,
-                      stops: [0.0, 0.5, 1.0],
-                      colors: [
-                        Color(0xE60E0B14),
-                        Color(0x800E0B14),
-                        Color(0x140E0B14),
-                      ],
+                    gradient: AppGradients.imageScrimBottom(
+                      context.semanticColors,
                     ),
                   ),
                 ),
@@ -114,20 +110,16 @@ class _FeaturedCard extends StatelessWidget {
                     vertical: 3,
                   ),
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        context.colorScheme.primary,
-                        context.colorScheme.secondary,
-                      ],
-                    ),
+                    color: context.colorScheme.primaryContainer,
                     borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: context.borderColor),
                   ),
                   child: Text(
                     item.badge ?? _sourceLabel(item.sourceKey!),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w700,
-                      color: Colors.white,
+                      color: context.colorScheme.onPrimaryContainer,
                     ),
                   ),
                 ),
@@ -145,7 +137,7 @@ class _FeaturedCard extends StatelessWidget {
                       item.tag!,
                       style: TextStyle(
                         fontSize: 11,
-                        color: context.colorScheme.primary,
+                        color: context.onImageColor,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -154,12 +146,11 @@ class _FeaturedCard extends StatelessWidget {
                     item.title,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w700,
-                      color: Colors.white,
+                      color: context.onImageColor,
                       height: 1.25,
-                      shadows: [Shadow(color: Colors.black54, blurRadius: 8)],
                     ),
                   ),
                 ],

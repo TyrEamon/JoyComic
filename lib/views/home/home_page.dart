@@ -355,21 +355,12 @@ class _TopBar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          ShaderMask(
-            shaderCallback: (bounds) => LinearGradient(
-              colors: [
-                context.colorScheme.primary,
-                context.colorScheme.secondary,
-              ],
-            ).createShader(bounds),
-            blendMode: BlendMode.srcIn,
-            child: const Text(
-              'JoyComic',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
-              ),
+          Text(
+            'JoyComic',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+              color: context.colorScheme.primary,
             ),
           ),
           const Spacer(),
