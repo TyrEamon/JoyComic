@@ -1,112 +1,70 @@
-/// 评论组件（Comment Section）。
-///
-/// - 顶部栏："评论（总数）" + 右"更多评论 >"入口
-/// - 评论卡片：头像 / 昵称 / 等级勋章 / 星级评分 / 多行评论文本 /
-///   底部发表时间 + 带数字点赞 Icon
+/// Typed comment list with reply previews and load-more support.
 library;
 
 import 'package:cached_network_image_ce/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:joycomic/theme/app_theme_context.dart';
 
+import '../../../comic_source/detail_models.dart';
 import '../../../theme/app_radius.dart';
-import '../../../theme/app_shadows.dart';
 import '../../../theme/app_spacing.dart';
 import '../../../theme/app_typography.dart';
-import '../../common/widgets/rating_stars.dart';
-
-/// 评论 UI 数据（与 ComicSource.Comment 解耦的视图模型）。
-class CommentView {
-  const CommentView({
-    required this.userName,
-    this.avatar,
-    this.level,
-    required this.content,
-    this.time,
-    this.rating,
-    this.likes,
-  });
-  final String userName;
-  final String? avatar;
-  final int? level;
-  final String content;
-  final String? time;
-  final double? rating; // 0~5
-  final int? likes;
-}
 
 class CommentSection extends StatelessWidget {
   const CommentSection({
     super.key,
-    required this.total,
     required this.comments,
-    this.onShowAll,
+    required this.loading,
+    required this.hasMore,
+    required this.onReply,
+    required this.onLoadMore,
   });
 
-  final int total;
-  final List<CommentView> comments;
-  final VoidCallback? onShowAll;
+  final List<Comment> comments;
+  final bool loading;
+  final bool hasMore;
+  final ValueChanged<Comment> onReply;
+  final VoidCallback onLoadMore;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Text('评论', style: AppTypography.section(context)),
-              if (total > 0) ...[
-                const SizedBox(width: 4),
-                Text(
-                  '($total)',
-                  style: AppTypography.section(context).copyWith(
-                    color: context.tertiaryTextColor,
-                    fontWeight: FontWeight.w400,
-                  ),
-                ),
-              ],
-              const Spacer(),
-              if (onShowAll != null)
-                InkWell(
-                  onTap: onShowAll,
-                  borderRadius: AppRadius.brSm,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 4,
-                    ),
-                    child: Row(
-                      children: [
-                        Text(
-                          '更多评论',
-                          style: AppTypography.sectionAction(context),
-                        ),
-                        Icon(
-                          Icons.chevron_right_rounded,
-                          size: 18,
-                          color: context.tertiaryTextColor,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          if (comments.isEmpty)
+          if (loading && comments.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(AppSpacing.xl),
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else if (comments.isEmpty)
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
-              child: Center(
-                child: Text(
-                  '还没有评论',
-                  style: TextStyle(color: context.tertiaryTextColor),
-                ),
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.xl),
+              child: Text(
+                '还没有评论',
+                style: TextStyle(color: context.tertiaryTextColor),
               ),
             )
           else
-            ...comments.map((c) => _CommentCard(c)),
+            for (final comment in comments)
+              _CommentCard(comment: comment, onReply: () => onReply(comment)),
+          if (hasMore)
+            Padding(
+              padding: const EdgeInsets.only(top: AppSpacing.sm),
+              child: SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: loading ? null : onLoadMore,
+                  child: loading
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('加载更多评论'),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -114,8 +72,10 @@ class CommentSection extends StatelessWidget {
 }
 
 class _CommentCard extends StatelessWidget {
-  const _CommentCard(this.c);
-  final CommentView c;
+  const _CommentCard({required this.comment, required this.onReply});
+
+  final Comment comment;
+  final VoidCallback onReply;
 
   @override
   Widget build(BuildContext context) {
@@ -132,53 +92,60 @@ class _CommentCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              _Avatar(url: c.avatar),
+              _Avatar(url: comment.avatar),
               const SizedBox(width: AppSpacing.xs),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            c.userName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTypography.cardTitle(
-                              context,
-                            ).copyWith(fontSize: 13),
-                          ),
-                        ),
-                        if (c.level != null) ...[
-                          const SizedBox(width: 6),
-                          _LevelBadge(level: c.level!),
-                        ],
-                      ],
-                    ),
-                    if (c.rating != null) ...[
-                      const SizedBox(height: 2),
-                      RatingStars(rating: c.rating!, size: 11),
-                    ],
-                  ],
+                child: Text(
+                  comment.userName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.cardTitle(context),
                 ),
               ),
+              TextButton(onPressed: onReply, child: const Text('回复')),
             ],
           ),
           const SizedBox(height: AppSpacing.xs),
-          Text(
-            c.content,
-            maxLines: 4,
-            overflow: TextOverflow.ellipsis,
-            style: AppTypography.body(
-              context,
-            ).copyWith(fontSize: 14, height: 1.5),
-          ),
+          Text(comment.content, style: AppTypography.body(context)),
+          if (comment.replies.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.sm),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: context.semanticColors.surfaceMuted,
+                borderRadius: AppRadius.brSm,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.sm),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (final reply in comment.replies.take(3))
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+                        child: Text(
+                          '${reply.userName}：${reply.content}',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.cardMeta(context),
+                        ),
+                      ),
+                    if (comment.replyCount > comment.replies.length)
+                      Text(
+                        '共 ${comment.replyCount} 条回复',
+                        style: AppTypography.cardMeta(
+                          context,
+                        ).copyWith(color: context.colorScheme.primary),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: AppSpacing.xs),
           Row(
             children: [
-              if (c.time != null)
-                Text(c.time!, style: AppTypography.ratingCount(context)),
+              if (comment.time != null)
+                Text(comment.time!, style: AppTypography.cardMeta(context)),
               const Spacer(),
               Icon(
                 Icons.favorite_border_rounded,
@@ -187,8 +154,8 @@ class _CommentCard extends StatelessWidget {
               ),
               const SizedBox(width: 4),
               Text(
-                c.likes != null ? '${c.likes}' : '0',
-                style: AppTypography.ratingCount(context),
+                comment.likeCount.toString(),
+                style: AppTypography.cardMeta(context),
               ),
             ],
           ),
@@ -200,57 +167,36 @@ class _CommentCard extends StatelessWidget {
 
 class _Avatar extends StatelessWidget {
   const _Avatar({required this.url});
+
   final String? url;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SizedBox(
       width: 32,
       height: 32,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: context.elevatedSurfaceColor,
-        boxShadow: AppShadows.card,
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: url == null
-          ? Icon(Icons.person, size: 18, color: context.disabledTextColor)
-          : CachedNetworkImage(
-              imageUrl: url!,
-              fit: BoxFit.cover,
-              placeholder: (_, __) => ColoredBox(
+      child: ClipOval(
+        child: url == null
+            ? ColoredBox(
                 color: context.elevatedSurfaceColor,
-                child: const SizedBox.expand(),
+                child: Icon(
+                  Icons.person_rounded,
+                  size: 18,
+                  color: context.disabledTextColor,
+                ),
+              )
+            : CachedNetworkImage(
+                imageUrl: url!,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => ColoredBox(
+                  color: context.elevatedSurfaceColor,
+                  child: Icon(
+                    Icons.person_rounded,
+                    size: 18,
+                    color: context.disabledTextColor,
+                  ),
+                ),
               ),
-              errorBuilder: (_, __, ___) => Icon(
-                Icons.person,
-                size: 18,
-                color: context.disabledTextColor,
-              ),
-            ),
-    );
-  }
-}
-
-class _LevelBadge extends StatelessWidget {
-  const _LevelBadge({required this.level});
-  final int level;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-      decoration: BoxDecoration(
-        color: context.colorScheme.primaryContainer,
-        borderRadius: BorderRadius.circular(3),
-      ),
-      child: Text(
-        'Lv.$level',
-        style: TextStyle(
-          fontSize: 9,
-          fontWeight: FontWeight.w700,
-          color: context.colorScheme.onPrimaryContainer,
-        ),
       ),
     );
   }

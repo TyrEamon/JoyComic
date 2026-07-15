@@ -69,10 +69,22 @@ class _Bar extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Row(
         children: [
-          _IconBtn(icon: Icons.arrow_back_ios_new_rounded, onTap: onBack),
+          _IconBtn(
+            icon: Icons.arrow_back_ios_new_rounded,
+            tooltip: '返回',
+            onTap: onBack,
+          ),
           const Spacer(),
-          _IconBtn(icon: Icons.ios_share_rounded, onTap: onShare),
-          _IconBtn(icon: Icons.more_horiz_rounded, onTap: onMore),
+          _IconBtn(
+            icon: Icons.ios_share_rounded,
+            tooltip: '分享',
+            onTap: onShare,
+          ),
+          _IconBtn(
+            icon: Icons.more_horiz_rounded,
+            tooltip: '更多',
+            onTap: onMore,
+          ),
         ],
       ),
     );
@@ -80,22 +92,29 @@ class _Bar extends StatelessWidget {
 }
 
 class _IconBtn extends StatelessWidget {
-  const _IconBtn({required this.icon, required this.onTap});
+  const _IconBtn({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
+
   final IconData icon;
+  final String tooltip;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: context.semanticColors.imageScrimSoft,
-          shape: BoxShape.circle,
+    return SizedBox(
+      width: 44,
+      height: 44,
+      child: IconButton(
+        tooltip: tooltip,
+        onPressed: onTap,
+        style: IconButton.styleFrom(
+          backgroundColor: context.semanticColors.imageScrimSoft,
+          foregroundColor: context.onImageColor,
         ),
-        child: Icon(icon, size: 20, color: context.onImageColor),
+        icon: Icon(icon, size: 20),
       ),
     );
   }

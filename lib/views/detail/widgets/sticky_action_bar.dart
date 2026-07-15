@@ -18,6 +18,10 @@ class StickyActionBar extends StatelessWidget {
     required this.onRead,
   });
 
+  static const double buttonHeight = 52;
+  static const double verticalPadding = 8;
+  static const double contentHeight = buttonHeight + verticalPadding * 2;
+
   final bool isFavorite;
   final String readHint;
   final VoidCallback onFavorite;
@@ -29,7 +33,7 @@ class StickyActionBar extends StatelessWidget {
       color: Colors.transparent,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: context.pageBackground.withValues(alpha: 0.94),
+          color: context.pageBackground.withValues(alpha: 0.96),
           border: Border(top: BorderSide(color: context.borderColor)),
           boxShadow: AppShadows.actionBar,
         ),
@@ -38,111 +42,90 @@ class StickyActionBar extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.symmetric(
               horizontal: AppSpacing.md,
-              vertical: AppSpacing.sm,
+              vertical: verticalPadding,
             ),
             child: Row(
               children: [
-                _FavoriteButton(isFavorite: isFavorite, onTap: onFavorite),
+                SizedBox(
+                  key: const ValueKey<String>('sticky-favorite-button'),
+                  width: 112,
+                  height: buttonHeight,
+                  child: OutlinedButton.icon(
+                    onPressed: onFavorite,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: isFavorite
+                          ? context.colorScheme.primary
+                          : context.secondaryTextColor,
+                      backgroundColor: isFavorite
+                          ? context.colorScheme.primaryContainer
+                          : context.surfaceColor,
+                      side: BorderSide(color: context.borderColor),
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: AppRadius.brLg,
+                      ),
+                    ),
+                    icon: Icon(
+                      isFavorite
+                          ? Icons.favorite_rounded
+                          : Icons.favorite_border_rounded,
+                      size: 20,
+                    ),
+                    label: Text(
+                      isFavorite ? '已收藏' : '收藏',
+                      style: AppTypography.buttonSecondary(context),
+                    ),
+                  ),
+                ),
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
-                  child: _ReadButton(hint: readHint, onTap: onRead),
+                  child: SizedBox(
+                    key: const ValueKey<String>('sticky-read-button'),
+                    height: buttonHeight,
+                    child: FilledButton(
+                      onPressed: onRead,
+                      style: FilledButton.styleFrom(
+                        shape: const RoundedRectangleBorder(
+                          borderRadius: AppRadius.brLg,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.menu_book_rounded, size: 20),
+                          const SizedBox(width: AppSpacing.sm),
+                          Flexible(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '开始阅读',
+                                  style: AppTypography.buttonMainTitle.copyWith(
+                                    color: context.colorScheme.onPrimary,
+                                  ),
+                                ),
+                                if (readHint.isNotEmpty)
+                                  Text(
+                                    readHint,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: AppTypography.buttonMainHint
+                                        .copyWith(
+                                          color: context.colorScheme.onPrimary
+                                              .withValues(alpha: 0.82),
+                                        ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _FavoriteButton extends StatelessWidget {
-  const _FavoriteButton({required this.isFavorite, required this.onTap});
-
-  final bool isFavorite;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = isFavorite
-        ? context.colorScheme.primary
-        : context.secondaryTextColor;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: AppRadius.brLg,
-      child: Container(
-        width: 92,
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        decoration: BoxDecoration(
-          color: isFavorite
-              ? context.colorScheme.primaryContainer
-              : context.elevatedSurfaceColor,
-          borderRadius: AppRadius.brLg,
-          border: Border.all(color: context.borderColor),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              isFavorite
-                  ? Icons.favorite_rounded
-                  : Icons.favorite_border_rounded,
-              size: 20,
-              color: color,
-            ),
-            const SizedBox(height: 3),
-            Text(
-              isFavorite ? '已收藏' : '收藏',
-              style: AppTypography.buttonSecondary(
-                context,
-              ).copyWith(fontSize: 12, color: color),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ReadButton extends StatelessWidget {
-  const _ReadButton({required this.hint, required this.onTap});
-
-  final String hint;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final foreground = context.colorScheme.onPrimary;
-    return SizedBox(
-      height: 52,
-      child: FilledButton(
-        onPressed: onTap,
-        style: FilledButton.styleFrom(shape: const StadiumBorder()),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.menu_book_rounded, size: 20, color: foreground),
-            const SizedBox(width: 8),
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '开始阅读',
-                  style: AppTypography.buttonMainTitle.copyWith(
-                    color: foreground,
-                  ),
-                ),
-                if (hint.isNotEmpty)
-                  Text(
-                    hint,
-                    style: AppTypography.buttonMainHint.copyWith(
-                      color: foreground.withValues(alpha: 0.82),
-                    ),
-                  ),
-              ],
-            ),
-          ],
         ),
       ),
     );

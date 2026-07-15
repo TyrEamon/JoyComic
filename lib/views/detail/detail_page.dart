@@ -7,12 +7,15 @@
 /// loading / error / success 三态，error 态提供重试。
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:joycomic/theme/app_theme_context.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
-import 'package:collection/collection.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../comic_source/comic_source.dart';
 import '../../foundation/download_manager.dart';
@@ -22,9 +25,11 @@ import '../reader/state/comic_state.dart';
 import 'detail_navigation.dart';
 import 'detail_view_model.dart';
 import 'widgets/chapter_grid.dart';
+import 'widgets/comment_composer.dart';
 import 'widgets/comment_section.dart';
 import 'widgets/detail_app_bar.dart';
 import 'widgets/detail_metadata.dart';
+import 'widgets/detail_tab_bar.dart';
 import 'widgets/hero_header.dart';
 import 'widgets/recommendation_carousel.dart';
 import 'widgets/sticky_action_bar.dart';
@@ -52,6 +57,7 @@ class _DetailScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<DetailViewModel>();
+    final ready = vm.state == DetailLoadState.success && vm.data != null;
     return Scaffold(
       backgroundColor: context.pageBackground,
       extendBodyBehindAppBar: true,
@@ -66,14 +72,100 @@ class _DetailScaffold extends StatelessWidget {
             DetailLoadState.idle => const SizedBox.shrink(),
             DetailLoadState.success => const _Content(),
           },
-          // 顶部导航栏常驻。
           DetailAppBar(
             scrolledUnder: false,
             onBack: () => Navigator.of(context).maybePop(),
+            onShare: ready ? () => _share(vm) : null,
+            onMore: ready ? () => _showMore(context, vm) : null,
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _share(DetailViewModel vm) async {
+    final info = vm.data!.info;
+    final idLabel = vm.sourceKey == 'jm' ? 'JM${info.comicId}' : info.comicId;
+    final author = vm.author.isEmpty ? '未知作者' : vm.author;
+    await Share.share(
+      '${info.title}\n作者：$author\n来源：${vm.sourceKey}\nID：$idLabel',
+      subject: info.title,
+    );
+  }
+
+  void _showMore(BuildContext context, DetailViewModel vm) {
+    final info = vm.data!.info;
+    final source = ComicSource.find(vm.sourceKey);
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: context.surfaceColor,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.title_rounded),
+              title: const Text('复制标题'),
+              onTap: () => _copyAndClose(sheetContext, info.title, '已复制标题'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.copy_rounded),
+              title: Text(vm.sourceKey == 'jm' ? '复制车号' : '复制 ID'),
+              onTap: () => _copyAndClose(
+                sheetContext,
+                info.comicId,
+                vm.sourceKey == 'jm' ? '已复制车号 JM${info.comicId}' : '已复制 ID',
+              ),
+            ),
+            if (info.authors.isNotEmpty)
+              ListTile(
+                leading: const Icon(Icons.person_search_rounded),
+                title: const Text('搜索作者'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  openDetailKeywordSearch(
+                    context,
+                    sourceKey: vm.sourceKey,
+                    keyword: info.authors.first,
+                  );
+                },
+              ),
+            ListTile(
+              leading: const Icon(Icons.download_rounded),
+              title: const Text('下载管理'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                context.push('/download');
+              },
+            ),
+            if (source != null && Uri.tryParse(source.url)?.hasScheme == true)
+              ListTile(
+                leading: const Icon(Icons.open_in_new_rounded),
+                title: const Text('打开源主页'),
+                onTap: () async {
+                  Navigator.pop(sheetContext);
+                  await launchUrl(
+                    Uri.parse(source.url),
+                    mode: LaunchMode.externalApplication,
+                  );
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _copyAndClose(
+    BuildContext context,
+    String value,
+    String message,
+  ) async {
+    await Clipboard.setData(ClipboardData(text: value));
+    if (!context.mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    Navigator.pop(context);
+    messenger.showSnackBar(SnackBar(content: Text(message)));
   }
 }
 
@@ -155,44 +247,31 @@ class _Content extends StatefulWidget {
 
 class _ContentState extends State<_Content> {
   int _recommendationOffset = 0;
+  DetailTab _selectedTab = DetailTab.chapters;
 
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<DetailViewModel>();
     final info = vm.data!.info;
+    final readerChapters = ReaderChapter.fromComicChapters(vm.chapters);
+    final latestName = vm.chapters.isEmpty ? null : vm.chapters.last.title;
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+    final bodyBottomPadding =
+        StickyActionBar.contentHeight + bottomInset + AppSpacing.md;
 
-    // 阅读器章节直接使用源适配器提供的类型化列表，保留真实 id 与 order。
-    final chapters = ReaderChapter.fromComicChapters(vm.chapters);
-    final chapterEntries = <ChapterEntry>[];
-    var idx = 0;
-    info.chapters?.forEach((id, name) {
-      chapterEntries.add(
-        ChapterEntry(
-          id: id,
-          name: name.isEmpty ? '第${idx + 1}话' : name,
-          cover: info.thumbnails?.elementAtOrNull(idx),
-        ),
-      );
-      idx++;
-    });
-    final latestName = chapterEntries.isNotEmpty
-        ? chapterEntries.last.name
-        : null;
-
-    // 相关推荐：从 ComicInfoData.suggestions 映射。
-    final List<RecommendItem> recommends =
+    final recommends =
         info.suggestions
             ?.map(
-              (b) => RecommendItem(
-                id: b.id,
-                title: b.title,
-                cover: b.cover,
-                author: b.subTitle,
+              (comic) => RecommendItem(
+                id: comic.id,
+                title: comic.title,
+                cover: comic.cover,
+                author: comic.subTitle,
                 sourceKey: vm.sourceKey,
               ),
             )
             .toList() ??
-        const [];
+        const <RecommendItem>[];
     final visibleRecommends = rotateRecommendationItems(
       recommends,
       _recommendationOffset,
@@ -202,7 +281,6 @@ class _ContentState extends State<_Content> {
       children: [
         CustomScrollView(
           slivers: [
-            // 1. 沉浸头。
             HeroHeader(
               title: info.title,
               subTitle: vm.author,
@@ -211,7 +289,6 @@ class _ContentState extends State<_Content> {
               rating: vm.rating,
               coverHeaders: vm.coverHeaders,
             ),
-            // 2. 内容主体。
             SliverPadding(
               padding: const EdgeInsets.only(top: AppSpacing.xl),
               sliver: SliverList(
@@ -247,157 +324,100 @@ class _ContentState extends State<_Content> {
                   ),
                   const SizedBox(height: AppSpacing.sectionGap),
                   SynopsisBlock(text: info.description),
-                  const SizedBox(height: AppSpacing.sectionGap),
-                  ChapterGrid(
-                    chapters: chapterEntries,
-                    latestChapterName: latestName,
-                    onSelect: (e) => _openReader(context, vm, e, chapters),
-                    onShowAll: () =>
-                        _showDownloadSheet(context, vm, chapterEntries),
-                    coverHeaders: vm.coverHeaders,
-                  ),
-                  const SizedBox(height: AppSpacing.sectionGap),
-                  CommentSection(
-                    total: vm.commentTotal,
-                    comments: vm.comments
-                        .map(
-                          (c) => CommentView(
-                            userName: c.userName,
-                            avatar: c.avatar,
-                            content: c.content,
-                            time: c.time,
-                            likes: c.replyCount,
-                          ),
-                        )
-                        .toList(),
-                    onShowAll: vm.canLoadComments
-                        ? () => _showCommentsSheet(context, vm)
-                        : null,
-                  ),
-                  const SizedBox(height: AppSpacing.sectionGap),
-                  RecommendationCarousel(
-                    items: visibleRecommends,
-                    coverHeaders: vm.coverHeaders,
-                    onRefresh: recommends.length > 1
-                        ? () => setState(() {
-                            _recommendationOffset =
-                                (_recommendationOffset + 4) % recommends.length;
-                          })
-                        : null,
-                    onSelect: (i) => context.push(
-                      '/detail/${i.sourceKey ?? vm.sourceKey}/${i.id}',
-                    ),
-                  ),
-                  // 底栏留白，避免悬浮底栏遮挡末项。
-                  const SizedBox(height: 96),
+                  const SizedBox(height: AppSpacing.md),
                 ]),
               ),
             ),
+            SliverPersistentHeader(
+              pinned: true,
+              delegate: DetailTabBarDelegate(
+                selected: _selectedTab,
+                commentTotal: vm.commentTotal,
+                onChanged: (tab) => _selectTab(vm, tab),
+              ),
+            ),
+            const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.md)),
+            if (_selectedTab == DetailTab.chapters) ...[
+              SliverToBoxAdapter(
+                child: ChapterGrid(
+                  chapters: vm.chapters,
+                  onSelect: (chapter) =>
+                      _openReader(context, vm, chapter, readerChapters),
+                  loadThumbnail: vm.loadChapterThumbnail,
+                  onDownload: (chapter) =>
+                      _enqueueChapter(context, vm, chapter),
+                  onDownloadAll: () =>
+                      _showDownloadSheet(context, vm, vm.chapters),
+                  coverHeaders: vm.coverHeaders,
+                ),
+              ),
+              const SliverToBoxAdapter(
+                child: SizedBox(height: AppSpacing.sectionGap),
+              ),
+              SliverToBoxAdapter(
+                child: RecommendationCarousel(
+                  items: visibleRecommends,
+                  coverHeaders: vm.coverHeaders,
+                  onRefresh: recommends.length > 1
+                      ? () => setState(() {
+                          _recommendationOffset =
+                              (_recommendationOffset + 4) % recommends.length;
+                        })
+                      : null,
+                  onSelect: (item) => context.push(
+                    '/detail/${item.sourceKey ?? vm.sourceKey}/${item.id}',
+                  ),
+                ),
+              ),
+            ] else ...[
+              SliverToBoxAdapter(
+                child: CommentSection(
+                  comments: vm.comments,
+                  loading: vm.commentsLoading,
+                  hasMore: vm.hasMoreComments,
+                  onReply: vm.beginReply,
+                  onLoadMore: vm.loadMoreComments,
+                ),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.md)),
+              SliverToBoxAdapter(
+                child: CommentComposer(
+                  replyTarget: vm.replyTarget,
+                  sending: vm.commentSending,
+                  error: vm.commentSendError,
+                  onCancelReply: vm.cancelReply,
+                  onSend: vm.sendComment,
+                ),
+              ),
+            ],
+            SliverToBoxAdapter(child: SizedBox(height: bodyBottomPadding)),
           ],
         ),
-        // 4. 悬浮底栏。
         Positioned(
           left: 0,
           right: 0,
           bottom: 0,
           child: StickyActionBar(
             isFavorite: vm.isFavorite,
-            readHint: latestName != null ? '最新 $latestName' : '',
+            readHint: latestName == null ? '' : '最新 $latestName',
             onFavorite: vm.toggleFavorite,
-            onRead: () => _openReader(context, vm, null, chapters),
+            onRead: () => _openReader(context, vm, null, readerChapters),
           ),
         ),
       ],
     );
   }
 
-  void _showCommentsSheet(BuildContext context, DetailViewModel vm) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: context.surfaceColor,
-      builder: (sheetContext) => SafeArea(
-        child: SizedBox(
-          height: MediaQuery.sizeOf(sheetContext).height * 0.72,
-          child: ListenableBuilder(
-            listenable: vm,
-            builder: (context, _) {
-              final comments = vm.comments;
-              return Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(AppSpacing.md),
-                    child: Row(
-                      children: [
-                        Text(
-                          '全部评论 (${vm.commentTotal})',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const Spacer(),
-                        IconButton(
-                          tooltip: '关闭',
-                          onPressed: () => Navigator.pop(sheetContext),
-                          icon: const Icon(Icons.close_rounded),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: comments.isEmpty
-                        ? const Center(child: Text('还没有评论'))
-                        : ListView.separated(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: AppSpacing.md,
-                            ),
-                            itemCount: comments.length,
-                            separatorBuilder: (_, __) => const Divider(),
-                            itemBuilder: (context, index) {
-                              final comment = comments[index];
-                              return ListTile(
-                                contentPadding: EdgeInsets.zero,
-                                title: Text(comment.userName),
-                                subtitle: Text(comment.content),
-                                trailing: comment.time == null
-                                    ? null
-                                    : Text(comment.time!),
-                              );
-                            },
-                          ),
-                  ),
-                  if (vm.hasMoreComments)
-                    Padding(
-                      padding: const EdgeInsets.all(AppSpacing.md),
-                      child: SizedBox(
-                        width: double.infinity,
-                        child: FilledButton(
-                          onPressed: vm.commentsLoading
-                              ? null
-                              : vm.loadMoreComments,
-                          child: vm.commentsLoading
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Text('加载更多评论'),
-                        ),
-                      ),
-                    ),
-                ],
-              );
-            },
-          ),
-        ),
-      ),
-    );
+  void _selectTab(DetailViewModel vm, DetailTab tab) {
+    if (_selectedTab == tab) return;
+    setState(() => _selectedTab = tab);
+    if (tab == DetailTab.comments) unawaited(vm.activateComments());
   }
 
   void _showDownloadSheet(
     BuildContext context,
     DetailViewModel vm,
-    List<ChapterEntry> chapters,
+    List<ComicChapter> chapters,
   ) {
     final manager = DownloadManager.instance;
     showModalBottomSheet<void>(
@@ -444,7 +464,7 @@ class _ContentState extends State<_Content> {
                         chapter.id,
                       );
                       return ListTile(
-                        title: Text(chapter.name),
+                        title: Text(chapter.title),
                         subtitle: task == null
                             ? const Text('未加入队列')
                             : Text(_downloadStatusLabel(task)),
@@ -480,7 +500,7 @@ class _ContentState extends State<_Content> {
   Widget _downloadAction(
     BuildContext context,
     DetailViewModel vm,
-    ChapterEntry chapter,
+    ComicChapter chapter,
     DownloadTask? task,
   ) {
     if (task == null) {
@@ -517,7 +537,7 @@ class _ContentState extends State<_Content> {
   Future<void> _enqueueChapter(
     BuildContext context,
     DetailViewModel vm,
-    ChapterEntry chapter,
+    ComicChapter chapter,
   ) async {
     final source = ComicSource.find(vm.sourceKey);
     if (source?.loadComicPages == null) {
@@ -533,7 +553,7 @@ class _ContentState extends State<_Content> {
         chapterId: chapter.id,
         title: vm.data!.info.title,
         coverUrl: vm.data!.info.cover,
-        chapterTitle: chapter.name,
+        chapterTitle: chapter.title,
       );
     } catch (error) {
       if (!context.mounted) return;
@@ -557,7 +577,7 @@ class _ContentState extends State<_Content> {
   void _openReader(
     BuildContext context,
     DetailViewModel vm,
-    ChapterEntry? entry,
+    ComicChapter? entry,
     List<ReaderChapter> chapters,
   ) {
     if (chapters.isEmpty) {
