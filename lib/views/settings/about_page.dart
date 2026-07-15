@@ -5,18 +5,70 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart' as launcher;
 
-const String joyComicAppName = 'JoyComic';
-const String joyComicVersion = '0.1.0';
-const String joyComicBuildNumber = '1';
+import '../../foundation/app_package_info.dart';
+
 const String joyComicGithubUrl = 'https://github.com/xiaoqi419/JoyComic';
 
-class AboutPage extends StatelessWidget {
-  const AboutPage({super.key, this.launchUrl = _launchExternal});
+class AboutPage extends StatefulWidget {
+  const AboutPage({
+    super.key,
+    this.launchUrl = _launchExternal,
+    this.packageInfoLoader = loadAppPackageInfo,
+  });
 
   final Future<bool> Function(Uri) launchUrl;
+  final AppPackageInfoLoader packageInfoLoader;
 
   static Future<bool> _launchExternal(Uri uri) =>
       launcher.launchUrl(uri, mode: launcher.LaunchMode.externalApplication);
+
+  @override
+  State<AboutPage> createState() => _AboutPageState();
+}
+
+class _AboutPageState extends State<AboutPage> {
+  late Future<AppPackageInfo> _packageInfo;
+
+  @override
+  void initState() {
+    super.initState();
+    _packageInfo = widget.packageInfoLoader();
+  }
+
+  @override
+  void didUpdateWidget(covariant AboutPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.packageInfoLoader != widget.packageInfoLoader) {
+      _packageInfo = widget.packageInfoLoader();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<AppPackageInfo>(
+      future: _packageInfo,
+      builder: (context, snapshot) {
+        final info = snapshot.data ?? AppPackageInfo.fallback;
+        return _AboutContent(
+          info: info,
+          loading: snapshot.connectionState != ConnectionState.done,
+          launchUrl: widget.launchUrl,
+        );
+      },
+    );
+  }
+}
+
+class _AboutContent extends StatelessWidget {
+  const _AboutContent({
+    required this.info,
+    required this.loading,
+    required this.launchUrl,
+  });
+
+  final AppPackageInfo info;
+  final bool loading;
+  final Future<bool> Function(Uri) launchUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -38,27 +90,26 @@ class AboutPage extends StatelessWidget {
                   width: 84,
                   height: 84,
                   decoration: BoxDecoration(
+                    color: scheme.primaryContainer,
                     borderRadius: BorderRadius.circular(24),
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFFF7BA9), Color(0xFFB967FF)],
-                    ),
+                    border: Border.all(color: scheme.outlineVariant),
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.menu_book_rounded,
                     size: 42,
-                    color: Colors.white,
+                    color: scheme.onPrimaryContainer,
                   ),
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  joyComicAppName,
+                  info.appName,
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  '版本 $joyComicVersion ($joyComicBuildNumber)',
+                  loading ? '正在读取版本…' : info.versionLabel,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: scheme.onSurfaceVariant,
                   ),
@@ -96,8 +147,8 @@ class AboutPage extends StatelessWidget {
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () => showLicensePage(
                     context: context,
-                    applicationName: joyComicAppName,
-                    applicationVersion: '$joyComicVersion+$joyComicBuildNumber',
+                    applicationName: info.appName,
+                    applicationVersion: info.licenseVersion,
                   ),
                 ),
                 const Divider(height: 1),

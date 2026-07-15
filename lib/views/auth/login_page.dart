@@ -118,19 +118,15 @@ class _LoginPageState extends State<LoginPage> {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  colors: [
-                    context.colorScheme.primary,
-                    context.colorScheme.secondary,
-                  ],
-                ),
+                color: context.colorScheme.primaryContainer,
+                border: Border.all(color: context.borderColor),
               ),
               child: Text(
                 _source.name[0],
                 style: TextStyle(
                   fontSize: 36,
                   fontWeight: FontWeight.w800,
-                  color: context.colorScheme.onPrimary,
+                  color: context.colorScheme.onPrimaryContainer,
                 ),
               ),
             ),
@@ -176,48 +172,25 @@ class _LoginPageState extends State<LoginPage> {
             // 登录按钮
             SizedBox(
               height: 52,
-              child: InkWell(
-                onTap: _loading ? null : _login,
-                borderRadius: BorderRadius.circular(26),
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        context.colorScheme.primary,
-                        context.colorScheme.secondary,
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(26),
-                    boxShadow: [
-                      BoxShadow(
-                        color: context.colorScheme.primary.withValues(
-                          alpha: 0.4,
-                        ),
-                        blurRadius: 16,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
-                  ),
-                  child: Center(
-                    child: _loading
-                        ? SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(
-                              color: context.colorScheme.onPrimary,
-                              strokeWidth: 2.5,
-                            ),
-                          )
-                        : Text(
-                            '登录',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: context.colorScheme.onPrimary,
-                            ),
-                          ),
+              child: FilledButton(
+                onPressed: _loading ? null : _login,
+                style: FilledButton.styleFrom(
+                  shape: const StadiumBorder(),
+                  textStyle: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
+                child: _loading
+                    ? SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          color: context.colorScheme.onPrimary,
+                          strokeWidth: 2.5,
+                        ),
+                      )
+                    : const Text('登录'),
               ),
             ),
             const SizedBox(height: AppSpacing.lg),
@@ -283,17 +256,11 @@ class _SourceChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          gradient: active
-              ? LinearGradient(
-                  colors: [
-                    context.colorScheme.primary,
-                    context.colorScheme.secondary,
-                  ],
-                )
-              : null,
-          color: active ? null : context.surfaceColor,
+          color: active
+              ? context.colorScheme.primaryContainer
+              : context.surfaceColor,
           borderRadius: BorderRadius.circular(20),
-          border: active ? null : Border.all(color: context.borderColor),
+          border: Border.all(color: context.borderColor),
         ),
         child: Text(
           label,
@@ -301,7 +268,7 @@ class _SourceChip extends StatelessWidget {
             fontSize: 13,
             fontWeight: FontWeight.w600,
             color: active
-                ? context.colorScheme.onPrimary
+                ? context.colorScheme.onPrimaryContainer
                 : context.secondaryTextColor,
           ),
         ),

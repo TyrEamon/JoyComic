@@ -80,6 +80,7 @@ dependencies:
 
   # 日志导出分享
   share_plus: ^10.1.4
+  package_info_plus: ^9.0.1
 
 dev_dependencies:
   flutter_test:

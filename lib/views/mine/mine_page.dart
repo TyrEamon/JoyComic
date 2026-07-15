@@ -185,7 +185,11 @@ class _NoSourceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => _AccountContainer(
     onTap: onTap,
-    avatar: const Icon(Icons.person_add_alt_1, color: Colors.white, size: 28),
+    avatar: Icon(
+      Icons.person_add_alt_1,
+      color: context.colorScheme.primary,
+      size: 28,
+    ),
     title: '选择漫画源登录',
     subtitle: '启用漫画源后同步账号、收藏与阅读进度',
   );
@@ -220,7 +224,7 @@ class _Avatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (url == null) {
-      return const Icon(Icons.person, color: Colors.white, size: 28);
+      return Icon(Icons.person, color: context.colorScheme.primary, size: 28);
     }
     return ClipOval(
       child: Image.network(
@@ -229,7 +233,7 @@ class _Avatar extends StatelessWidget {
         height: 56,
         fit: BoxFit.cover,
         errorBuilder: (_, __, ___) =>
-            const Icon(Icons.person, color: Colors.white, size: 28),
+            Icon(Icons.person, color: context.colorScheme.primary, size: 28),
         loadingBuilder: (context, child, progress) => progress == null
             ? child
             : const Center(
@@ -264,11 +268,7 @@ class _AccountContainer extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0x33FF7BA9), Color(0x33B967FF)],
-        ),
+        color: context.surfaceColor,
         borderRadius: AppRadius.brLg,
         border: Border.all(color: context.borderColor),
       ),
@@ -279,16 +279,8 @@ class _AccountContainer extends StatelessWidget {
             height: 56,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              gradient: LinearGradient(
-                colors: [
-                  context.colorScheme.primary,
-                  context.colorScheme.secondary,
-                ],
-              ),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.3),
-                width: 2,
-              ),
+              color: context.colorScheme.primaryContainer,
+              border: Border.all(color: context.borderColor, width: 2),
             ),
             clipBehavior: Clip.antiAlias,
             child: avatar,

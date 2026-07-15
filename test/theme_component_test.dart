@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:joycomic/theme/app_theme.dart';
 import 'package:joycomic/theme/widgets/pill_badge.dart';
+import 'package:joycomic/views/auth/login_page.dart';
 import 'package:joycomic/views/home/widgets/home_tool_bar.dart';
 
 void main() {
@@ -58,5 +59,20 @@ void main() {
 
     final icon = tester.widget<Icon>(find.byIcon(Icons.new_releases_outlined));
     expect(icon.color, theme.colorScheme.primary);
+  });
+  testWidgets('login page contains no decorative gradients', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(theme: AppTheme.light(), home: const LoginPage()),
+    );
+    await tester.pump();
+
+    final decorations = tester
+        .widgetList<Container>(find.byType(Container))
+        .map((container) => container.decoration)
+        .whereType<BoxDecoration>();
+    expect(
+      decorations.where((decoration) => decoration.gradient != null),
+      isEmpty,
+    );
   });
 }
