@@ -16,7 +16,6 @@ import 'package:collection/collection.dart';
 import '../../comic_source/comic_source.dart';
 import '../../foundation/download_manager.dart';
 import '../../foundation/download_task.dart';
-import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../reader/state/comic_state.dart';
 import 'detail_view_model.dart';
@@ -433,7 +432,7 @@ class _ContentState extends State<_Content> {
                               ? Icons.download_outlined
                               : Icons.downloading_rounded,
                           color: task?.status == DownloadStatus.completed
-                              ? AppColors.success
+                              ? context.successColor
                               : context.colorScheme.primary,
                         ),
                         trailing: _downloadAction(context, vm, chapter, task),
