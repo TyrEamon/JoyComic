@@ -3,14 +3,22 @@ library;
 
 import 'package:flutter/material.dart';
 
+import 'app_semantic_colors.dart';
+
 extension AppThemeContext on BuildContext {
   ThemeData get appTheme => Theme.of(this);
   ColorScheme get colorScheme => appTheme.colorScheme;
   TextTheme get textTheme => appTheme.textTheme;
 
+  AppSemanticColors get semanticColors {
+    final colors = appTheme.extension<AppSemanticColors>();
+    assert(colors != null, 'AppSemanticColors must be installed in ThemeData');
+    return colors ?? AppSemanticColors.fallback(colorScheme.brightness);
+  }
+
   Color get pageBackground => appTheme.scaffoldBackgroundColor;
   Color get surfaceColor => colorScheme.surface;
-  Color get elevatedSurfaceColor => colorScheme.surfaceContainerHighest;
+  Color get elevatedSurfaceColor => semanticColors.surfaceRaised;
   Color get primaryTextColor => colorScheme.onSurface;
   Color get secondaryTextColor => colorScheme.onSurfaceVariant;
   Color get tertiaryTextColor =>
@@ -18,4 +26,9 @@ extension AppThemeContext on BuildContext {
   Color get disabledTextColor => colorScheme.onSurface.withValues(alpha: 0.38);
   Color get borderColor => colorScheme.outlineVariant;
   Color get dividerColor => appTheme.dividerColor;
+  Color get successColor => semanticColors.success;
+  Color get warningColor => semanticColors.warning;
+  Color get infoColor => semanticColors.info;
+  Color get ratingColor => semanticColors.rating;
+  Color get onImageColor => semanticColors.onImage;
 }
