@@ -158,10 +158,8 @@ class _ContentState extends State<_Content> {
     final vm = context.watch<DetailViewModel>();
     final info = vm.data!.info;
 
-    // 章节映射 → 有序列表 + chapter entry 列表。
-    // 注意 ComicInfoData.chapters 的 key 是各源章节标识（禁漫=chapterId，
-    // 哔咔=order.toString()），与 ReaderChapter.fromChapterMap 的顺序一致。
-    final chapters = ReaderChapter.fromChapterMap(info.chapters);
+    // 阅读器章节直接使用源适配器提供的类型化列表，保留真实 id 与 order。
+    final chapters = ReaderChapter.fromComicChapters(vm.chapters);
     final chapterEntries = <ChapterEntry>[];
     var idx = 0;
     info.chapters?.forEach((id, name) {

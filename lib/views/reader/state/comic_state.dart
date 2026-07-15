@@ -1,6 +1,7 @@
 /// 阅读器领域的“漫画阅读态” DTO。
 library;
 
+import '../../../comic_source/detail_models.dart';
 import '../../../database/read_record_helper.dart';
 import '../../../foundation/download_task.dart';
 
@@ -18,6 +19,20 @@ class ReaderChapter {
     required this.order,
     required this.name,
   });
+
+  static List<ReaderChapter> fromComicChapters(List<ComicChapter> chapters) {
+    if (chapters.isEmpty) return const <ReaderChapter>[];
+    return List<ReaderChapter>.unmodifiable([
+      for (final chapter in chapters)
+        ReaderChapter(
+          id: chapter.id,
+          order: chapter.order,
+          name: chapter.title.trim().isEmpty
+              ? '第${chapter.order}话'
+              : chapter.title,
+        ),
+    ]);
+  }
 
   static List<ReaderChapter> fromChapterMap(Map<String, String>? chapters) {
     if (chapters == null || chapters.isEmpty) return const [];

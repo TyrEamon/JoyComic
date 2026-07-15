@@ -34,6 +34,7 @@ void main() {
             thumbnails: null,
             sourceKey: 'test-source',
             comicId: 'comic-1',
+            authors: <String>['Typed author'],
           ),
         ),
       );
