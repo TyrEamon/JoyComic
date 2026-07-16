@@ -8,6 +8,7 @@ import 'package:joycomic/comic_source/comic_source.dart';
 import 'package:joycomic/database/joy_database.dart';
 import 'package:joycomic/foundation/reader_config.dart';
 import 'package:joycomic/main.dart' show appRouter;
+import 'package:joycomic/views/common/utils/source_login_guard.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -118,6 +119,63 @@ void main() {
       await _tapAndExpectRoute(tester, entry.key, entry.value);
     }
   });
+
+  testWidgets(
+    'ensureSourceLoggedIn awaits login route result and returns true',
+    (tester) async {
+      ComicSource.sources
+        ..clear()
+        ..add(
+          ComicSource.named(
+            name: '哔咔',
+            key: 'picacg',
+            filePath: 'test',
+            account: const AccountConfig.named(),
+          ),
+        );
+      bool? loginResult;
+      final router = GoRouter(
+        initialLocation: '/',
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (context, state) => Scaffold(
+              body: TextButton(
+                onPressed: () async {
+                  loginResult = await ensureSourceLoggedIn(context, 'picacg');
+                },
+                child: const Text('打开受保护内容'),
+              ),
+            ),
+          ),
+          GoRoute(
+            path: '/login',
+            builder: (context, state) => Scaffold(
+              body: TextButton(
+                onPressed: () => context.pop(true),
+                child: const Text('模拟登录成功'),
+              ),
+            ),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.tap(find.text('打开受保护内容'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('去登录'));
+      await tester.pumpAndSettle();
+
+      expect(loginResult, isNull);
+      expect(find.text('模拟登录成功'), findsOneWidget);
+
+      await tester.tap(find.text('模拟登录成功'));
+      await tester.pumpAndSettle();
+
+      expect(loginResult, isTrue);
+    },
+  );
 
   testWidgets('unknown routes render an explicit 404 with a home action', (
     tester,

@@ -43,8 +43,9 @@ Future<bool> ensureSourceLoggedIn(
     },
   );
 
-  if (shouldLogin == true && context.mounted) {
-    context.push('/login?source=$sourceKey');
-  }
-  return false;
+  if (shouldLogin != true || !context.mounted) return false;
+  final loggedIn = await context.push<bool>(
+    '/login?source=${Uri.encodeQueryComponent(sourceKey)}',
+  );
+  return loggedIn == true;
 }

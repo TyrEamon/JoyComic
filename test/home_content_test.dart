@@ -1,6 +1,11 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:joycomic/comic_source/comic_source.dart';
 import 'package:joycomic/network/base_comic.dart';
+import 'package:joycomic/network/res.dart';
 import 'package:joycomic/views/common/source_content_models.dart';
+import 'package:joycomic/views/common/widgets/source_login_prompt.dart';
+import 'package:joycomic/views/home/home_page.dart';
 
 void main() {
   group('shouldRequestNextPage', () {
@@ -133,6 +138,50 @@ void main() {
       expect(gate.accepts(retryGeneration), isFalse);
       expect(gate.accepts(refreshGeneration), isTrue);
     });
+  });
+
+  group('centralized source login requirement', () {
+    tearDown(ComicSource.sources.clear);
+
+    test('typed login requirement is kept out of raw source errors', () {
+      final content = mergeHomeSections([
+        const HomeSourceResult.loginRequired(
+          sourceKey: 'picacg',
+          sourceName: '哔咔',
+        ),
+      ]);
+
+      expect(content.loginRequired, hasLength(1));
+      expect(content.loginRequired.single.sourceKey, 'picacg');
+      expect(content.errors, isEmpty);
+    });
+
+    testWidgets(
+      'home skips logged-out Pica loaders and shows one centralized prompt',
+      (tester) async {
+        var loadCalls = 0;
+        ComicSource.sources.add(
+          ComicSource.named(
+            name: '哔咔',
+            key: 'picacg',
+            filePath: 'test',
+            account: const AccountConfig.named(),
+            loadHomeSections: () async {
+              loadCalls++;
+              return const Res.error('latest：未登录; popular：未登录');
+            },
+          ),
+        );
+
+        await tester.pumpWidget(const MaterialApp(home: HomePage()));
+        await tester.pumpAndSettle();
+
+        expect(loadCalls, 0);
+        expect(find.byType(SourceLoginPrompt), findsOneWidget);
+        expect(find.textContaining('latest：未登录'), findsNothing);
+        expect(find.textContaining('popular：未登录'), findsNothing);
+      },
+    );
   });
 
   group('mergeSourceContentPage', () {

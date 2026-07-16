@@ -181,12 +181,44 @@ class HomeSourceResult {
   final String sourceKey;
   final String sourceName;
   final Res<List<SourceContentSection>> result;
+  final bool requiresLogin;
+
+  HomeLoginRequirement? get loginRequirement => requiresLogin
+      ? HomeLoginRequirement(sourceKey: sourceKey, sourceName: sourceName)
+      : null;
 
   const HomeSourceResult({
     required this.sourceKey,
     required this.sourceName,
     required this.result,
+  }) : requiresLogin = false;
+
+  const HomeSourceResult.loginRequired({
+    required this.sourceKey,
+    required this.sourceName,
+  }) : result = const Res<List<SourceContentSection>>.error('需要登录'),
+       requiresLogin = true;
+}
+
+@immutable
+class HomeLoginRequirement {
+  const HomeLoginRequirement({
+    required this.sourceKey,
+    required this.sourceName,
   });
+
+  final String sourceKey;
+  final String sourceName;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is HomeLoginRequirement &&
+          sourceKey == other.sourceKey &&
+          sourceName == other.sourceName;
+
+  @override
+  int get hashCode => Object.hash(sourceKey, sourceName);
 }
 
 @immutable
@@ -236,12 +268,15 @@ class HomeSourceError {
 class HomeContent {
   final List<HomeContentSection> sections;
   final List<HomeSourceError> errors;
+  final List<HomeLoginRequirement> loginRequired;
 
   HomeContent({
     required List<HomeContentSection> sections,
     required List<HomeSourceError> errors,
+    List<HomeLoginRequirement> loginRequired = const [],
   }) : sections = List<HomeContentSection>.unmodifiable(sections),
-       errors = List<HomeSourceError>.unmodifiable(errors);
+       errors = List<HomeSourceError>.unmodifiable(errors),
+       loginRequired = List<HomeLoginRequirement>.unmodifiable(loginRequired);
 }
 
 class _HomeSectionAccumulator {
@@ -291,8 +326,17 @@ HomeContent mergeHomeSections(Iterable<HomeSourceResult> sourceResults) {
   final accumulators = <_HomeSectionAccumulator>[];
   final accumulatorsByKey = <String, _HomeSectionAccumulator>{};
   final errors = <HomeSourceError>[];
+  final loginRequired = <HomeLoginRequirement>[];
+  final loginRequiredKeys = <String>{};
 
   for (final sourceResult in sourceResults) {
+    final loginRequirement = sourceResult.loginRequirement;
+    if (loginRequirement != null) {
+      if (loginRequiredKeys.add(loginRequirement.sourceKey)) {
+        loginRequired.add(loginRequirement);
+      }
+      continue;
+    }
     final result = sourceResult.result;
     if (result.error) {
       errors.add(
@@ -326,7 +370,11 @@ HomeContent mergeHomeSections(Iterable<HomeSourceResult> sourceResults) {
     final section = accumulator.build();
     if (section != null) sections.add(section);
   }
-  return HomeContent(sections: sections, errors: errors);
+  return HomeContent(
+    sections: sections,
+    errors: errors,
+    loginRequired: loginRequired,
+  );
 }
 
 /// Returns whether a root scroll update represents real movement toward the

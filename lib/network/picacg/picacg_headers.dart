@@ -70,7 +70,6 @@ BaseOptions buildHeaders({
       'Content-Type': 'application/json; charset=UTF-8',
       'user-agent': 'okhttp/3.8.1',
       'version': 'v1.4.1',
-      'Host': 'picaapi.picacomic.com',
       'signature': signature,
     },
   );

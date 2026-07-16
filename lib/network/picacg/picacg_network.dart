@@ -5,6 +5,7 @@
 /// 签名；遇 401 自动用已存账密重登并重试一次（避免登录态失效打回登录页）。
 library;
 
+import 'dart:async';
 import 'dart:convert' as convert;
 
 import 'package:dio/dio.dart';
@@ -229,6 +230,7 @@ Comment _parsePicacgComment(Map<String, dynamic> comment) {
 }
 
 /// 哔咔网络请求类。
+typedef PicacgDioFactory = Dio Function(BaseOptions options);
 typedef PicacgGetRequest =
     Future<Res<Map<String, dynamic>>> Function(String url);
 typedef PicacgPostRequest =
@@ -237,30 +239,66 @@ typedef PicacgPostRequest =
       Map<String, String>? data,
     );
 
+class PicacgLoginResult {
+  const PicacgLoginResult({required this.token, required this.apiBaseUrl});
+
+  final String token;
+  final String apiBaseUrl;
+}
+
 class PicacgNetwork {
   PicacgNetwork._create({
+    PicacgDioFactory? dioFactory,
     PicacgGetRequest? getRequest,
     PicacgPostRequest? postRequest,
-  }) : _getRequest = getRequest,
+  }) : _dioFactory = dioFactory ?? Dio.new,
+       _getRequest = getRequest,
        _postRequest = postRequest;
 
   static PicacgNetwork? _cache;
 
   factory PicacgNetwork({
+    PicacgDioFactory? dioFactory,
     PicacgGetRequest? getRequest,
     PicacgPostRequest? postRequest,
   }) {
-    if (getRequest == null && postRequest == null) {
+    if (dioFactory == null && getRequest == null && postRequest == null) {
       return _cache ??= PicacgNetwork._create();
     }
     return PicacgNetwork._create(
+      dioFactory: dioFactory,
       getRequest: getRequest,
       postRequest: postRequest,
     );
   }
 
+  final PicacgDioFactory _dioFactory;
   final PicacgGetRequest? _getRequest;
   final PicacgPostRequest? _postRequest;
+  Future<void> _authenticationQueue = Future<void>.value();
+  Future<bool>? _reLoginFuture;
+  static final Object _authenticationOwnerKey = Object();
+
+  bool get isInAuthenticationOperation =>
+      identical(Zone.current[_authenticationOwnerKey], this);
+
+  Future<T> runAuthenticationOperation<T>(Future<T> Function() operation) {
+    if (isInAuthenticationOperation) return operation();
+    final previous = _authenticationQueue;
+    final turn = Completer<void>();
+    _authenticationQueue = turn.future;
+    return () async {
+      await previous;
+      try {
+        return await runZoned<Future<T>>(
+          operation,
+          zoneValues: <Object?, Object?>{_authenticationOwnerKey: this},
+        );
+      } finally {
+        turn.complete();
+      }
+    }();
+  }
 
   /// 由源注册流程在初始化时注入状态门面。
   PicacgState? state;
@@ -278,123 +316,162 @@ class PicacgNetwork {
     String url, {
     bool useCache = false,
   }) async {
-    final request = _getRequest;
-    if (request != null) return request(url);
-    if (_token == '') {
-      await Future.delayed(const Duration(milliseconds: 500));
-      return const Res(null, errorMessage: '未登录');
-    }
-    final dio = Dio(
-      _buildOptions(
-        'GET',
-        _token,
-        url.replaceAll('$apiUrl/', ''),
-        useCache: useCache,
-      ),
-    );
-    dio.options.validateStatus = (i) => i == 200 || i == 400 || i == 401;
-    try {
-      final res = await dio.get<String>(url);
-      final result = await _handle(res);
-      if (result.error) {
-        Log.w('Pica GET fail', error: '$url → ${result.errorMessage}');
-      } else {
-        Log.d('Pica GET', url);
-      }
-      return result;
-    } on DioException catch (e) {
-      Log.e('Pica GET error', error: e);
-      return Res(null, errorMessage: _dioErrMsg(e));
-    } catch (e) {
-      Log.e('Pica GET error', error: e);
-      return Res(null, errorMessage: e.toString());
-    }
+    final injectedRequest = _getRequest;
+    if (injectedRequest != null) return injectedRequest(url);
+    return request('GET', Uri.parse(url));
   }
 
   Future<Res<Map<String, dynamic>>> post(
     String url,
     Map<String, String>? data,
   ) async {
-    final request = _postRequest;
-    if (request != null) return request(url, data);
-    final isAuth =
-        url == '$apiUrl/auth/sign-in' || url == '$apiUrl/auth/register';
-    if (_token == '' && !isAuth) {
-      await Future.delayed(const Duration(milliseconds: 500));
+    final injectedRequest = _postRequest;
+    if (injectedRequest != null) return injectedRequest(url, data);
+    return request('POST', Uri.parse(url), data: data);
+  }
+
+  Future<Res<Map<String, dynamic>>> request(
+    String method,
+    Uri uri, {
+    Map<String, String>? data,
+    bool requiresAuth = true,
+    bool allowRelogin = true,
+    bool retried = false,
+  }) async {
+    if (requiresAuth && _token.isEmpty) {
       return const Res(null, errorMessage: '未登录');
     }
-    final dio = Dio(
-      _buildOptions('POST', _token, url.replaceAll('$apiUrl/', '')),
-    );
-    dio.options.validateStatus = (i) => i == 200 || i == 400 || i == 401;
+
+    final requestBaseUrl = apiUrl;
+    final dio = _dioFactory(_buildOptions(method, _token, uri));
+    dio.options.validateStatus = (status) =>
+        status == 200 || status == 400 || status == 401;
     try {
-      final res = await dio.post<String>(url, data: data);
-      final result = await _handle(res);
+      final response = await dio.request<String>(
+        uri.toString(),
+        data: data,
+        options: Options(method: method),
+      );
+      if (response.statusCode == 401 &&
+          requiresAuth &&
+          allowRelogin &&
+          !retried &&
+          !isInAuthenticationOperation) {
+        final reloggedIn = await _reLoginOnce();
+        if (!reloggedIn) {
+          return const Res(null, errorMessage: '登录失效且重新登录失败');
+        }
+        return request(
+          method,
+          _rebaseApiUri(uri, fromBaseUrl: requestBaseUrl),
+          data: data,
+          requiresAuth: requiresAuth,
+          allowRelogin: false,
+          retried: true,
+        );
+      }
+      final result = _handle(response);
       if (result.error) {
-        Log.w('Pica POST fail', error: '$url → ${result.errorMessage}');
+        Log.w(
+          'Pica $method fail',
+          error: '${uri.path} → ${result.errorMessage}',
+        );
       } else {
-        Log.d('Pica POST', url);
+        Log.d('Pica $method', uri.path);
       }
       return result;
-    } on DioException catch (e) {
-      Log.e('Pica POST error', error: e);
-      return Res(null, errorMessage: _dioErrMsg(e));
-    } catch (e) {
-      Log.e('Pica POST error', error: e);
-      return Res(null, errorMessage: e.toString());
+    } on DioException catch (error) {
+      final message = _dioErrMsg(error);
+      Log.e('Pica $method error', error: '${uri.path} → $message');
+      return Res(null, errorMessage: message);
+    } catch (error) {
+      Log.e('Pica $method error', error: '${uri.path} → $error');
+      return Res(null, errorMessage: error.toString());
     }
   }
 
-  BaseOptions _buildOptions(
-    String method,
-    String token,
-    String path, {
-    bool useCache = false,
-  }) {
+  BaseOptions _buildOptions(String method, String token, Uri uri) {
+    final path = uri.path.startsWith('/') ? uri.path.substring(1) : uri.path;
+    final signedPath = uri.hasQuery ? '$path?${uri.query}' : path;
     return buildHeaders(
       method: method,
       token: token,
-      urlPath: path,
+      urlPath: signedPath,
       channel: state?.channel ?? '3',
       imageQuality: state?.imageQuality ?? 'original',
     );
   }
 
-  Future<Res<Map<String, dynamic>>> _handle(Response<String> res) async {
-    if (res.data == null) {
+  Uri _rebaseApiUri(Uri uri, {required String fromBaseUrl}) {
+    final from = Uri.parse(fromBaseUrl);
+    final knownOrigins = <String>{
+      from.origin,
+      for (final base in picacgApiHosts.values) Uri.parse(base).origin,
+    };
+    if (!knownOrigins.contains(uri.origin)) return uri;
+    final current = Uri.parse(apiUrl);
+    return uri.replace(
+      scheme: current.scheme,
+      host: current.host,
+      port: current.hasPort ? current.port : null,
+    );
+  }
+
+  Res<Map<String, dynamic>> _handle(Response<String> response) {
+    if (response.data == null) {
       return const Res(null, errorMessage: 'Empty data');
     }
-    final decoded = convert.jsonDecode(res.data!);
+    Object? decoded;
+    try {
+      decoded = convert.jsonDecode(response.data!);
+    } on FormatException {
+      return const Res(null, errorMessage: '响应结构错误');
+    }
     if (decoded is! Map) {
       return const Res(null, errorMessage: '响应结构错误');
     }
     final json = jsonMap(decoded);
-    if (res.statusCode == 200) {
-      return Res(json);
-    } else if (res.statusCode == 400) {
+    if (response.statusCode == 200) return Res(json);
+    if (response.statusCode == 400) {
       return Res(
         null,
         errorMessage: jsonString(json['message'], fallback: '请求错误'),
       );
-    } else if (res.statusCode == 401) {
-      final ok = await _reLogin();
-      if (!ok) {
-        return const Res(null, errorMessage: '登录失效且重新登录失败');
-      }
-      // 重登成功：由调用方在网络层外重试一次整体调用更稳妥；
-      // 此处返回错误以触发上层重试（保持与原版语义一致）。
-      return const Res(null, errorMessage: '请重试');
     }
-    return Res(null, errorMessage: 'Invalid Status Code ${res.statusCode}');
+    if (response.statusCode == 401) {
+      return Res(
+        null,
+        errorMessage: jsonString(json['message'], fallback: '未授权'),
+      );
+    }
+    return Res(
+      null,
+      errorMessage: 'Invalid Status Code ${response.statusCode}',
+    );
   }
 
-  Future<bool> _reLogin() async => state?.reLogin() ?? false;
+  Future<bool> _reLoginOnce() {
+    final active = _reLoginFuture;
+    if (active != null) return active;
+    final future = runAuthenticationOperation(() async {
+      try {
+        return await (state?.reLogin() ?? Future<bool>.value(false));
+      } catch (error) {
+        Log.e('Pica re-login error', error: error.toString());
+        return false;
+      }
+    });
+    _reLoginFuture = future;
+    return future.whenComplete(() {
+      if (identical(_reLoginFuture, future)) _reLoginFuture = null;
+    });
+  }
 
-  String _dioErrMsg(DioException e) {
-    if (e.type == DioExceptionType.connectionTimeout) return '连接超时';
-    if (e.type == DioExceptionType.sendTimeout) return '发送超时';
-    if (e.type == DioExceptionType.receiveTimeout) return '接收超时';
-    return e.message ?? e.toString().split('\n').first;
+  String _dioErrMsg(DioException error) {
+    if (error.type == DioExceptionType.connectionTimeout) return '连接超时';
+    if (error.type == DioExceptionType.sendTimeout) return '发送超时';
+    if (error.type == DioExceptionType.receiveTimeout) return '接收超时';
+    return error.message ?? error.toString().split('\n').first;
   }
 
   String _mediaUrl(Object? value, {String fallback = ''}) =>
@@ -402,21 +479,38 @@ class PicacgNetwork {
 
   // ============================ 业务端点 ============================
 
-  /// 登录成功返回 token。
-  Future<Res<String>> login(String email, String password) async {
-    final response = await post('$apiUrl/auth/sign-in', {
-      'email': email,
-      'password': password,
-    });
-    if (response.error) return Res(null, errorMessage: response.errorMessage);
-    final res = response.data;
-    final message = jsonString(res['message']);
-    if (message == 'success') {
-      final token = jsonString(jsonMap(res['data'])['token']);
-      if (token.isNotEmpty) return Res(token);
-      return const Res(null, errorMessage: 'Failed to get token');
+  /// 登录成功返回 token 与实际成功的 API 接入点。
+  Future<Res<PicacgLoginResult>> login(String email, String password) async {
+    Res<Map<String, dynamic>>? lastFailure;
+    final candidates = <String>{
+      apiUrl,
+      picacgApiHosts['picacomic']!,
+      picacgApiHosts['go2778']!,
+    };
+    for (final base in candidates) {
+      final uri = Uri.parse('$base/auth/sign-in');
+      final response = await request(
+        'POST',
+        uri,
+        data: {'email': email, 'password': password},
+        requiresAuth: false,
+        allowRelogin: false,
+      );
+      if (response.error) {
+        lastFailure = response;
+        continue;
+      }
+      final message = jsonString(response.data['message']);
+      final token = jsonString(jsonMap(response.data['data'])['token']);
+      if ((message == 'success' || message.isEmpty) && token.isNotEmpty) {
+        return Res(PicacgLoginResult(token: token, apiBaseUrl: base));
+      }
+      lastFailure = Res(
+        null,
+        errorMessage: message.isEmpty ? 'Failed to get token' : message,
+      );
     }
-    return Res(null, errorMessage: message);
+    return Res(null, errorMessage: lastFailure?.errorMessage ?? '登录失败');
   }
 
   /// 用户档案。

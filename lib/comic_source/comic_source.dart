@@ -174,12 +174,15 @@ class ComicSource {
       _haveWaitingTask = false;
     }
     _isSaving = true;
-    final file = File(await _dataFilePath);
-    if (!await file.exists()) {
-      await file.create(recursive: true);
+    try {
+      final file = File(await _dataFilePath);
+      if (!await file.exists()) {
+        await file.create(recursive: true);
+      }
+      await file.writeAsString(jsonEncode(data));
+    } finally {
+      _isSaving = false;
     }
-    await file.writeAsString(jsonEncode(data));
-    _isSaving = false;
   }
 
   Future<String> get _dataFilePath async =>

@@ -13,6 +13,7 @@ import '../common/source_content_models.dart';
 import '../common/widgets/comic_grid.dart';
 import '../common/widgets/empty_state.dart';
 import '../common/widgets/section_header.dart';
+import '../common/widgets/source_login_prompt.dart';
 import 'widgets/featured_carousel.dart';
 import 'widgets/home_tool_bar.dart';
 
@@ -38,6 +39,12 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<HomeSourceResult> _loadSource(ComicSource source) async {
+    if (source.key == 'picacg' && !source.isLogin) {
+      return HomeSourceResult.loginRequired(
+        sourceKey: source.key,
+        sourceName: source.name,
+      );
+    }
     final loader = source.loadHomeSections;
     if (loader == null) {
       return HomeSourceResult(
@@ -161,6 +168,13 @@ class _HomePageState extends State<HomePage> {
                   ),
                 )
               else ...[
+                for (final requirement in content.loginRequired)
+                  SliverToBoxAdapter(
+                    child: SourceLoginPrompt(
+                      requirement: requirement,
+                      onLoggedIn: _loadHome,
+                    ),
+                  ),
                 if (content.errors.isNotEmpty)
                   SliverToBoxAdapter(
                     child: _SourceErrors(
@@ -224,7 +238,7 @@ class _HomePageState extends State<HomePage> {
                       child: SizedBox(height: AppSpacing.lg),
                     ),
                   ],
-                if (content.sections.isEmpty)
+                if (content.sections.isEmpty && content.loginRequired.isEmpty)
                   SliverFillRemaining(
                     hasScrollBody: false,
                     child: EmptyState(

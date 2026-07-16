@@ -6,6 +6,7 @@
 library;
 
 import '../../comic_source/comic_source.dart';
+import '../../foundation/source_credential_store.dart';
 import '../../network/base_comic.dart';
 import '../../network/json_value.dart';
 import '../../network/picacg/picacg_network.dart';
@@ -114,8 +115,10 @@ _loadPicacgHomeSection(
 ComicSource buildPicacgSource({
   PicacgHomePageLoader? homePageLoader,
   PicacgNetwork? network,
+  SourceCredentialStore? credentialStore,
 }) {
   final client = network ?? PicacgNetwork();
+  final secrets = credentialStore ?? SourceCredentialStore();
   final loadHomePage =
       homePageLoader ??
       (String sort) async {
@@ -125,35 +128,101 @@ ComicSource buildPicacgSource({
         }
         return Res<List<BaseComic>>(<BaseComic>[...result.data]);
       };
-  final source = ComicSource.named(
+  late final ComicSource source;
+
+  Future<void> restoreCredentials(
+    ({String user, String password})? previous,
+  ) async {
+    if (previous == null) {
+      await secrets.clearSource('picacg');
+    } else {
+      await secrets.saveCredentials('picacg', previous.user, previous.password);
+    }
+  }
+
+  Future<void> rollbackAuthentication(
+    Map<String, dynamic> previousData,
+    ({String user, String password})? previousCredentials,
+  ) async {
+    source.data
+      ..clear()
+      ..addAll(previousData);
+    try {
+      await restoreCredentials(previousCredentials);
+    } catch (_) {}
+    try {
+      await source.saveData();
+    } catch (_) {}
+  }
+
+  source = ComicSource.named(
     name: '哔咔',
     key: 'picacg',
     filePath: 'built-in',
     url: 'https://picaapi.go2778.com',
     version: '2.2.1.3.3.4',
+    credentialStore: secrets,
     account: AccountConfig.named(
-      login: (account, pwd) async {
-        final res = await client.login(account, pwd);
-        if (res.error) return Res.fromErrorRes(res);
-        final s = ComicSource.find('picacg')!;
-        s.data['token'] = res.data;
-        final profile = await client.getProfile();
-        if (profile.error) {
-          s.data['token'] = null;
-          return Res.fromErrorRes(profile);
+      login: (account, pwd) => client.runAuthenticationOperation(() async {
+        final previousData = Map<String, dynamic>.from(source.data);
+        late final ({String user, String password})? previousCredentials;
+        try {
+          previousCredentials = await secrets.readCredentials('picacg');
+        } catch (_) {
+          return const Res(null, errorMessage: '登录状态读取失败');
         }
-        s.data['user'] = _profileToMap(profile.data);
-        s.data['account'] = <String>[account, pwd];
-        await s.saveData();
-        return const Res(true);
-      },
-      logout: () {
-        final s = ComicSource.find('picacg');
-        if (s == null) return;
-        s.data['user'] = null;
-        s.data['token'] = null;
-        s.saveData();
-      },
+        try {
+          final login = await client.login(account, pwd);
+          if (login.error) return Res.fromErrorRes(login);
+          final successfulLogin = login.data;
+          source.data['token'] = successfulLogin.token;
+          source.data['apiBaseUrl'] = successfulLogin.apiBaseUrl;
+          final profile = await client.getProfile();
+          if (profile.error) {
+            await rollbackAuthentication(previousData, previousCredentials);
+            return Res.fromErrorRes(profile);
+          }
+          await secrets.saveCredentials('picacg', account, pwd);
+          source.data['user'] = _profileToMap(profile.data);
+          source.data['authenticated'] = true;
+          source.data.remove('account');
+          await source.saveData();
+          return const Res(true);
+        } catch (_) {
+          await rollbackAuthentication(previousData, previousCredentials);
+          return const Res(null, errorMessage: '登录状态保存失败');
+        }
+      }),
+      logout: () => client.runAuthenticationOperation(() async {
+        final previousData = Map<String, dynamic>.from(source.data);
+        ({String user, String password})? previousCredentials;
+        var credentialSnapshotAvailable = true;
+        try {
+          previousCredentials = await secrets.readCredentials('picacg');
+        } catch (_) {
+          credentialSnapshotAvailable = false;
+        }
+        try {
+          source.data.remove('user');
+          source.data.remove('token');
+          source.data.remove('authenticated');
+          source.data.remove('account');
+          await source.saveData();
+          await secrets.clearSource('picacg');
+        } catch (_) {
+          source.data
+            ..clear()
+            ..addAll(previousData);
+          if (credentialSnapshotAvailable) {
+            try {
+              await restoreCredentials(previousCredentials);
+            } catch (_) {}
+          }
+          try {
+            await source.saveData();
+          } catch (_) {}
+        }
+      }),
       loginWebsite: 'https://picacomic.com',
     ),
     loadSourceCategories: () async {
@@ -239,11 +308,20 @@ ComicSource buildPicacgSource({
     sendCommentFunc: (id, subId, content, replyTo) => replyTo == null
         ? client.sendComment(id, content)
         : client.replyComment(replyTo.id, content),
-    initData: (s) {
+    initData: (s) async {
       s.data['appChannel'] ??= '3';
       s.data['imageQuality'] ??= 'original';
       // 默认接入 go2778 中转源；用户可在设置切换为 picacomic 直连。
       s.data['apiBaseUrl'] ??= defaultPicacgApiUrl;
+      final legacy = _storedAccount(s.data['account']);
+      if (legacy != null) {
+        await secrets.saveCredentials('picacg', legacy[0], legacy[1]);
+      }
+      s.data.remove('account');
+      if (jsonString(s.data['token']).isNotEmpty) {
+        s.data['authenticated'] = true;
+      }
+      await s.saveData();
     },
   );
 
