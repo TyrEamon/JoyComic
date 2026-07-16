@@ -29,6 +29,10 @@ abstract class PicacgState {
   List<String>? getAccount();
 }
 
+abstract interface class PicacgAuthenticationInvalidator {
+  Future<void> clearAuthentication();
+}
+
 /// 禁漫源状态。
 abstract class JmState {
   /// 当前 JM AVS 会话值；仅保存在内存与安全存储中。

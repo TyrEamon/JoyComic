@@ -15,14 +15,9 @@ class HomeToolBar extends StatelessWidget {
 
   static List<ToolEntry> defaults(BuildContext context) => [
     ToolEntry(
-      label: '最新',
-      icon: Icons.new_releases_outlined,
-      onTap: () => context.push('/ranking?tab=latest'),
-    ),
-    ToolEntry(
-      label: '热门排行',
-      icon: Icons.local_fire_department_outlined,
-      onTap: () => context.push('/ranking?tab=hot'),
+      label: '排行榜',
+      icon: Icons.leaderboard_outlined,
+      onTap: () => context.push('/ranking'),
     ),
     ToolEntry(
       label: '影视',

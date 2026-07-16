@@ -307,6 +307,30 @@ ComicSource buildJmSource({
           ),
       ]);
     },
+    categoryComicsData: CategoryComicsData.named(
+      load: (category, param, options, page) async {
+        final order = options.isEmpty ? 'mr' : options.first;
+        final res = await client.getCategoryComics(
+          param ?? category,
+          order,
+          page,
+        );
+        if (res.error) return Res(null, errorMessage: res.errorMessage);
+        return Res<List<BaseComic>>(<BaseComic>[...res.data]);
+      },
+      rankingData: RankingData.named(
+        options: const <String, String>{
+          'latest': 'mr',
+          'hot': 'mp',
+          'rating': 'mv',
+        },
+        load: (option, page) async {
+          final res = await client.search('', page, option);
+          if (res.error) return Res(null, errorMessage: res.errorMessage);
+          return Res<List<BaseComic>>(<BaseComic>[...res.data]);
+        },
+      ),
+    ),
     // 搜索：免登录可搜（token 仅 md5(时间戳+盐)，非 session）。
     searchPageData: SearchPageData.named(
       loadPage: (keyword, page, options) async {

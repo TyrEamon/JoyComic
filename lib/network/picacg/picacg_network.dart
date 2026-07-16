@@ -454,12 +454,22 @@ class PicacgNetwork {
     final active = _reLoginFuture;
     if (active != null) return active;
     final future = runAuthenticationOperation(() async {
+      var success = false;
       try {
-        return await (state?.reLogin() ?? Future<bool>.value(false));
+        success = await (state?.reLogin() ?? Future<bool>.value(false));
       } catch (error) {
         Log.e('Pica re-login error', error: error.toString());
-        return false;
       }
+      if (!success) {
+        try {
+          final currentState = state;
+          if (currentState
+              case final PicacgAuthenticationInvalidator invalidator) {
+            await invalidator.clearAuthentication();
+          }
+        } catch (_) {}
+      }
+      return success;
     });
     _reLoginFuture = future;
     return future.whenComplete(() {

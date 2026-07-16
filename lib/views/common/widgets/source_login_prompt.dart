@@ -12,10 +12,12 @@ class SourceLoginPrompt extends StatelessWidget {
     super.key,
     required this.requirement,
     this.onLoggedIn,
+    this.contentLabel = '首页内容',
   });
 
   final HomeLoginRequirement requirement;
   final VoidCallback? onLoggedIn;
+  final String contentLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -28,7 +30,9 @@ class SourceLoginPrompt extends StatelessWidget {
             children: [
               const Icon(Icons.lock_outline_rounded),
               const SizedBox(width: AppSpacing.sm),
-              Expanded(child: Text('登录 ${requirement.sourceName} 后加载首页内容')),
+              Expanded(
+                child: Text('登录 ${requirement.sourceName} 后加载$contentLabel'),
+              ),
               FilledButton(
                 onPressed: () async {
                   final loggedIn = await ensureSourceLoggedIn(

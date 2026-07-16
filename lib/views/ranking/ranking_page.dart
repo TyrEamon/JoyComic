@@ -1,29 +1,22 @@
-/// 排行榜页。
-///
-/// 顶部 3 个 Tab：最新 / 热门 / 评分。每个 Tab 下是漫画网格，
-/// 顶部一排排序筛选条（按周/月/总）。
-///
-/// 功能集成说明：
-/// - 禁漫：search 接口支持 order 参数（'mr'最新/'mp'最多/'mv'评分），
-///   排行榜可用 search('', 1, order) 近似（空关键词返回全站最新）。
-/// - 哔咔：RankingData 契约提供排行端点（见 ComicSource.categoryComicsData.rankingData）。
-/// - query 参数 tab=latest|hot|rating 决定初始 Tab。
-/// - 当前：集成真实数据，禁漫用 search order，时间窗口对禁漫无效。
+/// Aggregated source-aware rankings.
 library;
 
 import 'package:flutter/material.dart';
-import 'package:joycomic/theme/app_theme_context.dart';
 import 'package:go_router/go_router.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 
 import '../../comic_source/comic_source.dart';
+import '../../network/base_comic.dart';
 import '../../theme/app_spacing.dart';
+import '../common/source_content_models.dart';
 import '../common/widgets/comic_grid.dart';
+import '../common/widgets/source_login_prompt.dart';
 
 class RankingPage extends StatefulWidget {
-  const RankingPage({super.key, this.initialTab = 0});
+  const RankingPage({super.key, this.initialTab = 0, this.sources});
 
-  /// 0=最新 1=热门 2=评分
   final int initialTab;
+  final List<ComicSource>? sources;
 
   @override
   State<RankingPage> createState() => _RankingPageState();
@@ -31,66 +24,155 @@ class RankingPage extends StatefulWidget {
 
 class _RankingPageState extends State<RankingPage>
     with SingleTickerProviderStateMixin {
-  late final TabController _tab = TabController(
-    length: 3,
-    vsync: this,
-    initialIndex: widget.initialTab,
-  );
-  int _range = 1; // 0=日 1=周 2=月 3=总
+  static const _tabKeys = <String>['latest', 'hot', 'rating'];
 
-  /// 各 Tab 各自的数据与加载状态。
+  late final TabController _tab = TabController(
+    length: _tabKeys.length,
+    vsync: this,
+    initialIndex: widget.initialTab.clamp(0, _tabKeys.length - 1),
+  );
   final _data = <int, _TabData>{};
   final _loading = <int, bool>{};
+  final _sourceGenerations = <String, int>{};
+  final _sourceLoading = <String, bool>{};
+
+  List<ComicSource> get _sources => widget.sources ?? ComicSource.sources;
 
   @override
   void initState() {
     super.initState();
     _loadTab(_tab.index);
     _tab.addListener(() {
-      if (!_tab.indexIsChanging) {
-        _loadTab(_tab.index);
-      }
+      if (!_tab.indexIsChanging) _loadTab(_tab.index);
     });
   }
 
-  /// 每个 tab 的 order 参数。
-  String get _order {
-    return switch (_tab.index) {
-      0 => 'mr', // 最新
-      1 => 'mp', // 最多（热门）
-      2 => 'mv', // 评分
-      _ => 'mr',
-    };
-  }
-
-  Future<void> _loadTab(int tabIndex) async {
-    if (_data[tabIndex] != null) return; // 已加载
-    setState(() => _loading[tabIndex] = true);
+  Future<void> _loadTab(int tabIndex, {bool force = false}) async {
+    if (!force && _data[tabIndex] != null) return;
+    if (_loading[tabIndex] == true) return;
+    if (mounted) setState(() => _loading[tabIndex] = true);
+    final tabKey = _tabKeys[tabIndex];
+    final results = await Future.wait(<Future<_SourceLoad>>[
+      for (final source in _sources) _loadSource(source, tabKey),
+    ]);
+    if (!mounted) return;
 
     final items = <ComicGridItem>[];
-    for (final s in ComicSource.sources) {
-      if (s.searchPageData?.loadPage == null) continue;
-      final res = await s.searchPageData!.loadPage!('', 1, [_order]);
-      if (res.error) continue;
+    final failures = <_SourceFailure>[];
+    final loginRequirements = <HomeLoginRequirement>[];
+    for (final result in results) {
+      if (result.loginRequired) {
+        loginRequirements.add(
+          HomeLoginRequirement(
+            sourceKey: result.source.key,
+            sourceName: result.source.name,
+          ),
+        );
+      } else if (result.error != null) {
+        failures.add(
+          _SourceFailure(source: result.source, message: result.error!),
+        );
+      } else {
+        items.addAll(
+          result.comics.map(
+            (comic) => ComicGridItem(
+              id: comic.id,
+              title: comic.title,
+              coverUrl: comic.cover,
+              subtitle: comic.subTitle,
+              sourceKey: result.source.key,
+            ),
+          ),
+        );
+      }
+    }
+    setState(() {
+      _data[tabIndex] = _TabData(
+        items: items,
+        failures: failures,
+        loginRequirements: loginRequirements,
+      );
+      _loading[tabIndex] = false;
+    });
+  }
+
+  Future<void> _retrySource(int tabIndex, ComicSource source) async {
+    final requestKey = '$tabIndex:${source.key}';
+    final generation = (_sourceGenerations[requestKey] ?? 0) + 1;
+    _sourceGenerations[requestKey] = generation;
+    if (mounted) setState(() => _sourceLoading[requestKey] = true);
+    final result = await _loadSource(source, _tabKeys[tabIndex]);
+    if (!mounted || _sourceGenerations[requestKey] != generation) return;
+    final current = _data[tabIndex] ?? const _TabData();
+    final items = current.items
+        .where((item) => item.sourceKey != source.key)
+        .toList();
+    final failures = current.failures
+        .where((failure) => failure.source.key != source.key)
+        .toList();
+    final loginRequirements = current.loginRequirements
+        .where((requirement) => requirement.sourceKey != source.key)
+        .toList();
+    if (result.loginRequired) {
+      loginRequirements.add(
+        HomeLoginRequirement(sourceKey: source.key, sourceName: source.name),
+      );
+    } else if (result.error != null) {
+      failures.add(_SourceFailure(source: source, message: result.error!));
+    } else {
       items.addAll(
-        res.data.map(
-          (b) => ComicGridItem(
-            id: b.id,
-            title: b.title,
-            coverUrl: b.cover,
-            subtitle: b.subTitle,
-            sourceKey: s.key,
+        result.comics.map(
+          (comic) => ComicGridItem(
+            id: comic.id,
+            title: comic.title,
+            coverUrl: comic.cover,
+            subtitle: comic.subTitle,
+            sourceKey: source.key,
           ),
         ),
       );
     }
-
-    if (!mounted) return;
     setState(() {
-      _data[tabIndex] = _TabData(items: items);
-      _loading[tabIndex] = false;
+      _sourceLoading[requestKey] = false;
+      _data[tabIndex] = _TabData(
+        items: items,
+        failures: failures,
+        loginRequirements: loginRequirements,
+      );
     });
   }
+
+  Future<_SourceLoad> _loadSource(ComicSource source, String tabKey) async {
+    final ranking = source.categoryComicsData?.rankingData;
+    if (ranking == null) return _SourceLoad(source: source);
+    if (source.key == 'picacg' &&
+        (source.data['token']?.toString().isEmpty ?? true)) {
+      return _SourceLoad(source: source, loginRequired: true);
+    }
+    final option = ranking.options[tabKey];
+    if (option == null) {
+      return _SourceLoad(source: source, error: '不支持当前排行');
+    }
+    try {
+      final result = await ranking.load(option, 1);
+      if (result.error) {
+        final message = result.errorMessageWithoutNull;
+        if (source.key == 'picacg' &&
+            ((source.data['token']?.toString().isEmpty ?? true) ||
+                message.contains('登录失效') ||
+                message.contains('未登录'))) {
+          return _SourceLoad(source: source, loginRequired: true);
+        }
+        return _SourceLoad(source: source, error: message);
+      }
+      return _SourceLoad(source: source, comics: result.data);
+    } catch (error) {
+      return _SourceLoad(source: source, error: error.toString());
+    }
+  }
+
+  ComicSource _sourceByKey(String key) =>
+      _sources.firstWhere((source) => source.key == key);
 
   @override
   void dispose() {
@@ -111,133 +193,93 @@ class _RankingPageState extends State<RankingPage>
           indicatorSize: TabBarIndicatorSize.label,
           labelColor: context.primaryTextColor,
           unselectedLabelColor: context.tertiaryTextColor,
-          labelStyle: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-          ),
-          tabs: const [
+          tabs: const <Tab>[
             Tab(text: '最新'),
             Tab(text: '热门'),
             Tab(text: '评分'),
           ],
         ),
       ),
-      body: Column(
-        children: [
-          _RangeBar(
-            index: _range,
-            onChanged: (i) => setState(() => _range = i),
+      body: TabBarView(
+        controller: _tab,
+        children: List<Widget>.generate(_tabKeys.length, _buildTab),
+      ),
+    );
+  }
+
+  Widget _buildTab(int index) {
+    if (_loading[index] == true && _data[index] == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    final data = _data[index] ?? const _TabData();
+    return Column(
+      children: <Widget>[
+        for (final requirement in data.loginRequirements)
+          SourceLoginPrompt(
+            requirement: requirement,
+            contentLabel: '排行榜内容',
+            onLoggedIn: () =>
+                _retrySource(index, _sourceByKey(requirement.sourceKey)),
           ),
-          Expanded(
-            child: TabBarView(
-              controller: _tab,
-              children: List.generate(3, (i) {
-                if (_loading[i] == true && _data[i] == null) {
-                  return Center(
-                    child: CircularProgressIndicator(
-                      color: context.colorScheme.primary,
-                      strokeWidth: 2.5,
-                    ),
-                  );
-                }
-                return _RankList(
-                  key: ValueKey(i),
-                  items: _data[i]?.items ?? const [],
+        for (final failure in data.failures)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+            child: ListTile(
+              title: Text('${failure.source.name}加载失败'),
+              subtitle: Text(failure.message),
+              trailing: TextButton(
+                key: Key('ranking-retry-${failure.source.key}'),
+                onPressed:
+                    _sourceLoading['$index:${failure.source.key}'] == true
+                    ? null
+                    : () => _retrySource(index, failure.source),
+                child: const Text('重试'),
+              ),
+            ),
+          ),
+        Expanded(
+          child: data.items.isEmpty
+              ? const Center(child: Text('暂无排行内容'))
+              : ComicGrid(
+                  items: data.items,
                   onItemTap: (item) => context.push(
                     '/detail/${item.sourceKey ?? 'jm'}/${item.id}',
                   ),
-                );
-              }),
-            ),
-          ),
-        ],
-      ),
+                ),
+        ),
+      ],
     );
   }
 }
 
 class _TabData {
-  const _TabData({required this.items});
-  final List<ComicGridItem> items;
-}
-
-class _RangeBar extends StatelessWidget {
-  const _RangeBar({required this.index, required this.onChanged});
-  final int index;
-  final ValueChanged<int> onChanged;
-
-  static const _labels = ['日榜', '周榜', '月榜', '总榜'];
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.md,
-        vertical: AppSpacing.sm,
-      ),
-      child: Row(
-        children: [
-          for (var i = 0; i < _labels.length; i++)
-            Padding(
-              padding: const EdgeInsets.only(right: AppSpacing.xs),
-              child: _RangeChip(
-                label: _labels[i],
-                active: i == index,
-                onTap: () => onChanged(i),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RangeChip extends StatelessWidget {
-  const _RangeChip({
-    required this.label,
-    required this.active,
-    required this.onTap,
+  const _TabData({
+    this.items = const <ComicGridItem>[],
+    this.failures = const <_SourceFailure>[],
+    this.loginRequirements = const <HomeLoginRequirement>[],
   });
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
 
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: active
-              ? context.colorScheme.primaryContainer
-              : context.surfaceColor,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: context.borderColor),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: active
-                ? context.colorScheme.onPrimaryContainer
-                : context.secondaryTextColor,
-          ),
-        ),
-      ),
-    );
-  }
+  final List<ComicGridItem> items;
+  final List<_SourceFailure> failures;
+  final List<HomeLoginRequirement> loginRequirements;
 }
 
-class _RankList extends StatelessWidget {
-  const _RankList({super.key, required this.items, required this.onItemTap});
-  final List<ComicGridItem> items;
-  final void Function(ComicGridItem) onItemTap;
+class _SourceFailure {
+  const _SourceFailure({required this.source, required this.message});
+  final ComicSource source;
+  final String message;
+}
 
-  @override
-  Widget build(BuildContext context) {
-    return ComicGrid(items: items, onItemTap: onItemTap);
-  }
+class _SourceLoad {
+  const _SourceLoad({
+    required this.source,
+    this.comics = const <BaseComic>[],
+    this.error,
+    this.loginRequired = false,
+  });
+
+  final ComicSource source;
+  final List<BaseComic> comics;
+  final String? error;
+  final bool loginRequired;
 }

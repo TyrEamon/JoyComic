@@ -59,8 +59,7 @@ void main() {
     await _pumpRouter(tester);
 
     const routes = <String, _RouteExpectation>{
-      '最新': _RouteExpectation('/ranking', '排行榜'),
-      '热门排行': _RouteExpectation('/ranking', '排行榜'),
+      '排行榜': _RouteExpectation('/ranking', '排行榜'),
       '影视': _RouteExpectation('/video', '影视'),
       '以图搜图': _RouteExpectation('/image-search', '以图搜图'),
       '收藏库': _RouteExpectation('/favorites', '收藏'),

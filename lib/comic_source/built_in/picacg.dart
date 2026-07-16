@@ -15,7 +15,7 @@ import '../../network/source_state.dart';
 import '../../views/common/source_content_models.dart';
 
 /// 哔咔源状态门面实现：从 [ComicSource.data] 读写 token / channel / 图片质量 / 接入域名。
-class PicacgStateImpl implements PicacgState {
+class PicacgStateImpl implements PicacgState, PicacgAuthenticationInvalidator {
   final ComicSource source;
   PicacgStateImpl(this.source);
 
@@ -44,6 +44,14 @@ class PicacgStateImpl implements PicacgState {
 
   @override
   Future<bool> reLogin() => source.reLogin();
+
+  @override
+  Future<void> clearAuthentication() async {
+    source.data.remove('user');
+    source.data.remove('token');
+    source.data.remove('authenticated');
+    await source.saveData();
+  }
 }
 
 typedef PicacgHomePageLoader =
@@ -257,6 +265,30 @@ ComicSource buildPicacgSource({
       );
     },
     loadHomeSections: () => loadPicacgHomeSections(loadHomePage),
+    categoryComicsData: CategoryComicsData.named(
+      load: (category, param, options, page) async {
+        final sort = options.isEmpty ? 'dd' : options.first;
+        final res = await client.getCategoryComics(
+          param ?? category,
+          page,
+          sort,
+        );
+        if (res.error) return Res(null, errorMessage: res.errorMessage);
+        return Res<List<BaseComic>>(<BaseComic>[...res.data]);
+      },
+      rankingData: RankingData.named(
+        options: const <String, String>{
+          'latest': 'dd',
+          'hot': 'ld',
+          'rating': 'da',
+        },
+        load: (option, page) async {
+          final res = await client.search('', option, page);
+          if (res.error) return Res(null, errorMessage: res.errorMessage);
+          return Res<List<BaseComic>>(<BaseComic>[...res.data]);
+        },
+      ),
+    ),
     // 哔咔搜索：高级搜索，sort='ua' 默认排序。
     searchPageData: SearchPageData.named(
       loadPage: (keyword, page, options) async {
