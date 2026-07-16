@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:joycomic/comic_source/comic_source.dart';
 import 'package:joycomic/database/joy_database.dart';
+import 'package:joycomic/network/jm/jm_video_models.dart';
+import 'package:joycomic/network/res.dart';
 import 'package:joycomic/foundation/reader_config.dart';
 import 'package:joycomic/theme/app_theme.dart';
 import 'package:joycomic/views/auth/login_page.dart';
@@ -17,6 +19,12 @@ import 'package:joycomic/views/search/temp_search_page.dart';
 import 'package:joycomic/views/video/video_page.dart';
 import 'package:joycomic/views/settings/settings_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+Future<Res<({List<JmVideoItem> items, int total})>> _emptyVideoLoader({
+  int page = 1,
+  String videoType = '',
+  String searchQuery = '',
+}) async => const Res((items: <JmVideoItem>[], total: 0));
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -120,7 +128,7 @@ void main() {
       TempSearchPage(sourceKey: 'jm'),
       '输入关键词后搜索',
     ),
-    const _PageCase('video', VideoPage(), '影视'),
+    const _PageCase('video', VideoPage(loader: _emptyVideoLoader), '影视'),
   ];
 
   for (final pageCase in remainingPages) {

@@ -28,6 +28,7 @@ import 'views/settings/source_settings_page.dart';
 import 'views/settings/webdav_settings_page.dart';
 import 'views/settings/log_viewer_page.dart';
 import 'views/video/video_page.dart';
+import 'views/video/video_player_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -90,6 +91,14 @@ final appRouter = GoRouter(
       builder: (context, state) => const ImageSearchPage(),
     ),
     GoRoute(path: '/video', builder: (context, state) => const VideoPage()),
+    GoRoute(
+      path: '/video/player/:id',
+      builder: (context, state) => VideoPlayerPage(
+        videoId: state.pathParameters['id']!,
+        initialTitle: state.uri.queryParameters['title'] ?? '',
+        initialBacklink: state.uri.queryParameters['backlink'] ?? '',
+      ),
+    ),
     GoRoute(
       path: '/download',
       builder: (context, state) => const DownloadPage(),

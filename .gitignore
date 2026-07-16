@@ -1,11 +1,13 @@
 # Flutter
 .dart_tool/
 .packages
+.flutter-plugins-dependencies
 build/
 *.iml
 .idea/
 .vscode/
 *.lock
+!/pubspec.lock
 
 # iOS (CI 生成)
 ios/Pods/

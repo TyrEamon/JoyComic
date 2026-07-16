@@ -1,0 +1,956 @@
+/// JM video detail and playback with native, WebView, and browser fallbacks.
+library;
+
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'dart:math';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:video_player/video_player.dart';
+import 'package:webview_flutter/webview_flutter.dart';
+
+import '../../network/jm/jm_network.dart';
+import '../../network/res.dart';
+
+typedef JmVideoDetailLoader = Future<Res<JmVideoDetail>> Function(String id);
+typedef DirectVideoPlayerBuilder =
+    Widget Function(
+      BuildContext context,
+      String source,
+      VoidCallback onFailure,
+    );
+typedef VideoWebViewBuilder =
+    Widget Function(
+      BuildContext context,
+      String url,
+      ValueChanged<String> onExtracted,
+    );
+typedef ExternalVideoLauncher = Future<bool> Function(Uri uri);
+typedef RemoteVideoUriChecker = Future<bool> Function(Uri uri);
+
+class NavigationApprovalTracker {
+  int _generation = 0;
+  final Map<String, int> _approved = <String, int>{};
+  final Map<String, int> _loaded = <String, int>{};
+
+  int get generation => _generation;
+
+  int beginRequest() => ++_generation;
+
+  void approve(String url, int generation) {
+    if (generation == _generation) _approved[url] = generation;
+  }
+
+  bool consume(String url) {
+    final approvedGeneration = _approved.remove(url);
+    if (approvedGeneration == null || approvedGeneration != _generation) {
+      return false;
+    }
+    _loaded[url] = approvedGeneration;
+    return true;
+  }
+
+  void revoke(String url, int generation) {
+    if (_approved[url] == generation) _approved.remove(url);
+  }
+
+  bool isLoaded(String url) => _loaded[url] == _generation;
+}
+
+bool isMainFrameNavigation(NavigationRequest request) => request.isMainFrame;
+
+bool isCurrentGenerationResource<T extends Object>(
+  T candidate,
+  T current,
+  int generation,
+  int currentGeneration,
+) => identical(candidate, current) && generation == currentGeneration;
+
+Key videoWebViewKey(String url) => ValueKey<String>(url);
+
+class VideoPlayerPage extends StatefulWidget {
+  const VideoPlayerPage({
+    super.key,
+    required this.videoId,
+    this.initialTitle = '',
+    this.initialBacklink = '',
+    this.loader,
+    this.directPlayerBuilder,
+    this.webViewBuilder,
+    this.externalLauncher,
+    this.remoteUriChecker,
+    this.restoreOrientations = const <DeviceOrientation>[
+      DeviceOrientation.portraitUp,
+    ],
+  });
+
+  final String videoId;
+  final String initialTitle;
+  final String initialBacklink;
+  final JmVideoDetailLoader? loader;
+  final DirectVideoPlayerBuilder? directPlayerBuilder;
+  final VideoWebViewBuilder? webViewBuilder;
+  final ExternalVideoLauncher? externalLauncher;
+  final RemoteVideoUriChecker? remoteUriChecker;
+  final List<DeviceOrientation> restoreOrientations;
+
+  @override
+  State<VideoPlayerPage> createState() => _VideoPlayerPageState();
+}
+
+class _VideoPlayerPageState extends State<VideoPlayerPage> {
+  final Set<String> _failedSources = <String>{};
+  int _loadGeneration = 0;
+  JmVideoDetail? _detail;
+  String? _error;
+  String? _extractedSource;
+  bool _loading = true;
+  bool _useWebView = false;
+  bool _webFailed = false;
+  final Set<String> _acceptedExtractionSources = <String>{};
+  int? _pendingExtractionSession;
+  String? _queuedExtractionSource;
+  String? _activeExtractedSource;
+
+  JmVideoDetailLoader get _loader =>
+      widget.loader ?? JmNetwork().getVideoDetail;
+
+  String get _fullUrl {
+    final detail = _detail;
+    if (detail != null) {
+      if (detail.fullUrl.isNotEmpty) return detail.fullUrl;
+      if (detail.backlink.isNotEmpty) return detail.backlink;
+    }
+    if (widget.initialBacklink.isNotEmpty) return widget.initialBacklink;
+    return 'https://18comic.vip/video/${widget.videoId}';
+  }
+
+  String get _directSource {
+    final raw = _extractedSource ?? _detail?.videoSrc ?? '';
+    return safeRemoteHttpUri(raw)?.toString() ?? '';
+  }
+
+  Future<bool> _isRemoteUriAllowed(Uri uri) async {
+    final checker = widget.remoteUriChecker ?? isResolvedPublicHttpUri;
+    return checker(uri);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    SystemChrome.setPreferredOrientations(const <DeviceOrientation>[
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+    _load();
+  }
+
+  Future<void> _load() async {
+    final generation = ++_loadGeneration;
+    final loader = _loader;
+    final videoId = widget.videoId;
+    try {
+      final result = await loader(videoId);
+      var canPlayDirectly = false;
+      if (!result.error && result.data.videoSrc.isNotEmpty) {
+        final source = safeRemoteHttpUri(result.data.videoSrc);
+        canPlayDirectly = source != null && await _isRemoteUriAllowed(source);
+      }
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() {
+        _loading = false;
+        if (result.error) {
+          _error = result.errorMessageWithoutNull;
+          _useWebView = true;
+        } else {
+          _error = null;
+          _detail = result.data;
+          _useWebView = !canPlayDirectly;
+        }
+      });
+    } catch (_) {
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() {
+        _loading = false;
+        _error = '视频详情加载失败';
+        _useWebView = true;
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant VideoPlayerPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.videoId == widget.videoId) return;
+    _failedSources.clear();
+    _detail = null;
+    _error = null;
+    _extractedSource = null;
+    _acceptedExtractionSources.clear();
+    _pendingExtractionSession = null;
+    _queuedExtractionSource = null;
+    _activeExtractedSource = null;
+    _useWebView = false;
+    _webFailed = false;
+    _loading = true;
+    _load();
+  }
+
+  @override
+  void dispose() {
+    SystemChrome.setPreferredOrientations(widget.restoreOrientations);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final title = _detail?.title.isNotEmpty == true
+        ? _detail!.title
+        : widget.initialTitle;
+    final semantic = context.semanticColors;
+    return Scaffold(
+      backgroundColor: semantic.readerCanvas,
+      appBar: AppBar(
+        title: Text(title.isEmpty ? '影视播放' : title),
+        backgroundColor: semantic.readerCanvas,
+        foregroundColor: semantic.readerControlForeground,
+        actions: <Widget>[
+          IconButton(
+            tooltip: '浏览器打开',
+            onPressed: _openExternal,
+            icon: const Icon(Icons.open_in_browser),
+          ),
+        ],
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: <Widget>[
+                Expanded(child: _buildPlayer()),
+                if (_error != null)
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Text(
+                      _error!,
+                      style: TextStyle(color: semantic.readerControlForeground),
+                    ),
+                  ),
+                TextButton.icon(
+                  onPressed: _openExternal,
+                  icon: const Icon(Icons.open_in_new),
+                  label: const Text('浏览器打开'),
+                ),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildPlayer() {
+    if (!_useWebView && _directSource.isNotEmpty) {
+      final source = _directSource;
+      final session = _loadGeneration;
+      void onFailure() => _onNativeFailureForSource(source, session);
+      final builder = widget.directPlayerBuilder;
+      if (builder != null) {
+        return builder(context, source, onFailure);
+      }
+      return NativeVideoPlayer(
+        key: ValueKey<String>(source),
+        source: source,
+        onFailure: onFailure,
+      );
+    }
+    if (_webFailed) {
+      return Center(
+        child: Text(
+          '网页播放失败，请使用浏览器打开',
+          style: TextStyle(
+            color: context.semanticColors.readerControlForeground,
+          ),
+        ),
+      );
+    }
+    final session = _loadGeneration;
+    void onExtracted(String source) => _onExtractedForSession(source, session);
+    final builder = widget.webViewBuilder;
+    if (builder != null) return builder(context, _fullUrl, onExtracted);
+    return ExtractingVideoWebView(
+      key: videoWebViewKey(_fullUrl),
+      url: _fullUrl,
+      onExtracted: onExtracted,
+      onFailure: _onWebFailure,
+    );
+  }
+
+  void _onNativeFailureForSource(String failed, int session) {
+    if (!mounted || session != _loadGeneration || failed != _directSource) {
+      return;
+    }
+    if (failed.isNotEmpty) _failedSources.add(failed);
+    if (_activeExtractedSource == failed) _activeExtractedSource = null;
+    setState(() => _useWebView = true);
+    _processQueuedExtraction(session);
+  }
+
+  void _processQueuedExtraction(int session) {
+    final queued = _queuedExtractionSource;
+    _queuedExtractionSource = null;
+    if (queued != null && mounted && session == _loadGeneration) {
+      scheduleMicrotask(() => _onExtractedForSession(queued, session));
+    }
+  }
+
+  Future<void> _onExtractedForSession(String source, int session) async {
+    final valid = safeRemoteHttpUri(source);
+    if (valid == null ||
+        _failedSources.contains(valid.toString()) ||
+        _acceptedExtractionSources.contains(valid.toString()) ||
+        !mounted ||
+        session != _loadGeneration) {
+      return;
+    }
+    if (_pendingExtractionSession == session ||
+        _activeExtractedSource != null) {
+      _queuedExtractionSource = valid.toString();
+      return;
+    }
+
+    _pendingExtractionSession = session;
+    try {
+      if (!await _isRemoteUriAllowed(valid) ||
+          !mounted ||
+          session != _loadGeneration ||
+          _failedSources.contains(valid.toString()) ||
+          _acceptedExtractionSources.contains(valid.toString()) ||
+          _activeExtractedSource != null) {
+        return;
+      }
+      _acceptedExtractionSources.add(valid.toString());
+      _activeExtractedSource = valid.toString();
+      setState(() {
+        _extractedSource = valid.toString();
+        _useWebView = false;
+        _webFailed = false;
+      });
+    } finally {
+      if (_pendingExtractionSession == session) {
+        _pendingExtractionSession = null;
+      }
+      if (_activeExtractedSource == null) _processQueuedExtraction(session);
+    }
+  }
+
+  void _onWebFailure() {
+    if (mounted) setState(() => _webFailed = true);
+  }
+
+  Future<void> _openExternal() async {
+    final uri = safeRemoteHttpUri(_fullUrl);
+    if (uri == null || !await _isRemoteUriAllowed(uri)) {
+      _showLaunchError();
+      return;
+    }
+    try {
+      final launcher =
+          widget.externalLauncher ??
+          (target) => launchUrl(target, mode: LaunchMode.externalApplication);
+      if (!await launcher(uri)) _showLaunchError();
+    } catch (_) {
+      _showLaunchError();
+    }
+  }
+
+  void _showLaunchError() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('无法打开外部浏览器')));
+  }
+}
+
+class NativeVideoPlayer extends StatefulWidget {
+  const NativeVideoPlayer({
+    super.key,
+    required this.source,
+    required this.onFailure,
+  });
+
+  final String source;
+  final VoidCallback onFailure;
+
+  @override
+  State<NativeVideoPlayer> createState() => _NativeVideoPlayerState();
+}
+
+class _NativeVideoPlayerState extends State<NativeVideoPlayer> {
+  late VideoPlayerController _controller;
+  int _controllerGeneration = 0;
+  bool _ready = false;
+  bool _reportedError = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.source))
+      ..addListener(_onControllerChanged);
+    _startInitialization();
+  }
+
+  void _startInitialization() {
+    final controller = _controller;
+    final generation = ++_controllerGeneration;
+    _initialize(controller, generation);
+  }
+
+  Future<void> _initialize(
+    VideoPlayerController controller,
+    int generation,
+  ) async {
+    try {
+      await controller.initialize();
+      if (!mounted ||
+          !isCurrentGenerationResource(
+            controller,
+            _controller,
+            generation,
+            _controllerGeneration,
+          )) {
+        return;
+      }
+      await controller.play();
+      if (mounted &&
+          isCurrentGenerationResource(
+            controller,
+            _controller,
+            generation,
+            _controllerGeneration,
+          )) {
+        setState(() => _ready = true);
+      }
+    } catch (_) {
+      if (mounted &&
+          isCurrentGenerationResource(
+            controller,
+            _controller,
+            generation,
+            _controllerGeneration,
+          )) {
+        _reportFailure();
+      }
+    }
+  }
+
+  void _onControllerChanged() {
+    if (!mounted) return;
+    if (_controller.value.hasError) _reportFailure();
+    if (_ready) setState(() {});
+  }
+
+  void _reportFailure() {
+    if (_reportedError || !mounted) return;
+    _reportedError = true;
+    widget.onFailure();
+  }
+
+  @override
+  void didUpdateWidget(covariant NativeVideoPlayer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.source == widget.source) return;
+    _controller
+      ..removeListener(_onControllerChanged)
+      ..dispose();
+    _ready = false;
+    _reportedError = false;
+    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.source))
+      ..addListener(_onControllerChanged);
+    _startInitialization();
+  }
+
+  @override
+  void dispose() {
+    _controller
+      ..removeListener(_onControllerChanged)
+      ..dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_ready) return const Center(child: CircularProgressIndicator());
+    final foreground = context.semanticColors.readerControlForeground;
+    return Column(
+      children: <Widget>[
+        Expanded(
+          child: Center(
+            child: AspectRatio(
+              aspectRatio: _controller.value.aspectRatio,
+              child: VideoPlayer(_controller),
+            ),
+          ),
+        ),
+        Row(
+          children: <Widget>[
+            IconButton(
+              color: foreground,
+              onPressed: () {
+                _controller.value.isPlaying
+                    ? _controller.pause()
+                    : _controller.play();
+              },
+              icon: Icon(
+                _controller.value.isPlaying ? Icons.pause : Icons.play_arrow,
+              ),
+            ),
+            Expanded(
+              child: VideoProgressIndicator(
+                _controller,
+                allowScrubbing: true,
+                colors: VideoProgressColors(
+                  playedColor: Theme.of(context).colorScheme.primary,
+                  bufferedColor: Theme.of(context).colorScheme.secondary,
+                  backgroundColor: Theme.of(
+                    context,
+                  ).colorScheme.surfaceContainerHighest,
+                ),
+              ),
+            ),
+            IconButton(
+              color: foreground,
+              tooltip: '全屏',
+              onPressed: () => SystemChrome.setPreferredOrientations(
+                const <DeviceOrientation>[
+                  DeviceOrientation.landscapeLeft,
+                  DeviceOrientation.landscapeRight,
+                ],
+              ),
+              icon: const Icon(Icons.fullscreen),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+const videoExtractionJavaScript = r'''
+(() => {
+  if (window.__joyComicVideoExtractorInstalled) return;
+  window.__joyComicVideoExtractorInstalled = true;
+  const bridgeToken = __JOY_BRIDGE_NONCE__;
+  const seen = new Set();
+  const send = src => {
+    if (!src || seen.has(src)) return;
+    seen.add(src);
+    try {
+      VideoBridge.postMessage(
+        JSON.stringify({type:'video_src',src,token:bridgeToken})
+      );
+    } catch (_) {}
+  };
+  const read = value => {
+    if (!value || typeof value !== 'object') return;
+    [
+      value.video_src,
+      value.video && value.video.video_src,
+      value.data && value.data.video_src,
+      value.data && value.data.video && value.data.video.video_src,
+    ].forEach(send);
+  };
+  const inspect = () => {
+    const video = document.querySelector('video');
+    send(video && (video.currentSrc || video.src));
+    document.querySelectorAll('source').forEach(source => send(source.src));
+  };
+  const originalFetch = window.fetch;
+  if (typeof originalFetch === 'function') {
+    window.fetch = async (...args) => {
+      const response = await originalFetch(...args);
+      response.clone().text().then(text => {
+        try { read(JSON.parse(text)); } catch (_) {}
+      });
+      return response;
+    };
+  }
+  const observer = new MutationObserver(inspect);
+  observer.observe(document.documentElement || document, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['src'],
+  });
+  const interval = window.setInterval(inspect, 500);
+  window.setTimeout(() => {
+    window.clearInterval(interval);
+    observer.disconnect();
+  }, 9000);
+  inspect();
+})();
+''';
+
+class ExtractingVideoWebView extends StatefulWidget {
+  const ExtractingVideoWebView({
+    super.key,
+    required this.url,
+    required this.onExtracted,
+    required this.onFailure,
+  });
+
+  final String url;
+  final ValueChanged<String> onExtracted;
+  final VoidCallback onFailure;
+
+  @override
+  State<ExtractingVideoWebView> createState() => _ExtractingVideoWebViewState();
+}
+
+class _ExtractingVideoWebViewState extends State<ExtractingVideoWebView> {
+  String _bridgeNonce = createVideoBridgeNonce();
+  Uri? _currentPage;
+  final NavigationApprovalTracker _navigationApprovals =
+      NavigationApprovalTracker();
+  final Set<String> _pendingHosts = <String>{};
+  int _navigationGeneration = 0;
+  WebViewController? _controller;
+  Timer? _timeout;
+  bool _completed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final initial = validatedHttpUri(widget.url);
+    if (initial == null || !isTrustedJmPageUri(initial, initial: initial)) {
+      scheduleMicrotask(_fail);
+      return;
+    }
+    _currentPage = initial;
+    _controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..addJavaScriptChannel(
+        'VideoBridge',
+        onMessageReceived: (message) {
+          if (_completed) return;
+          final currentPage = _currentPage;
+          if (currentPage == null) return;
+          final source = parseExtractedVideoMessage(
+            message.message,
+            pageUrl: currentPage.toString(),
+            expectedNonce: _bridgeNonce,
+          );
+          if (source == null) return;
+          // Keep the timeout alive until the parent accepts this source. If
+          // it is already known-bad, the parent can reject it and extraction
+          // still gets a chance to find another source or time out.
+          widget.onExtracted(source);
+        },
+      )
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onNavigationRequest: (request) {
+            if (!isMainFrameNavigation(request)) {
+              return NavigationDecision.prevent;
+            }
+            final uri = validatedHttpUri(request.url);
+            if (uri == null || !isTrustedJmPageUri(uri, initial: initial)) {
+              return NavigationDecision.prevent;
+            }
+            final requestUrl = uri.toString();
+            if (_navigationApprovals.consume(requestUrl)) {
+              return NavigationDecision.navigate;
+            }
+            _verifyAndLoad(uri, initial);
+            return NavigationDecision.prevent;
+          },
+          onPageStarted: (url) {
+            if (!_updateCurrentPage(url, initial, newNavigation: true)) return;
+            _startTimeout();
+            _installExtractionHooks();
+          },
+          onPageFinished: (url) {
+            if (!_updateCurrentPage(url, initial)) return;
+            _installExtractionHooks();
+          },
+          onWebResourceError: (error) {
+            if (shouldFailWebViewForResourceError(error)) _fail();
+          },
+        ),
+      );
+    _loadInitialPage(initial);
+  }
+
+  Future<void> _loadInitialPage(Uri initial) async {
+    final requestGeneration = _navigationApprovals.beginRequest();
+    if (!await isResolvedPublicHttpUri(initial) ||
+        !mounted ||
+        requestGeneration != _navigationApprovals.generation) {
+      _fail();
+      return;
+    }
+    final requestUrl = initial.toString();
+    _navigationApprovals.approve(requestUrl, requestGeneration);
+    try {
+      await _controller?.loadRequest(initial);
+    } catch (_) {
+      _navigationApprovals.revoke(requestUrl, requestGeneration);
+      _fail();
+    }
+  }
+
+  Future<void> _verifyAndLoad(Uri uri, Uri initial) async {
+    final host = uri.host.toLowerCase();
+    final requestGeneration = _navigationApprovals.beginRequest();
+    if (!_pendingHosts.add('$host#$requestGeneration')) return;
+    try {
+      if (!await isResolvedPublicHttpUri(uri) ||
+          !mounted ||
+          _completed ||
+          requestGeneration != _navigationApprovals.generation ||
+          !isTrustedJmPageUri(uri, initial: initial)) {
+        return;
+      }
+      final requestUrl = uri.toString();
+      _navigationApprovals.approve(requestUrl, requestGeneration);
+      try {
+        await _controller?.loadRequest(uri);
+      } catch (_) {
+        _navigationApprovals.revoke(requestUrl, requestGeneration);
+        _fail();
+      }
+    } finally {
+      _pendingHosts.remove('$host#$requestGeneration');
+    }
+  }
+
+  void _startTimeout() {
+    _timeout?.cancel();
+    _timeout = Timer(const Duration(seconds: 10), _fail);
+  }
+
+  bool _updateCurrentPage(
+    String rawUrl,
+    Uri initial, {
+    bool newNavigation = false,
+  }) {
+    final page = validatedHttpUri(rawUrl);
+    if (page == null ||
+        !isTrustedJmPageUri(page, initial: initial) ||
+        !_navigationApprovals.isLoaded(page.toString())) {
+      _fail();
+      return false;
+    }
+    _currentPage = page;
+    if (newNavigation) {
+      _navigationGeneration++;
+      _bridgeNonce = createVideoBridgeNonce();
+    }
+    return true;
+  }
+
+  Future<void> _installExtractionHooks() async {
+    final controller = _controller;
+    if (controller == null || _completed) return;
+    final generation = _navigationGeneration;
+    final nonce = _bridgeNonce;
+    try {
+      await controller.runJavaScript(
+        videoExtractionJavaScript.replaceFirst(
+          '__JOY_BRIDGE_NONCE__',
+          jsonEncode(nonce),
+        ),
+      );
+      if (!mounted || generation != _navigationGeneration) return;
+    } catch (_) {
+      // The page may not have a JavaScript context yet. The page-finished
+      // callback retries, and the bounded timeout remains the final fallback.
+    }
+  }
+
+  void _fail() {
+    if (_completed || !mounted) return;
+    _completed = true;
+    _timeout?.cancel();
+    widget.onFailure();
+  }
+
+  @override
+  void dispose() {
+    _completed = true;
+    _timeout?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = _controller;
+    if (controller == null) return const SizedBox.shrink();
+    return WebViewWidget(controller: controller);
+  }
+}
+
+Uri? validatedHttpUri(String value, {Uri? base}) {
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) return null;
+  final parsed = Uri.tryParse(trimmed);
+  if (parsed == null) return null;
+  final resolved = parsed.hasScheme ? parsed : base?.resolveUri(parsed);
+  if (resolved == null ||
+      (resolved.scheme != 'http' && resolved.scheme != 'https') ||
+      resolved.host.isEmpty ||
+      resolved.userInfo.isNotEmpty) {
+    return null;
+  }
+  return resolved;
+}
+
+Uri? safeRemoteHttpUri(String value, {Uri? base}) {
+  final uri = validatedHttpUri(value, base: base);
+  return uri != null && isPublicRemoteHttpUri(uri) ? uri : null;
+}
+
+bool _isPublicIpv4(List<int> octets) {
+  if (octets.length != 4 || octets.any((part) => part < 0 || part > 255)) {
+    return false;
+  }
+  final first = octets[0];
+  final second = octets[1];
+  if (first == 0 ||
+      first == 10 ||
+      first == 127 ||
+      (first == 100 && second >= 64 && second <= 127) ||
+      (first == 169 && second == 254) ||
+      (first == 172 && second >= 16 && second <= 31) ||
+      (first == 192 && second == 0) ||
+      (first == 192 && second == 168) ||
+      (first == 198 && (second == 18 || second == 19)) ||
+      (first == 198 && second == 51) ||
+      (first == 203 && second == 0) ||
+      first >= 224) {
+    return false;
+  }
+  return true;
+}
+
+bool _isPublicIpLiteral(String host) {
+  if (host.contains('%')) return false;
+  final numericIpv4Like =
+      host.contains('.') &&
+      host
+          .split('.')
+          .every((part) => RegExp(r'^(?:0x)?[0-9a-fA-F]+$').hasMatch(part));
+  if (numericIpv4Like) return false;
+  final address = InternetAddress.tryParse(host);
+  if (address == null) {
+    // Decimal and hexadecimal integer forms can be interpreted as IPv4 by
+    // URL clients (for example, 2130706433 == 127.0.0.1).
+    if (RegExp(r'^\d+$').hasMatch(host) || host.startsWith('0x')) {
+      return false;
+    }
+    return true;
+  }
+  if (address.isLoopback || address.isLinkLocal || address.isMulticast) {
+    return false;
+  }
+  final bytes = address.rawAddress;
+  if (bytes.length == 4) return _isPublicIpv4(bytes);
+  if (bytes.length != 16) return false;
+
+  final mappedIpv4 =
+      bytes.sublist(0, 10).every((byte) => byte == 0) &&
+      bytes[10] == 0xff &&
+      bytes[11] == 0xff;
+  if (mappedIpv4) return _isPublicIpv4(bytes.sublist(12));
+
+  final first = bytes[0];
+  final isUnspecified = bytes.every((byte) => byte == 0);
+  final isUniqueLocal = (first & 0xfe) == 0xfc;
+  final isLinkLocal = first == 0xfe && (bytes[1] & 0xc0) == 0x80;
+  final isMulticast = first == 0xff;
+  final isDocumentation =
+      first == 0x20 && bytes[1] == 0x01 && bytes[2] == 0x0d && bytes[3] == 0xb8;
+  return !(isUnspecified ||
+      isUniqueLocal ||
+      isLinkLocal ||
+      isMulticast ||
+      isDocumentation);
+}
+
+bool isPublicRemoteHttpUri(Uri uri) {
+  if ((uri.scheme != 'http' && uri.scheme != 'https') ||
+      uri.host.isEmpty ||
+      uri.userInfo.isNotEmpty) {
+    return false;
+  }
+  final host = uri.host.toLowerCase().replaceFirst(RegExp(r'\.$'), '');
+  if (host == 'localhost' ||
+      host.endsWith('.localhost') ||
+      host.endsWith('.local') ||
+      host.endsWith('.internal')) {
+    return false;
+  }
+  return _isPublicIpLiteral(host);
+}
+
+Future<bool> isResolvedPublicHttpUri(Uri uri) async {
+  if (!isPublicRemoteHttpUri(uri)) return false;
+  if (InternetAddress.tryParse(uri.host) != null) return true;
+  try {
+    final addresses = await InternetAddress.lookup(
+      uri.host,
+    ).timeout(const Duration(seconds: 2));
+    return addresses.isNotEmpty &&
+        addresses.every((address) => _isPublicIpLiteral(address.address));
+  } catch (_) {
+    return false;
+  }
+}
+
+bool isTrustedJmPageUri(Uri uri, {required Uri initial}) {
+  if (!isPublicRemoteHttpUri(uri)) return false;
+  final configuredHost = Uri.tryParse(JmNetwork().baseUrl)?.host;
+  final hosts = <String>{
+    '18comic.vip',
+    ...jmBuiltInDomains,
+    if (configuredHost != null && configuredHost.isNotEmpty)
+      configuredHost.toLowerCase(),
+  };
+  bool matchesTrustedHost(String host) =>
+      hosts.any((allowed) => host == allowed || host.endsWith('.$allowed'));
+  if (!matchesTrustedHost(initial.host.toLowerCase())) return false;
+  return matchesTrustedHost(uri.host.toLowerCase());
+}
+
+bool shouldFailWebViewForResourceError(WebResourceError error) =>
+    error.isForMainFrame != false;
+
+String createVideoBridgeNonce() {
+  final random = Random.secure();
+  return List<int>.generate(
+    24,
+    (_) => random.nextInt(256),
+  ).map((value) => value.toRadixString(16).padLeft(2, '0')).join();
+}
+
+String? parseExtractedVideoMessage(
+  String message, {
+  required String pageUrl,
+  String? expectedNonce,
+}) {
+  try {
+    final decoded = jsonDecode(message);
+    if (decoded is! Map ||
+        decoded['type'] != 'video_src' ||
+        decoded['src'] is! String ||
+        (expectedNonce != null && decoded['token'] != expectedNonce)) {
+      return null;
+    }
+    return safeRemoteHttpUri(
+      decoded['src'] as String,
+      base: validatedHttpUri(pageUrl),
+    )?.toString();
+  } catch (_) {
+    return null;
+  }
+}

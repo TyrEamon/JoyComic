@@ -24,8 +24,10 @@ import 'jm_headers.dart';
 import 'jm_image.dart';
 import 'jm_models.dart';
 import 'jm_parsing.dart';
+import 'jm_video_models.dart';
 
 export 'jm_models.dart';
+export 'jm_video_models.dart';
 
 /// 禁漫内置 API 兜底 CDN（失败时自动轮询切换）。
 ///
@@ -1181,6 +1183,112 @@ class JmNetwork {
     final res = await post('$baseUrl/like', 'id=$id');
     if (res.error) return Res(null, errorMessage: res.errorMessage);
     return const Res(true);
+  }
+
+  Future<Res<({List<JmVideoItem> items, int total})>> getVideos({
+    int page = 1,
+    String videoType = '',
+    String searchQuery = '',
+  }) async {
+    final query = <String, String>{
+      'page': '$page',
+      if (videoType.trim().isNotEmpty) 'video_type': videoType.trim(),
+      if (searchQuery.trim().isNotEmpty) 'search_query': searchQuery.trim(),
+    };
+    final uri = Uri.parse('$baseUrl/videos').replace(queryParameters: query);
+    final res = await get(uri.toString());
+    if (res.error) {
+      return Res(null, errorMessage: res.errorMessage);
+    }
+    if (res.data is! Map) {
+      return const Res(null, errorMessage: '视频列表响应结构错误');
+    }
+    final data = jsonMap(res.data);
+    final rawValue = data['list'] ?? data['videos'] ?? data['data'];
+    if (rawValue is! List) {
+      return const Res(null, errorMessage: '视频列表响应结构错误');
+    }
+    final rawList = jsonList(rawValue);
+    final imageBase = state?.imageBaseUrl ?? jmBuiltInImgUrls.first;
+    final items = <JmVideoItem>[];
+    for (final raw in rawList) {
+      if (raw is! Map) {
+        return const Res(null, errorMessage: '视频列表项目结构错误');
+      }
+      final item = JmVideoItem.fromJson(jsonMap(raw), imageBaseUrl: imageBase);
+      if (item.id.isEmpty && item.title.isEmpty) {
+        return const Res(null, errorMessage: '视频列表项目为空');
+      }
+      items.add(item);
+    }
+    final explicitTotal = jsonInt(
+      data['total'] ?? data['total_count'] ?? data['count'],
+      fallback: -1,
+    );
+    final inferredTotal = rawList.length >= 20
+        ? page * 20 + 1
+        : (page - 1) * 20 + rawList.length;
+    return Res((
+      items: items,
+      total: explicitTotal >= 0 ? explicitTotal : inferredTotal,
+    ));
+  }
+
+  Future<Res<JmVideoDetail>> getVideoDetail(String videoId) async {
+    Res<dynamic>? lastFailure;
+    for (final parameter in const <String>['vid', 'id']) {
+      final uri = Uri.parse(
+        '$baseUrl/video',
+      ).replace(queryParameters: <String, String>{parameter: videoId});
+      final res = await get(uri.toString());
+      if (res.error) {
+        lastFailure = res;
+        continue;
+      }
+      try {
+        final detail = JmVideoDetail.fromJson(
+          jsonMap(res.data),
+          imageBaseUrl: state?.imageBaseUrl ?? jmBuiltInImgUrls.first,
+        );
+        if (detail.id.isNotEmpty || detail.title.isNotEmpty) {
+          return Res(detail);
+        }
+        lastFailure = const Res(null, errorMessage: '视频详情为空');
+      } on FormatException {
+        lastFailure = const Res(null, errorMessage: '视频详情响应结构错误');
+      }
+    }
+    return Res(null, errorMessage: lastFailure?.errorMessage ?? '视频详情加载失败');
+  }
+
+  Future<Res<List<JmVideoItem>>> getLatestHanime() async {
+    final res = await get('$baseUrl/latest_hanime');
+    if (res.error) return Res(null, errorMessage: res.errorMessage);
+    final data = res.data;
+    final rawList = switch (data) {
+      List value => value,
+      Map value => switch (value['list'] ?? value['data']) {
+        List list => list,
+        _ => null,
+      },
+      _ => null,
+    };
+    if (rawList == null) {
+      return const Res(null, errorMessage: 'H动漫列表响应结构错误');
+    }
+    final imageBase = state?.imageBaseUrl ?? jmBuiltInImgUrls.first;
+    final items = <JmVideoItem>[];
+    for (final raw in rawList) {
+      if (raw is! Map) {
+        return const Res(null, errorMessage: 'H动漫列表项目结构错误');
+      }
+      final item = JmVideoItem.fromJson(jsonMap(raw), imageBaseUrl: imageBase);
+      if (item.id.isEmpty && item.title.isEmpty) {
+        return const Res(null, errorMessage: 'H动漫列表项目为空');
+      }
+      items.add(item);
+    }
+    return Res(items);
   }
 
   /// 获取热门搜索词。
