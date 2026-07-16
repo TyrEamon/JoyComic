@@ -31,6 +31,15 @@ abstract class PicacgState {
 
 /// 禁漫源状态。
 abstract class JmState {
+  /// 当前 JM AVS 会话值；仅保存在内存与安全存储中。
+  String get avs => '';
+
+  /// 更新 JM AVS 会话值。
+  Future<void> setAvs(String value) async {}
+
+  /// 清除失效的 JM AVS 会话值。
+  Future<void> clearAvs() async {}
+
   /// 当前生效的**接口**域名（用于 API 请求）。
   String get apiBaseUrl;
 

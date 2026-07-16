@@ -11,7 +11,7 @@
 /// - 登录调 `source.account.login!(account, pwd)`：
 ///   禁漫登录前会自动 selectDomain 探测 + fetchSetting 拉图床（见 jm.dart）；
 ///   哔咔登录拿 token + getProfile。
-/// - 登录态写 `source.data['account']` 持久化，reLogin 复用。
+/// - 登录凭据与会话写入安全存储，reLogin 从安全存储读取。
 /// - 测速选源入口 push /settings/source（禁漫 6 图床测速 + express 快速通道）。
 /// - 当前已集成真实登录。
 library;
@@ -81,7 +81,7 @@ class _LoginPageState extends State<LoginPage> {
         ).showSnackBar(SnackBar(content: Text(res.errorMessage ?? '登录失败')));
       }
     } else {
-      if (context.mounted) context.pop();
+      if (context.mounted) context.pop(true);
       if (context.mounted) {
         ScaffoldMessenger.of(
           context,

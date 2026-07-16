@@ -119,6 +119,8 @@ class _FakeJmState implements JmState {
   }) : apiBaseUrl = 'https://$preferredDomain';
 
   @override
+  String avs = '';
+  @override
   String apiBaseUrl;
   @override
   String imageBaseUrl = '';
@@ -132,9 +134,13 @@ class _FakeJmState implements JmState {
   String? username;
 
   @override
+  Future<void> clearAvs() async => avs = '';
+  @override
   List<String>? getAccount() => null;
   @override
   Future<bool> reLogin() async => true;
+  @override
+  Future<void> setAvs(String value) async => avs = value;
   @override
   void setApiBaseUrl(String url) => apiBaseUrl = url;
   @override

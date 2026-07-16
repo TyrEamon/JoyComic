@@ -75,7 +75,12 @@ Map<String, String> baseHeaders() => {
 ///
 /// [time] 当前秒级时间戳（与 token 计算保持同一值，后续响应解密也复用此值）；
 /// [post] 是否为 POST（决定 Content-Type）；[byte] 是否以字节方式接收响应。
-BaseOptions buildApiOptions(int time, {bool post = false, bool byte = true}) {
+BaseOptions buildApiOptions(
+  int time, {
+  bool post = false,
+  bool byte = true,
+  String avs = '',
+}) {
   final token = md5.convert(utf8.encode('$time$_jmAuthKey'));
   return BaseOptions(
     receiveDataWhenStatusError: true,
@@ -88,6 +93,7 @@ BaseOptions buildApiOptions(int time, {bool post = false, bool byte = true}) {
       'token': token.toString(),
       'tokenparam': '$time,$jmAppVersion',
       'user-agent': _jmUserAgent,
+      if (avs.isNotEmpty) 'Cookie': 'AVS=$avs',
       if (post) 'Content-Type': 'application/x-www-form-urlencoded',
     },
   );

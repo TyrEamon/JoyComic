@@ -16,6 +16,7 @@ import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import '../../comic_source/detail_models.dart';
 import '../../foundation/detail_text.dart';
 import '../../foundation/log.dart';
+import '../../foundation/source_credential_store.dart';
 import '../json_value.dart';
 import '../res.dart';
 import '../source_state.dart';
@@ -286,9 +287,11 @@ class JmNetwork {
     JmDioFactory? dioFactory,
     JmGetRequest? getRequest,
     JmPostRequest? postRequest,
+    SourceCredentialStore? credentialStore,
   }) : _dioFactory = dioFactory ?? Dio.new,
        _getRequest = getRequest,
-       _postRequest = postRequest;
+       _postRequest = postRequest,
+       _credentialStore = credentialStore ?? SourceCredentialStore();
 
   static JmNetwork? _cache;
 
@@ -296,20 +299,28 @@ class JmNetwork {
     JmDioFactory? dioFactory,
     JmGetRequest? getRequest,
     JmPostRequest? postRequest,
+    SourceCredentialStore? credentialStore,
   }) {
-    if (dioFactory == null && getRequest == null && postRequest == null) {
+    if (dioFactory == null &&
+        getRequest == null &&
+        postRequest == null &&
+        credentialStore == null) {
       return _cache ??= JmNetwork._create();
     }
     return JmNetwork._create(
       dioFactory: dioFactory,
       getRequest: getRequest,
       postRequest: postRequest,
+      credentialStore: credentialStore,
     );
   }
 
   final JmDioFactory _dioFactory;
   final JmGetRequest? _getRequest;
   final JmPostRequest? _postRequest;
+  final SourceCredentialStore _credentialStore;
+
+  SourceCredentialStore get credentialStore => _credentialStore;
   static const int _inlinePageCacheLimit = 64;
 
   // Dart map literals preserve insertion order; cache hits remove/reinsert for LRU.
@@ -322,7 +333,38 @@ class JmNetwork {
   /// 禁漫 cookie 有效期极短，无需持久化。
   final cookieJar = CookieJar(ignoreExpires: true);
 
-  bool _performingLogin = false;
+  static final Object _authOperationZoneKey = Object();
+
+  Future<void> _authQueue = Future<void>.value();
+  Future<bool>? _reLoginFuture;
+  int _authGeneration = 0;
+
+  bool get _ownsAuthenticationOperation =>
+      identical(Zone.current[_authOperationZoneKey], this);
+
+  Future<T> runAuthenticationOperation<T>(Future<T> Function() operation) {
+    if (_ownsAuthenticationOperation) return operation();
+
+    final previous = _authQueue;
+    final turn = Completer<void>();
+    _authQueue = turn.future;
+    return () async {
+      await previous;
+      try {
+        return await runZoned<Future<T>>(
+          operation,
+          zoneValues: <Object, Object>{_authOperationZoneKey: this},
+        );
+      } finally {
+        turn.complete();
+      }
+    }();
+  }
+
+  Future<void> _waitForAuthenticationOperations() async {
+    if (_ownsAuthenticationOperation) return;
+    await _authQueue;
+  }
 
   String get baseUrl =>
       state?.apiBaseUrl ?? 'https://${jmBuiltInDomains.first}';
@@ -359,10 +401,11 @@ class JmNetwork {
     String url,
     int time, {
     bool isRetry = false,
+    required int requestAuthGeneration,
   }) async {
-    final options = buildApiOptions(time, byte: true);
+    final options = buildApiOptions(time, byte: true, avs: state?.avs ?? '');
     options.validateStatus = (i) => i == 200 || i == 401;
-    final dio = Dio(options);
+    final dio = _dioFactory(options);
     dio.interceptors.add(CookieManager(cookieJar));
     try {
       final res = await dio.get<List<int>>(url);
@@ -371,9 +414,13 @@ class JmNetwork {
       if (res.statusCode == 401) {
         final errorJson = jsonMap(const JsonDecoder().convert(body));
         final msg = jsonString(errorJson['errorMsg'], fallback: 'Error');
-        if (msg == '請先登入會員' && state?.username != null && !isRetry) {
-          final ok = await state!.reLogin();
-          if (ok) return get(url, isRetry: true);
+        if (msg == '請先登入會員' &&
+            await _tryReLogin(
+              url,
+              isRetry: isRetry,
+              requestAuthGeneration: requestAuthGeneration,
+            )) {
+          return get(url, isRetry: true);
         }
         return Res(null, errorMessage: msg);
       }
@@ -397,9 +444,21 @@ class JmNetwork {
     }
   }
 
-  Future<Res<dynamic>?> _doPost(String url, String data, int time) async {
-    final options = buildApiOptions(time, post: true, byte: true);
-    final dio = Dio(options);
+  Future<Res<dynamic>?> _doPost(
+    String url,
+    String data,
+    int time, {
+    bool includeAvs = true,
+    bool isRetry = false,
+    required int requestAuthGeneration,
+  }) async {
+    final options = buildApiOptions(
+      time,
+      post: true,
+      byte: true,
+      avs: includeAvs ? state?.avs ?? '' : '',
+    );
+    final dio = _dioFactory(options);
     dio.interceptors.add(CookieManager(cookieJar));
     try {
       final res = await dio.post<List<int>>(
@@ -414,6 +473,14 @@ class JmNetwork {
       final json = jsonMap(decoded);
       if (res.statusCode == 401) {
         final msg = jsonString(json['errorMsg'], fallback: 'Unknown Error');
+        if (msg == '請先登入會員' &&
+            await _tryReLogin(
+              url,
+              isRetry: isRetry,
+              requestAuthGeneration: requestAuthGeneration,
+            )) {
+          return post(url, data, includeAvs: includeAvs, isRetry: true);
+        }
         return Res(null, errorMessage: msg);
       }
       final enc = json['data'];
@@ -430,6 +497,53 @@ class JmNetwork {
   }
 
   /// 替换 url 的 host 为 [domain]，保留 path/query。
+  bool _isAuthRequest(String url) => Uri.tryParse(url)?.path == '/login';
+
+  Future<bool> _tryReLogin(
+    String url, {
+    required bool isRetry,
+    required int requestAuthGeneration,
+  }) async {
+    if (_isAuthRequest(url)) return false;
+    if (requestAuthGeneration != _authGeneration) return !isRetry;
+    if (_ownsAuthenticationOperation) {
+      await _clearAuthentication();
+      return false;
+    }
+    if (state?.username != null && !isRetry) {
+      try {
+        final ok = await _singleFlightReLogin();
+        if (ok) return true;
+      } catch (_) {
+        // Authentication restoration failures are not transport failures.
+      }
+    }
+    await _clearAuthentication();
+    return false;
+  }
+
+  Future<bool> _singleFlightReLogin() {
+    final current = _reLoginFuture;
+    if (current != null) return current;
+
+    final completer = Completer<bool>();
+    final future = completer.future;
+    _reLoginFuture = future;
+    () async {
+      try {
+        final generationBefore = _authGeneration;
+        final ok = await runAuthenticationOperation(state!.reLogin);
+        if (ok && _authGeneration == generationBefore) _authGeneration++;
+        completer.complete(ok);
+      } catch (error, stackTrace) {
+        completer.completeError(error, stackTrace);
+      } finally {
+        if (identical(_reLoginFuture, future)) _reLoginFuture = null;
+      }
+    }();
+    return future;
+  }
+
   String _urlWithDomain(String url, String domain) {
     final uri = Uri.tryParse(url);
     if (uri == null || !uri.hasAuthority) return url;
@@ -440,15 +554,13 @@ class JmNetwork {
   /// 全部失败则返回最后一个错误 Res。最多轮询 [_domainCandidates] 个域名。
   Future<Res<dynamic>> _withDomainFailover(
     String url,
-    Future<Res<dynamic>?> Function(String, int) attempt,
-  ) async {
+    Future<Res<dynamic>?> Function(String, int) attempt, {
+    bool waitForLogin = true,
+  }) async {
     final candidates = _domainCandidates;
     Res<dynamic>? last = const Res(null, errorMessage: '所有域名均不可用');
     for (final d in candidates) {
-      // 发起请求前等待正在进行的登录完成，避免并发登录踩 cookie。
-      while (_performingLogin) {
-        await Future.delayed(const Duration(milliseconds: 100));
-      }
+      if (waitForLogin) await _waitForAuthenticationOperations();
       final time = DateTime.now().millisecondsSinceEpoch ~/ 1000;
       final res = await attempt(_urlWithDomain(url, d), time);
       if (res != null) {
@@ -461,20 +573,45 @@ class JmNetwork {
     return last!;
   }
 
-  Future<Res<dynamic>> get(String url, {bool isRetry = false}) async {
+  Future<Res<dynamic>> get(
+    String url, {
+    bool isRetry = false,
+    int? requestAuthGeneration,
+  }) async {
     final request = _getRequest;
     if (request != null) return request(url);
+    final generation = requestAuthGeneration ?? _authGeneration;
     final res = await _withDomainFailover(
       url,
-      (u, t) => _doGet(u, t, isRetry: isRetry),
+      (u, t) =>
+          _doGet(u, t, isRetry: isRetry, requestAuthGeneration: generation),
     );
     return res;
   }
 
-  Future<Res<dynamic>> post(String url, String data) async {
+  Future<Res<dynamic>> post(
+    String url,
+    String data, {
+    bool waitForLogin = true,
+    bool includeAvs = true,
+    bool isRetry = false,
+    int? requestAuthGeneration,
+  }) async {
     final request = _postRequest;
     if (request != null) return request(url, data);
-    final res = await _withDomainFailover(url, (u, t) => _doPost(u, data, t));
+    final generation = requestAuthGeneration ?? _authGeneration;
+    final res = await _withDomainFailover(
+      url,
+      (u, t) => _doPost(
+        u,
+        data,
+        t,
+        includeAvs: includeAvs,
+        isRetry: isRetry,
+        requestAuthGeneration: generation,
+      ),
+      waitForLogin: waitForLogin,
+    );
     return res;
   }
 
@@ -483,24 +620,43 @@ class JmNetwork {
   /// 在候选域名中并发探测可用者：对 `/login` post `&`，返回 401 视作可用。
   ///
   /// 登录前用于快速锁定一个可用接口域名写入 [JmState.apiBaseUrl]。
-  Future<int?> selectDomain(List<String> domains) async {
+  Future<int?> selectDomain(
+    List<String> domains, {
+    Duration timeout = const Duration(seconds: 8),
+  }) async {
+    if (domains.isEmpty) return null;
+
     final time = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    final dio = Dio(buildApiOptions(time, post: true));
+    final dio = _dioFactory(buildApiOptions(time, post: true));
     dio.options.validateStatus = (_) => true;
     final completer = Completer<int?>();
-    var passed = false;
-    for (final d in domains) {
+    var remaining = domains.length;
+    void complete(int? value) {
+      if (!completer.isCompleted) completer.complete(value);
+    }
+
+    final timer = Timer(timeout, () => complete(null));
+    for (var index = 0; index < domains.length; index++) {
+      final domain = domains[index];
       () async {
         try {
-          final res = await dio.post('https://$d/login', data: '&');
-          if (res.statusCode == 401 && !passed) {
-            passed = true;
-            completer.complete(domains.indexOf(d));
-          }
-        } catch (_) {}
+          final res = await dio.post('https://$domain/login', data: '&');
+          if (res.statusCode == 401) complete(index);
+        } catch (_) {
+          // A failed probe only contributes to the all-failed result.
+        } finally {
+          remaining--;
+          if (remaining == 0) complete(null);
+        }
       }();
     }
-    return completer.future;
+
+    try {
+      return await completer.future;
+    } finally {
+      timer.cancel();
+      dio.close(force: true);
+    }
   }
 
   /// 拉取禁漫 `/setting`，解析动态分流项与图床域名。
@@ -698,17 +854,80 @@ class JmNetwork {
   // ============================ 业务端点 ============================
 
   /// 登录（表单 URL 编码）。
-  Future<Res<bool>> login(String account, String pwd) async {
-    _performingLogin = true;
+  Future<Res<bool>> login(String account, String pwd) =>
+      runAuthenticationOperation(() => _login(account, pwd));
+
+  Future<Res<bool>> _login(String account, String pwd) async {
+    final res = await post(
+      '$baseUrl/login',
+      'username=${Uri.encodeComponent(account)}&password=${Uri.encodeComponent(pwd)}',
+      waitForLogin: false,
+      includeAvs: false,
+    );
+    if (res.error) {
+      await _clearAuthentication();
+      return Res(null, errorMessage: res.errorMessage);
+    }
+    final data = res.data;
+    if (data is! Map) {
+      await _clearAuthentication();
+      return const Res(null, errorMessage: '登录响应解析失败');
+    }
+    final avs = jsonString(jsonMap(data)['s']).trim();
+    if (avs.isEmpty) {
+      await _clearAuthentication();
+      return const Res(null, errorMessage: '登录响应缺少 AVS');
+    }
+    ({String user, String password})? previousCredentials;
     try {
-      final res = await post(
-        '$baseUrl/login',
-        'username=${Uri.encodeComponent(account)}&password=${Uri.encodeComponent(pwd)}',
-      );
-      if (res.error) return Res(null, errorMessage: res.errorMessage);
-      return const Res(true);
-    } finally {
-      _performingLogin = false;
+      previousCredentials = await _credentialStore.readCredentials('jm');
+      await _credentialStore.saveCredentials('jm', account, pwd);
+      await _credentialStore.saveSession('jm', 'avs', avs);
+      await state?.setAvs(avs);
+    } catch (_) {
+      await _clearAuthentication();
+      await _restoreCredentials(previousCredentials);
+      return const Res(null, errorMessage: '登录凭据保存失败');
+    }
+    _authGeneration++;
+    return const Res(true);
+  }
+
+  Future<void> _clearAuthentication() async {
+    try {
+      await state?.clearAvs();
+    } catch (_) {
+      // Local auth is invalidated before persistence by JmStateImpl.
+    }
+    try {
+      await _credentialStore.saveSession('jm', 'avs', '');
+    } catch (_) {
+      // Cleanup is best-effort and must not replace the original auth error.
+    }
+  }
+
+  Future<void> rollbackAuthentication(
+    ({String user, String password})? previous,
+  ) async {
+    await _clearAuthentication();
+    await _restoreCredentials(previous);
+  }
+
+  Future<void> _restoreCredentials(
+    ({String user, String password})? previous,
+  ) async {
+    try {
+      if (previous == null) {
+        await _credentialStore.clearSource('jm');
+      } else {
+        await _credentialStore.saveCredentials(
+          'jm',
+          previous.user,
+          previous.password,
+        );
+      }
+    } catch (_) {
+      // Rollback is best-effort when secure storage itself is unavailable.
     }
   }
 
@@ -1019,7 +1238,13 @@ class JmNetwork {
   }
 
   /// 登出。
-  Future<void> logout() async => cookieJar.deleteAll();
+  Future<void> logout() => runAuthenticationOperation(_logout);
+
+  Future<void> _logout() async {
+    await cookieJar.deleteAll();
+    await _clearAuthentication();
+    await _credentialStore.clearSource('jm');
+  }
 
   // ============================ 评论相关 ============================
 

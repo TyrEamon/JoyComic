@@ -8,6 +8,7 @@ library;
 import 'package:flutter/foundation.dart';
 
 import '../../comic_source/comic_source.dart';
+import '../../foundation/source_credential_store.dart';
 import '../../network/base_comic.dart';
 import '../../network/jm/jm_headers.dart';
 import '../../network/jm/jm_image.dart';
@@ -19,8 +20,77 @@ import '../../views/common/source_content_models.dart';
 
 /// 禁漫源状态门面实现。
 class JmStateImpl implements JmState {
-  final ComicSource source;
   JmStateImpl(this.source);
+
+  final ComicSource source;
+  String _avs = '';
+
+  @override
+  String get avs => _avs;
+
+  Future<void> restoreAuthentication() async {
+    var changed = false;
+    final legacy = _storedAccount(source.data.remove('account'));
+    if (legacy != null) {
+      await source.credentialStore.saveCredentials(
+        source.key,
+        legacy[0],
+        legacy[1],
+      );
+      changed = true;
+    }
+    if (source.data.remove('name') != null) changed = true;
+
+    final credentials = await source.credentialStore.readCredentials(
+      source.key,
+    );
+    final restoredAvs = await source.credentialStore.readSession(
+      source.key,
+      'avs',
+    );
+    if (credentials == null || restoredAvs == null || restoredAvs.isEmpty) {
+      await clearAvs();
+      return;
+    }
+
+    _avs = restoredAvs;
+    if (source.data['authenticated'] != true) {
+      source.data['authenticated'] = true;
+      changed = true;
+    }
+    if (changed) await source.saveData();
+  }
+
+  @override
+  Future<void> setAvs(String value) async {
+    _avs = value.trim();
+    if (_avs.isEmpty) {
+      source.data.remove('authenticated');
+    } else {
+      source.data['authenticated'] = true;
+    }
+
+    Object? firstError;
+    StackTrace? firstStackTrace;
+    try {
+      await source.credentialStore.saveSession(source.key, 'avs', _avs);
+    } catch (error, stackTrace) {
+      firstError = error;
+      firstStackTrace = stackTrace;
+    }
+    try {
+      await source.saveData();
+    } catch (error, stackTrace) {
+      firstError ??= error;
+      firstStackTrace ??= stackTrace;
+    }
+    if (firstError != null) {
+      Error.throwWithStackTrace(firstError, firstStackTrace!);
+    }
+  }
+
+  @override
+  Future<void> clearAvs() => setAvs('');
 
   @override
   String get apiBaseUrl => jsonString(
@@ -86,10 +156,11 @@ class JmStateImpl implements JmState {
   }
 
   @override
-  String? get username => _optionalString(source.data['name']);
+  String? get username =>
+      source.data['authenticated'] == true ? 'authenticated' : null;
 
   @override
-  List<String>? getAccount() => _storedAccount(source.data['account']);
+  List<String>? getAccount() => null;
 
   @override
   Future<bool> reLogin() => source.reLogin();
@@ -109,63 +180,101 @@ Future<Res<bool>> adaptJmFavoriteToggle(
 ComicSource buildJmSource({
   JmFavoriteToggle? favoriteToggle,
   JmCommentSender? commentSender,
+  SourceCredentialStore? credentialStore,
+  JmNetwork? network,
+  void Function(JmNetwork network)? onNetworkReady,
+  Future<int?> Function(List<String> domains)? domainSelector,
 }) {
-  final toggleFavoriteRequest = favoriteToggle ?? JmNetwork().toggleFavorite;
-  final sendCommentRequest = commentSender ?? JmNetwork().sendComment;
+  late final JmNetwork client;
+  late final SourceCredentialStore effectiveCredentialStore;
+  if (network != null) {
+    if (credentialStore != null &&
+        !identical(credentialStore, network.credentialStore)) {
+      throw ArgumentError('JM source and network credential stores must match');
+    }
+    client = network;
+    effectiveCredentialStore = credentialStore ?? network.credentialStore;
+  } else if (credentialStore != null) {
+    effectiveCredentialStore = credentialStore;
+    client = JmNetwork(credentialStore: effectiveCredentialStore);
+  } else {
+    client = JmNetwork();
+    effectiveCredentialStore = client.credentialStore;
+  }
+  onNetworkReady?.call(client);
+  late final JmStateImpl stateFacade;
+  final toggleFavoriteRequest = favoriteToggle ?? client.toggleFavorite;
+  final sendCommentRequest = commentSender ?? client.sendComment;
   final source = ComicSource.named(
     name: '禁漫',
     key: 'jm',
     filePath: 'built-in',
     url: 'https://jmcomic1.cc',
     version: '1.6.3',
+    credentialStore: effectiveCredentialStore,
     account: AccountConfig.named(
-      login: (account, pwd) async {
-        final network = JmNetwork();
-        // 登录前先探测可用接口域名并写入。
-        final idx = await network.selectDomain(jmBuiltInDomains);
-        final s = ComicSource.find('jm')!;
-        if (idx != null) {
-          final domain = jmBuiltInDomains[idx];
-          s.data['apiBaseUrl'] = 'https://$domain';
-          // 探测到的可用域名置顶轮询池，避免后续 get 被池首域名覆盖。
-          network.state?.setPreferredDomain(domain);
-          await s.saveData();
-        }
-        final res = await network.login(account, pwd);
-        if (res.error) return Res.fromErrorRes(res);
-        s.data['name'] = account;
-        s.data['account'] = <String>[account, pwd];
-        await s.saveData();
-        // 登录后拉取 /setting：动态分流项 + 图床域名写入持久化。
-        final setting = await network.fetchSetting();
-        if (!setting.error) {
-          // 兜底：setting 未返回图床时用内置候选首项。
-          if ((s.data['imageBaseUrl'] ?? '') == '') {
-            network.state?.setImageBaseUrl(jmBuiltInImgUrls[0]);
+      login: (account, pwd) => client.runAuthenticationOperation(() async {
+        final previousCredentials = await effectiveCredentialStore
+            .readCredentials('jm');
+        var networkLoginSucceeded = false;
+        try {
+          // 登录前先探测可用接口域名并写入。
+          final idx = await (domainSelector ?? client.selectDomain)(
+            jmBuiltInDomains,
+          );
+          final s = ComicSource.find('jm')!;
+          if (idx != null) {
+            final domain = jmBuiltInDomains[idx];
+            s.data['apiBaseUrl'] = 'https://$domain';
+            // 探测到的可用域名置顶轮询池，避免后续 get 被池首域名覆盖。
+            client.state?.setPreferredDomain(domain);
+            await s.saveData();
           }
-        } else {
-          network.state?.setImageBaseUrl(jmBuiltInImgUrls[0]);
+          final res = await client.login(account, pwd);
+          if (res.error) return Res.fromErrorRes(res);
+          networkLoginSucceeded = true;
+          // 登录后拉取 /setting：动态分流项 + 图床域名写入持久化。
+          final setting = await client.fetchSetting();
+          if (setting.errorMessage == '請先登入會員') {
+            await client.rollbackAuthentication(previousCredentials);
+            networkLoginSucceeded = false;
+            return Res<bool>(null, errorMessage: setting.errorMessage);
+          }
+          if (!setting.error) {
+            // 兜底：setting 未返回图床时用内置候选首项。
+            if ((s.data['imageBaseUrl'] ?? '') == '') {
+              client.state?.setImageBaseUrl(jmBuiltInImgUrls[0]);
+            }
+          } else {
+            client.state?.setImageBaseUrl(jmBuiltInImgUrls[0]);
+          }
+          await s.saveData();
+          return const Res(true);
+        } catch (_) {
+          if (networkLoginSucceeded) {
+            await client.rollbackAuthentication(previousCredentials);
+          }
+          rethrow;
         }
-        await s.saveData();
-        return const Res(true);
-      },
-      logout: () {
+      }),
+      logout: () => client.runAuthenticationOperation(() async {
+        await client.logout();
         final s = ComicSource.find('jm');
         if (s == null) return;
-        s.data['name'] = null;
-        s.data['account'] = null;
-        s.saveData();
-        JmNetwork().logout();
-      },
+        s.data.remove('name');
+        s.data.remove('account');
+        s.data.remove('authenticated');
+        await s.saveData();
+      }),
       loginWebsite: 'https://jmcomic1.cc',
     ),
     loadSourceCategories: () async {
-      final res = await JmNetwork().getCategories();
+      final res = await client.getCategories();
       if (res.error) return Res(null, errorMessage: res.errorMessage);
       return Res(adaptJmSourceCategories(res.data));
     },
     loadSourceContent: (query) async {
-      final res = await JmNetwork().getCategoryComics(
+      final res = await client.getCategoryComics(
         query.param ?? query.categoryKey,
         _jmSort(query.sort),
         query.page,
@@ -180,7 +289,7 @@ ComicSource buildJmSource({
       );
     },
     loadHomeSections: () async {
-      final res = await JmNetwork().getHomeSections();
+      final res = await client.getHomeSections();
       if (res.error) return Res(null, errorMessage: res.errorMessage);
       return Res([
         for (final section in res.data)
@@ -201,28 +310,28 @@ ComicSource buildJmSource({
     // 搜索：免登录可搜（token 仅 md5(时间戳+盐)，非 session）。
     searchPageData: SearchPageData.named(
       loadPage: (keyword, page, options) async {
-        final res = await JmNetwork().search(keyword, page, 'mr');
+        final res = await client.search(keyword, page, 'mr');
         if (res.error) return Res(null, errorMessage: res.errorMessage);
         return Res<List<BaseComic>>(<BaseComic>[...res.data]);
       },
       enableTagsSuggestions: true,
-      loadHotTags: () => JmNetwork().getHotTags(),
+      loadHotTags: () => client.getHotTags(),
     ),
     // 详情：JmComicInfo → ComicInfoData 统一形态。
     loadComicInfo: (id) async {
-      final res = await JmNetwork().getComicInfo(id);
+      final res = await client.getComicInfo(id);
       if (res.error) return Res(null, errorMessage: res.errorMessage);
       return Res(jmInfoToComicInfoData(res.data));
     },
     // 单卷优先复用详情内联页，分章继续调用 chapter 端点。
-    loadComicPages: (comicId, ep) => JmNetwork().getComicPages(comicId, ep),
+    loadComicPages: (comicId, ep) => client.getComicPages(comicId, ep),
     // 禁漫图片（封面/内文）统一带仿浏览器头，部分图床校验 UA/Referer。
     getImageLoadingConfig: (imageKey, comicId, epId) => imageHeaders(),
     getThumbnailLoadingConfig: (imageKey) => imageHeaders(),
     // 收藏。
     favoriteData: FavoriteData.named(
       load: (page, [folder]) async {
-        final res = await JmNetwork().fetchFavorites(
+        final res = await client.fetchFavorites(
           page: page,
           folderId: folder ?? '0',
         );
@@ -235,8 +344,7 @@ ComicSource buildJmSource({
       multiFolder: true,
     ),
     // 评论。
-    commentsLoader: (id, subId, page, replyToId) =>
-        JmNetwork().getComment(id, page),
+    commentsLoader: (id, subId, page, replyToId) => client.getComment(id, page),
     sendCommentFunc: (id, subId, content, replyTo) {
       final trimmedContent = content.trim();
       final payload = replyTo == null
@@ -244,14 +352,16 @@ ComicSource buildJmSource({
           : '@${replyTo.userName} $trimmedContent';
       return sendCommentRequest(id, payload);
     },
-    initData: (s) {
+    initData: (s) async {
       s.data['apiBaseUrl'] ??= 'https://${jmBuiltInDomains.first}';
       s.data['selectedShuntKey'] ??= jmExpressShuntKey;
-      jmBaseUrl = JmStateImpl(s).imageBaseUrl;
+      await stateFacade.restoreAuthentication();
+      jmBaseUrl = stateFacade.imageBaseUrl;
     },
   );
 
-  JmNetwork().state = JmStateImpl(source);
+  stateFacade = JmStateImpl(source);
+  client.state = stateFacade;
   return source;
 }
 
@@ -318,12 +428,6 @@ int? _optionalPageCount(Object? value) => value is int ? value : null;
 List<String>? _storedAccount(Object? value) {
   final account = jsonStringList(value);
   return account.length >= 2 ? account : null;
-}
-
-String? _optionalString(Object? value) {
-  if (value == null) return null;
-  final text = jsonString(value);
-  return text.isEmpty ? null : text;
 }
 
 /// 禁漫详情 → 统一 [ComicInfoData]。

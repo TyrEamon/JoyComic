@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:joycomic/comic_source/built_in/jm.dart';
 import 'package:joycomic/comic_source/comic_source.dart';
+import 'package:joycomic/foundation/source_credential_store.dart';
 import 'package:joycomic/network/jm/jm_image.dart';
 import 'package:joycomic/network/jm/jm_network.dart';
 import 'package:joycomic/network/jm/jm_parsing.dart';
@@ -249,7 +250,9 @@ void main() {
         singleton.state = originalState;
       });
       jmBaseUrl = 'https://stale-global.example';
-      final source = buildJmSource();
+      final source = buildJmSource(
+        credentialStore: SourceCredentialStore(_MemorySecretStore()),
+      );
       source.data['imageBaseUrl'] = 'https://persisted-images.example';
 
       await source.initData!(source);
@@ -670,6 +673,8 @@ class _TestJmState implements JmState {
   _TestJmState({required this.imageBaseUrl});
 
   @override
+  String avs = '';
+  @override
   String apiBaseUrl = 'https://api.example';
   @override
   String imageBaseUrl;
@@ -683,9 +688,13 @@ class _TestJmState implements JmState {
   String? username;
 
   @override
+  Future<void> clearAvs() async => avs = '';
+  @override
   List<String>? getAccount() => null;
   @override
   Future<bool> reLogin() async => true;
+  @override
+  Future<void> setAvs(String value) async => avs = value;
   @override
   void setApiBaseUrl(String url) => apiBaseUrl = url;
   @override
@@ -696,4 +705,17 @@ class _TestJmState implements JmState {
   void setSelectedShuntKey(int key) => selectedShuntKey = key;
   @override
   void setShunts(List<JmShunt> value) => shunts = value;
+}
+
+class _MemorySecretStore implements SecretKeyValueStore {
+  final Map<String, String> values = <String, String>{};
+
+  @override
+  Future<void> delete(String key) async => values.remove(key);
+
+  @override
+  Future<String?> read(String key) async => values[key];
+
+  @override
+  Future<void> write(String key, String value) async => values[key] = value;
 }

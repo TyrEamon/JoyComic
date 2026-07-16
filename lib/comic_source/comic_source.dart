@@ -13,6 +13,7 @@ import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 
+import '../foundation/source_credential_store.dart';
 import '../network/base_comic.dart';
 import '../network/res.dart';
 import '../views/common/source_content_models.dart';
@@ -98,7 +99,7 @@ class ComicSource {
       final s = entry.value();
       sources.add(s);
       await s.loadData();
-      s.initData?.call(s);
+      await s.initData?.call(s);
     }
   }
 
@@ -111,6 +112,9 @@ class ComicSource {
   final String key;
 
   final AccountConfig? account;
+
+  /// Source-keyed secrets used by authentication and session restoration.
+  final SourceCredentialStore credentialStore;
 
   final CategoryData? categoryData;
 
@@ -150,7 +154,7 @@ class ComicSource {
   /// 源运行期状态：token / 账号 / 个人信息 / 源内设置。持久化到本地文件。
   var data = <String, dynamic>{};
 
-  bool get isLogin => data["account"] != null;
+  bool get isLogin => data["account"] != null || data["authenticated"] == true;
 
   Future<void> loadData() async {
     final file = File(await _dataFilePath);
@@ -188,9 +192,19 @@ class ComicSource {
       dataPathProvider != null ? dataPathProvider!() : '';
 
   Future<bool> reLogin() async {
-    if (data["account"] == null) return false;
-    final List accountData = data["account"];
-    final res = await account!.login!(accountData[0], accountData[1]);
+    final login = account?.login;
+    if (login == null) return false;
+
+    final secure = await credentialStore.readCredentials(key);
+    if (secure != null) {
+      final res = await login(secure.user, secure.password);
+      return !res.error;
+    }
+
+    // Transitional fallback for sources not migrated to secure storage yet.
+    final legacy = data["account"];
+    if (legacy is! List || legacy.length < 2) return false;
+    final res = await login(legacy[0].toString(), legacy[1].toString());
     return !res.error;
   }
 
@@ -198,6 +212,7 @@ class ComicSource {
     required this.name,
     required this.key,
     this.account,
+    SourceCredentialStore? credentialStore,
     this.categoryData,
     this.categoryComicsData,
     this.loadSourceCategories,
@@ -219,7 +234,7 @@ class ComicSource {
     this.commentsLoader,
     this.sendCommentFunc,
     this.initData,
-  });
+  }) : credentialStore = credentialStore ?? SourceCredentialStore();
 }
 
 // ============================ 账号相关 ============================
@@ -229,7 +244,7 @@ class AccountConfig {
   final FutureOr<void> Function(BuildContext)? onLogin;
   final String? loginWebsite;
   final String? registerWebsite;
-  final void Function()? logout;
+  final FutureOr<void> Function()? logout;
   final bool allowReLogin;
   final List<AccountInfoItem> infoItems;
 
