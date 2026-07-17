@@ -52,4 +52,48 @@ void main() {
       expect(file.readAsStringSync(), isNot(matches(fixed)), reason: file.path);
     }
   });
+
+  test('Codemagic injects idempotent iOS image-picker permissions', () {
+    final source = File('codemagic.yaml').readAsStringSync();
+    final createIndex = source.indexOf('flutter create . --platforms=ios');
+    final photoAdd = source.indexOf(
+      'Add :NSPhotoLibraryUsageDescription string 选择漫画图片用于以图搜图',
+    );
+    final photoSet = source.indexOf(
+      'Set :NSPhotoLibraryUsageDescription 选择漫画图片用于以图搜图',
+    );
+    final cameraAdd = source.indexOf(
+      'Add :NSCameraUsageDescription string 拍摄漫画图片用于以图搜图',
+    );
+    final cameraSet = source.indexOf(
+      'Set :NSCameraUsageDescription 拍摄漫画图片用于以图搜图',
+    );
+
+    expect(createIndex, greaterThanOrEqualTo(0));
+    for (final permissionIndex in <int>[
+      photoAdd,
+      photoSet,
+      cameraAdd,
+      cameraSet,
+    ]) {
+      expect(permissionIndex, greaterThan(createIndex));
+    }
+  });
+
+  test('SauceNAO source contains no credential-like constants', () {
+    const paths = <String>[
+      'lib/foundation/sauce_nao_config_store.dart',
+      'lib/foundation/sauce_nao_search.dart',
+      'lib/views/image_search/image_search_page.dart',
+    ];
+    final credentialConstant = RegExp(
+      r'''(?:api[_-]?key|token|secret)\w*\s*=\s*['"][A-Za-z0-9_-]{20,}['"]''',
+      caseSensitive: false,
+    );
+    for (final path in paths) {
+      final source = File(path).readAsStringSync();
+      expect(source, isNot(contains('kDefaultApiKey')), reason: path);
+      expect(source, isNot(matches(credentialConstant)), reason: path);
+    }
+  });
 }

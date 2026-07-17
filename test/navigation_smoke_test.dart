@@ -79,6 +79,19 @@ void main() {
     );
   });
 
+  testWidgets('image-search route exposes all completed actions', (
+    tester,
+  ) async {
+    appRouter.go('/image-search');
+    await _pumpRouter(tester);
+
+    expect(_currentPath(), '/image-search');
+    for (final label in <String>['设置 Key', '从相册选择', '拍摄', 'soutubot']) {
+      expect(find.text(label), findsOneWidget);
+    }
+    _expectNoFunctionalPlaceholder();
+  });
+
   testWidgets('all visible Mine and Settings menus navigate to real routes', (
     tester,
   ) async {

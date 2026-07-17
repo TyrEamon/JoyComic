@@ -1,14 +1,38 @@
-/// SauceNAO 以图搜图服务。
-///
-/// 通过 SauceNAO API 反向搜索图片，返回可能匹配的漫画/插画结果。
-/// 结果后通过两源搜索 title 做二次匹配，定位到禁漫/哔咔作品。
+/// SauceNAO reverse-image search with typed failure semantics.
 library;
 
 import 'dart:io';
 
 import 'package:dio/dio.dart';
 
-/// SauceNAO 搜索结果项。
+enum SauceNaoErrorKind {
+  missingKey,
+  invalidKey,
+  rateLimited,
+  network,
+  malformed,
+}
+
+class SauceNaoException implements Exception {
+  const SauceNaoException(this.kind, [this.message]);
+
+  final SauceNaoErrorKind kind;
+  final String? message;
+
+  @override
+  String toString() => message ?? kind.name;
+}
+
+class SauceNaoHttpResponse {
+  const SauceNaoHttpResponse({required this.statusCode, required this.data});
+
+  final int statusCode;
+  final Object? data;
+}
+
+typedef SauceNaoTransport =
+    Future<SauceNaoHttpResponse> Function(File image, String apiKey);
+
 class SauceResult {
   const SauceResult({
     required this.similarity,
@@ -16,7 +40,7 @@ class SauceResult {
     required this.source,
     this.title,
     this.author,
-    this.extUrls = const [],
+    this.extUrls = const <String>[],
   });
 
   final double similarity;
@@ -27,61 +51,151 @@ class SauceResult {
   final List<String> extUrls;
 }
 
-/// SauceNAO 搜索服务。
 class SauceNaoSearch {
-  /// 默认测试 API Key（来自 joycomic-ios 内置）。
-  static const kDefaultApiKey = '1f8fbe5632d20f8e025c610aef9e66c06ed39986';
+  SauceNaoSearch({SauceNaoTransport? transport})
+    : _transport = transport ?? _dioTransport;
 
-  /// 执行以图搜图。
-  ///
-  /// [image] 待搜索的图片文件。
-  /// [apiKey] SauceNAO API Key，不传则用默认内置 key。
-  static Future<List<SauceResult>> search(File image, {String? apiKey}) async {
-    final dio = Dio();
-    final form = FormData.fromMap({
+  final SauceNaoTransport _transport;
+
+  Future<List<SauceResult>> search(File image, {required String apiKey}) async {
+    final key = apiKey.trim();
+    if (key.isEmpty) {
+      throw const SauceNaoException(SauceNaoErrorKind.missingKey);
+    }
+
+    SauceNaoHttpResponse response;
+    try {
+      response = await _transport(image, key);
+    } on SauceNaoException {
+      rethrow;
+    } catch (_) {
+      throw const SauceNaoException(SauceNaoErrorKind.network);
+    }
+
+    switch (response.statusCode) {
+      case 403:
+        throw const SauceNaoException(SauceNaoErrorKind.invalidKey);
+      case 429:
+        throw const SauceNaoException(SauceNaoErrorKind.rateLimited);
+    }
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw const SauceNaoException(SauceNaoErrorKind.network);
+    }
+    final businessError = _businessErrorKind(response.data);
+    if (businessError != null) throw SauceNaoException(businessError);
+
+    try {
+      return _parse(response.data);
+    } on FormatException {
+      throw const SauceNaoException(SauceNaoErrorKind.malformed);
+    }
+  }
+
+  static Future<SauceNaoHttpResponse> _dioTransport(
+    File image,
+    String apiKey,
+  ) async {
+    final dio = Dio(BaseOptions(validateStatus: (_) => true));
+    final form = FormData.fromMap(<String, Object>{
       'file': await MultipartFile.fromFile(image.path),
     });
-    final res = await dio.post(
+    final response = await dio.post<Object?>(
       'https://saucenao.com/search.php',
-      queryParameters: {
+      queryParameters: <String, String>{
         'output_type': '2',
         'numres': '6',
-        'api_key': apiKey ?? kDefaultApiKey,
+        'api_key': apiKey,
       },
       data: form,
     );
-    return _parse(res.data);
+    return SauceNaoHttpResponse(
+      statusCode: response.statusCode ?? 0,
+      data: response.data,
+    );
   }
 
-  static List<SauceResult> _parse(dynamic data) {
-    if (data is! Map) return [];
-    final results = data['results'];
-    if (results is! List) return [];
+  static SauceNaoErrorKind? _businessErrorKind(Object? raw) {
+    if (raw is! Map) return null;
+    final header = raw['header'];
+    if (header is! Map) return null;
+    final status = num.tryParse('${header['status'] ?? 0}') ?? 0;
+    final remaining = <Object?>[
+      header['short_remaining'],
+      header['long_remaining'],
+    ].any((value) => value != null && (num.tryParse('$value') ?? 0) < 0);
+    if (status >= 0 && !remaining) return null;
 
-    return results.map<SauceResult>((r) {
-      final header = r['header'] as Map? ?? {};
-      final data = r['data'] as Map? ?? {};
-      final similarity =
-          double.tryParse('${header['similarity'] ?? '0'}') ?? 0.0;
-      final extUrls = (data['ext_urls'] as List?)?.cast<String>() ?? [];
-      return SauceResult(
-        similarity: similarity,
-        thumbnail: header['thumbnail']?.toString() ?? '',
-        source: header['index_name']?.toString() ?? '',
-        title: data['title']?.toString(),
-        author: data['author_name']?.toString(),
-        extUrls: extUrls,
+    final message = '${header['message'] ?? ''}'.toLowerCase();
+    if (remaining ||
+        message.contains('limit') ||
+        message.contains('quota') ||
+        message.contains('rate') ||
+        message.contains('too many')) {
+      return SauceNaoErrorKind.rateLimited;
+    }
+    if (message.contains('api key') ||
+        message.contains('api_key') ||
+        message.contains('anonymous account') ||
+        message.contains('not permit api') ||
+        message.contains('unauthor')) {
+      return SauceNaoErrorKind.invalidKey;
+    }
+    return SauceNaoErrorKind.malformed;
+  }
+
+  static List<SauceResult> _parse(Object? raw) {
+    if (raw is! Map) throw const FormatException('payload must be an object');
+    final rawResults = raw['results'];
+    if (rawResults is! List) {
+      throw const FormatException('results must be a list');
+    }
+
+    final results = <SauceResult>[];
+    for (final rawResult in rawResults) {
+      if (rawResult is! Map) {
+        throw const FormatException('result must be an object');
+      }
+      final header = rawResult['header'];
+      final data = rawResult['data'];
+      if (header is! Map || data is! Map) {
+        throw const FormatException('result fields must be objects');
+      }
+      final extUrlsRaw = data['ext_urls'];
+      if (extUrlsRaw != null && extUrlsRaw is! List) {
+        throw const FormatException('ext_urls must be a list');
+      }
+      final extUrls = <String>[
+        for (final value in extUrlsRaw is List ? extUrlsRaw : const <Object?>[])
+          if (value is String && value.trim().isNotEmpty) value.trim(),
+      ];
+      results.add(
+        SauceResult(
+          similarity: double.tryParse('${header['similarity'] ?? 0}') ?? 0,
+          thumbnail: header['thumbnail']?.toString() ?? '',
+          source: header['index_name']?.toString() ?? '',
+          title: _optionalString(data['title']),
+          author: _optionalString(
+            data['author_name'] ?? data['member_name'] ?? data['creator'],
+          ),
+          extUrls: List<String>.unmodifiable(extUrls),
+        ),
       );
-    }).toList();
+    }
+    return List<SauceResult>.unmodifiable(results);
   }
 
-  /// 在 SauceNAO 结果中提取最佳匹配的标题用于二次搜索。
   static String? bestTitle(List<SauceResult> results) {
-    if (results.isEmpty) return null;
-    // 取相似度最高且有标题的结果
-    results.sort((a, b) => b.similarity.compareTo(a.similarity));
-    return results
-        .firstWhere((r) => r.title != null, orElse: () => results.first)
-        .title;
+    final ranked = List<SauceResult>.of(results)
+      ..sort((a, b) => b.similarity.compareTo(a.similarity));
+    for (final result in ranked) {
+      final title = result.title?.trim();
+      if (title != null && title.isNotEmpty) return title;
+    }
+    return null;
+  }
+
+  static String? _optionalString(Object? value) {
+    final text = value?.toString().trim();
+    return text == null || text.isEmpty ? null : text;
   }
 }

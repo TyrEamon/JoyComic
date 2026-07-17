@@ -22,6 +22,8 @@ workflows:
           if [ ! -d "ios" ]; then
             flutter create . --platforms=ios
           fi
+          /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryUsageDescription string 选择漫画图片用于以图搜图" ios/Runner/Info.plist 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :NSPhotoLibraryUsageDescription 选择漫画图片用于以图搜图" ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string 拍摄漫画图片用于以图搜图" ios/Runner/Info.plist 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :NSCameraUsageDescription 拍摄漫画图片用于以图搜图" ios/Runner/Info.plist
       - name: Generate app icons
         script: |
           flutter pub get
