@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../comic_source/comic_source.dart';
+import '../../foundation/source_session_notifier.dart';
 import '../../theme/app_spacing.dart';
 import 'source_account_profile.dart';
 
@@ -71,6 +72,7 @@ Future<bool> showSourceAccountSheet(
 
   try {
     await source.account?.logout?.call();
+    SourceSessionNotifier.instance.notifyChanged(source.key);
     if (!context.mounted) return true;
     ScaffoldMessenger.of(
       context,

@@ -1,12 +1,15 @@
 /// Home page populated from each source's real discovery sections.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:joycomic/theme/app_theme_context.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../comic_source/comic_source.dart';
 import '../../foundation/log.dart';
+import '../../foundation/source_session_notifier.dart';
 import '../../network/res.dart';
 import '../../theme/app_spacing.dart';
 import '../common/source_content_models.dart';
@@ -35,7 +38,20 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    SourceSessionNotifier.instance.addListener(_handleSourceSessionChanged);
     _loadHome();
+  }
+
+  @override
+  void dispose() {
+    SourceSessionNotifier.instance.removeListener(_handleSourceSessionChanged);
+    super.dispose();
+  }
+
+  void _handleSourceSessionChanged() {
+    final sourceKey = SourceSessionNotifier.instance.lastChangedSourceKey;
+    Log.i('Home refresh after source session change', sourceKey);
+    unawaited(_loadHome());
   }
 
   Future<HomeSourceResult> _loadSource(ComicSource source) async {
@@ -170,10 +186,7 @@ class _HomePageState extends State<HomePage> {
               else ...[
                 for (final requirement in content.loginRequired)
                   SliverToBoxAdapter(
-                    child: SourceLoginPrompt(
-                      requirement: requirement,
-                      onLoggedIn: _loadHome,
-                    ),
+                    child: SourceLoginPrompt(requirement: requirement),
                   ),
                 if (content.errors.isNotEmpty)
                   SliverToBoxAdapter(

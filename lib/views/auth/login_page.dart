@@ -22,6 +22,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../comic_source/comic_source.dart';
 import '../../foundation/log.dart';
+import '../../foundation/source_session_notifier.dart';
 
 import 'package:url_launcher/url_launcher.dart';
 import '../../theme/app_spacing.dart';
@@ -81,6 +82,7 @@ class _LoginPageState extends State<LoginPage> {
         ).showSnackBar(SnackBar(content: Text(res.errorMessage ?? '登录失败')));
       }
     } else {
+      SourceSessionNotifier.instance.notifyChanged(_sourceKey);
       if (context.mounted) context.pop(true);
       if (context.mounted) {
         ScaffoldMessenger.of(
