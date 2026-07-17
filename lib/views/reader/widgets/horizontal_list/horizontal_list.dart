@@ -239,12 +239,22 @@ class _HorizontalListState extends State<HorizontalList> {
       filterQuality: FilterQuality.medium,
       errorBuilder: (context, error, stackTrace) {
         return Center(
-          child: IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () async {
-              await _providerFor(item).evict();
-              if (mounted) setState(() {});
-            },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.broken_image_outlined, size: 40),
+              const SizedBox(height: 10),
+              const Text('图片加载失败'),
+              const SizedBox(height: 8),
+              FilledButton.tonalIcon(
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('重试'),
+                onPressed: () async {
+                  await _providerFor(item).evict();
+                  if (mounted) setState(() {});
+                },
+              ),
+            ],
           ),
         );
       },
@@ -258,6 +268,7 @@ class _HorizontalListState extends State<HorizontalList> {
         item.url,
         cacheManager: cacheManager,
         cacheKey: item.cacheKey,
+        headers: item.headers,
       );
     }
     return FileImage(File(item.url));
@@ -294,6 +305,7 @@ class _HorizontalListState extends State<HorizontalList> {
             key: ValueKey(item.cacheKey),
             url: item.url,
             cacheKey: item.cacheKey,
+            headers: item.headers,
             cacheWidth: cacheWidth,
             alignment: count == 1
                 ? Alignment.center

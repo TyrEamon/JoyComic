@@ -14,17 +14,17 @@
 
 | # | 问题 | 状态 | 修改文件 | 验证结果 |
 |---|---|---|---|---|
-| 1 | 已登录仍进入登录页 | 待修复 | - | - |
-| 2 | JM 用户资料缺失 | 待修复 | - | - |
-| 3 | 我的页源管理跳登录 | 待修复 | - | - |
-| 4 | 详情顶部分享按钮 | 待修复 | - | - |
-| 5 | 封面与右侧文字底部对齐 | 待修复 | - | - |
-| 6 | 详情统计排版与重复评分 | 待修复 | - | - |
-| 7 | 分类页 cell/chip 布局 | 待修复 | - | - |
-| 8 | 分类页底部被遮挡 | 待修复 | - | - |
-| 9 | 设置源管理和测速混乱 | 待修复 | - | - |
-| 10 | JM/哔咔阅读器黑屏 | 待修复 | - | - |
-| 11 | 日志导出无反应 | 待修复 | - | - |
+| 1 | 已登录仍进入登录页 | 已修复 | `mine_page.dart`、`settings_page.dart`、`source_account_sheet.dart` | 已登录账号点击后打开资料/退出面板，未登录才进入登录页 |
+| 2 | JM 用户资料缺失 | 已修复 | `jm_network.dart`、`jm.dart`、`mine_page.dart`、`source_account_sheet.dart` | 登录响应中的用户名、UID、昵称、等级、头像已持久化；头像加载携带源请求头 |
+| 3 | 我的页源管理跳登录 | 已修复 | `mine_page.dart`、`source_manager_page.dart`、`main.dart` | “源管理”固定进入独立源启用页面，与登录状态无关 |
+| 4 | 详情顶部分享按钮 | 已修复 | `detail_app_bar.dart`、`detail_page.dart` | 顶部仅保留返回与更多；分享移动到更多菜单 |
+| 5 | 封面与右侧文字底部对齐 | 已修复 | `info_overlay.dart` | 封面与右侧完整标题/作者/评分块按中心线垂直对齐 |
+| 6 | 详情统计排版与重复评分 | 已修复 | `detail_metadata.dart` | 统计改为图标在左、文字在右；下方重复评分已删除 |
+| 7 | 分类页 cell/chip 布局 | 已修复 | `category_page.dart` | 已改为  风格响应式图片+名称网格，哔咔使用分类封面，JM 使用同尺寸占位 |
+| 8 | 分类页底部被遮挡 | 已修复 | `category_page.dart` | 底部 padding 包含 60px TabBar、系统安全区和额外间距 |
+| 9 | 设置源管理和测速混乱 | 已修复 | `settings_page.dart`、`source_manager_page.dart`、`main.dart` | 漫画源、账号、线路与域名已分组；JM 图床/API 测速与哔咔接入域名入口独立 |
+| 10 | JM/哔咔阅读器黑屏 | 已修复 | `reader.dart`、`reader_provider.dart`、`reader_image.dart`、预加载与横竖列表 | loader 缺失/异常/空结果进入可见错误态；源 URL/headers/cacheKey 同时供显示和预加载；加载与单图失败均可见并可重试 |
+| 11 | 日志导出无反应 | 已修复 | `log_viewer_page.dart` | 空日志、忙状态、TXT MIME、iPad 分享锚点、成功/取消/失败反馈均已实现 |
 
 ### Task 1：账号、登录与源管理边界
 
@@ -33,24 +33,24 @@
 - Modify: `lib/main.dart`
 - Modify: `lib/views/mine/mine_page.dart`
 - Modify: `lib/views/settings/settings_page.dart`
-- Modify: `lib/views/auth/login_page.dart`
+- Create: `lib/views/common/source_account_sheet.dart`
 
-- [ ] 新增 `/settings/sources` 路由和内置源启用选择页面。
-- [ ] 我的页已登录账号卡打开账号面板，未登录才进入登录页。
-- [ ] 我的页“源管理”始终进入 `/settings/sources`。
-- [ ] 设置页拆分漫画源、账号、线路与域名三个分组。
-- [ ] JM 与哔咔线路入口明确分开，JM 测速不再被首源逻辑隐藏。
+- [x] 新增 `/settings/sources` 路由和内置源启用选择页面。
+- [x] 我的页已登录账号卡打开账号面板，未登录才进入登录页。
+- [x] 我的页“源管理”始终进入 `/settings/sources`。
+- [x] 设置页拆分漫画源、账号、线路与域名三个分组。
+- [x] JM 与哔咔线路入口明确分开，JM 测速不再被首源逻辑隐藏。
 
 ### Task 2：JM 登录公开资料
 
 **Files:**
 - Modify: `lib/network/jm/jm_network.dart`
 - Modify: `lib/comic_source/built_in/jm.dart`
-- Modify: `lib/views/common/source_account_profile.dart`
+- Create: `lib/views/common/source_account_sheet.dart`
 
-- [ ] 从 JM 登录响应解析 username、uid、nickname、level、photo/avatar。
-- [ ] 登录成功并完成图床选择后写入 `source.data['user']`。
-- [ ] 退出登录清理资料但不影响源设置。
+- [x] 从 JM 登录响应解析 username、uid、nickname、level、photo/avatar。
+- [x] 登录成功并完成图床选择后写入 `source.data['user']`。
+- [x] 退出登录清理资料但不影响源设置。
 
 ### Task 3：详情页布局
 
@@ -60,20 +60,20 @@
 - Modify: `lib/views/detail/widgets/info_overlay.dart`
 - Modify: `lib/views/detail/widgets/detail_metadata.dart`
 
-- [ ] 顶部删除独立分享按钮，分享移动到更多菜单。
-- [ ] 封面和右侧完整文字块垂直居中。
-- [ ] 统计项改为图标在左、文字在右。
-- [ ] 删除下方重复评分。
+- [x] 顶部删除独立分享按钮，分享移动到更多菜单。
+- [x] 封面和右侧完整文字块垂直居中。
+- [x] 统计项改为图标在左、文字在右。
+- [x] 删除下方重复评分。
 
 ### Task 4： 风格分类页与安全区
 
 **Files:**
 - Modify: `lib/views/category/category_page.dart`
 
-- [ ] 用响应式 GridView 替换 ListTile/ActionChip。
-- [ ] 哔咔显示分类 cover + 名称。
-- [ ] JM 使用同尺寸图片占位 + 名称。
-- [ ] 底部增加 60px 导航栏和系统安全区 padding。
+- [x] 用响应式 GridView 替换 ListTile/ActionChip。
+- [x] 哔咔显示分类 cover + 名称。
+- [x] JM 使用同尺寸图片占位 + 名称。
+- [x] 底部增加 60px 导航栏和系统安全区 padding。
 
 ### Task 5：JM/哔咔阅读器黑屏
 
@@ -85,31 +85,44 @@
 - Modify: `lib/views/reader/widgets/vertical_list/vertical_list.dart`
 - Modify: `lib/views/reader/widgets/horizontal_list/horizontal_list.dart`
 
-- [ ] loader 缺失、抛异常、错误和空图片均进入可见错误态。
-- [ ] 加载阶段显示进度文字，工具栏可返回。
-- [ ] 解析源图片 URL、headers 和 cacheKey。
-- [ ] 显示与预加载共用同一图片请求配置。
-- [ ] 图片最终失败显示明确说明与重试按钮。
+- [x] loader 缺失、抛异常、错误和空图片均进入可见错误态。
+- [x] 加载阶段显示进度文字，工具栏可返回。
+- [x] 解析源图片 URL、headers 和 cacheKey。
+- [x] 显示与预加载共用同一图片请求配置。
+- [x] 图片最终失败显示明确说明与重试按钮。
 
 ### Task 6：日志 TXT 导出
 
 **Files:**
 - Modify: `lib/views/settings/log_viewer_page.dart`
 
-- [ ] 空日志点击提示。
-- [ ] 增加导出 busy 状态。
-- [ ] 写入 text/plain TXT 并传递分享锚点。
-- [ ] 捕获并展示写入/分享异常及分享结果。
+- [x] 空日志点击提示。
+- [x] 增加导出 busy 状态。
+- [x] 写入 text/plain TXT 并传递分享锚点。
+- [x] 捕获并展示写入/分享异常及分享结果。
 
 ### Task 7：文档与既有验证
 
 **Files:**
 - Modify: `docs/superpowers/plans/2026-07-17-user-reported-ui-reader-regressions.md`
 
-- [ ] 确认 `git diff -- test` 为空。
-- [ ] 运行既有相关测试，不新增测试文件或测试用例。
-- [ ] 运行 `dart format --output=none --set-exit-if-changed lib`。
-- [ ] 运行 `flutter analyze --no-pub`。
-- [ ] 运行 `flutter test --no-pub`。
-- [ ] 运行 `git diff --check`。
-- [ ] 更新上方 11 项结果表。
+- [x] 确认 `git diff -- test` 为空。
+- [x] 运行既有相关测试，不新增测试文件或测试用例。
+- [x] 运行 `dart format --output=none --set-exit-if-changed lib`。
+- [x] 运行 `flutter analyze --no-pub`。
+- [x] 运行 `flutter test --no-pub`。
+- [x] 运行 `git diff --check`。
+- [x] 更新上方 11 项结果表。
+
+## 验证记录
+
+- 未新增或修改任何测试文件：`git diff -- test` 输出为空。
+- 格式化检查：`dart format --output=none --set-exit-if-changed lib`，127 个文件、0 个需修改。
+- 静态分析：`flutter analyze --no-pub`，`No issues found`。
+- 本次修复相关的现有测试：131 项全部通过。
+- 全量现有测试：397 项通过、5 项失败。失败项均是旧 UI 断言与本次用户明确要求冲突，按约束未修改测试、也未恢复旧 UI：
+  1. `detail_tabs_test.dart` 仍要求顶部独立分享图标；新需求要求删除该按钮。
+  2. `category_page_test.dart` 两项仍按 `ListView`/旧 cell 布局操作；新需求要求图片+名称网格。
+  3. `category_page_test.dart` 仍要求子分类 cell 箭头；新需求要求统一图片+名称网格。
+  4. `navigation_smoke_test.dart` 仍查找旧文案“源管理 / 登录”；新需求要求源管理与登录分离。
+- `git diff --check` 通过。

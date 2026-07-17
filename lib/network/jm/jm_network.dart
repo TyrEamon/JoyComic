@@ -283,6 +283,22 @@ typedef JmDioFactory = Dio Function(BaseOptions options);
 typedef JmGetRequest = Future<Res<dynamic>> Function(String url);
 typedef JmPostRequest = Future<Res<dynamic>> Function(String url, String data);
 
+class JmLoginProfile {
+  const JmLoginProfile({
+    required this.name,
+    this.id,
+    this.nickname,
+    this.level,
+    this.photo,
+  });
+
+  final String name;
+  final String? id;
+  final String? nickname;
+  final String? level;
+  final String? photo;
+}
+
 /// 禁漫网络请求类。
 class JmNetwork {
   JmNetwork._create({
@@ -323,6 +339,8 @@ class JmNetwork {
   final SourceCredentialStore _credentialStore;
 
   SourceCredentialStore get credentialStore => _credentialStore;
+  JmLoginProfile? _lastLoginProfile;
+  JmLoginProfile? get lastLoginProfile => _lastLoginProfile;
   static const int _inlinePageCacheLimit = 64;
 
   // Dart map literals preserve insertion order; cache hits remove/reinsert for LRU.
@@ -860,6 +878,7 @@ class JmNetwork {
       runAuthenticationOperation(() => _login(account, pwd));
 
   Future<Res<bool>> _login(String account, String pwd) async {
+    _lastLoginProfile = null;
     final res = await post(
       '$baseUrl/login',
       'username=${Uri.encodeComponent(account)}&password=${Uri.encodeComponent(pwd)}',
@@ -875,11 +894,31 @@ class JmNetwork {
       await _clearAuthentication();
       return const Res(null, errorMessage: '登录响应解析失败');
     }
-    final avs = jsonString(jsonMap(data)['s']).trim();
+    final loginData = jsonMap(data);
+    final avs = jsonString(loginData['s']).trim();
     if (avs.isEmpty) {
       await _clearAuthentication();
       return const Res(null, errorMessage: '登录响应缺少 AVS');
     }
+    String? optionalText(Object? value) {
+      final text = jsonString(value).trim();
+      return text.isEmpty ? null : text;
+    }
+
+    _lastLoginProfile = JmLoginProfile(
+      name:
+          optionalText(
+            loginData['username'] ?? loginData['name'] ?? loginData['nickname'],
+          ) ??
+          account,
+      id: optionalText(loginData['uid'] ?? loginData['id']),
+      nickname: optionalText(loginData['nickname']),
+      level: optionalText(loginData['level'] ?? loginData['lv']),
+      photo: optionalText(
+        loginData['photo'] ?? loginData['avatar'] ?? loginData['avatarUrl'],
+      ),
+    );
+
     ({String user, String password})? previousCredentials;
     try {
       previousCredentials = await _credentialStore.readCredentials('jm');
@@ -1346,7 +1385,10 @@ class JmNetwork {
   }
 
   /// 登出。
-  Future<void> logout() => runAuthenticationOperation(_logout);
+  Future<void> logout() {
+    _lastLoginProfile = null;
+    return runAuthenticationOperation(_logout);
+  }
 
   Future<void> _logout() async {
     await cookieJar.deleteAll();

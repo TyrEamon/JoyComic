@@ -26,6 +26,7 @@ import '../../foundation/webdav_config_store.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
 import '../common/source_account_profile.dart';
+import '../common/source_account_sheet.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key, this.cacheManager, this.webDavConfigStore});
@@ -174,121 +175,165 @@ class _SettingsPageState extends State<SettingsPage> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _openSourceManager() async {
+    await context.push('/settings/sources');
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _openAccount(
+    ComicSource source,
+    SourceAccountProfile profile,
+  ) async {
+    if (!profile.isLoggedIn) {
+      await context.push(
+        '/login?source=${Uri.encodeQueryComponent(source.key)}',
+      );
+      if (mounted) setState(() {});
+      return;
+    }
+    final changed = await showSourceAccountSheet(context, source);
+    if (changed && mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     final accountSources = ComicSource.sources
         .where((source) => source.account != null)
         .toList(growable: false);
-    final accountProfiles = accountSources
-        .map(SourceAccountProfile.fromSource)
-        .toList(growable: false);
-    final sourceForSettings = accountSources.isEmpty
-        ? null
-        : accountSources.first;
+    final enabledSourceCount = ComicSource.sources.length;
+    final jmSource = ComicSource.find('jm');
+    final picaSource = ComicSource.find('picacg');
     return Scaffold(
       backgroundColor: context.pageBackground,
       appBar: AppBar(
         title: const Text('设置'),
         backgroundColor: context.pageBackground,
       ),
-      body: ListView(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-        children: [
-          _SettingsGroup(
-            title: '源管理',
-            items: [
-              if (accountProfiles.isEmpty)
-                const _SettingsItem(
-                  icon: Icons.source_outlined,
-                  label: '账号源',
-                  value: '未启用',
-                  route: '/login',
-                )
-              else
-                for (final profile in accountProfiles)
-                  _SettingsItem(
-                    icon: Icons.source_outlined,
-                    label: profile.sourceName,
-                    value: profile.settingsStatus,
-                    route:
-                        '/login?source=${Uri.encodeQueryComponent(profile.sourceKey)}',
-                  ),
-              if (sourceForSettings != null)
+        child: Column(
+          children: [
+            _SettingsGroup(
+              title: '漫画源',
+              items: [
                 _SettingsItem(
-                  icon: Icons.speed_rounded,
-                  label: '测速选源',
-                  value: sourceForSettings.name,
-                  route:
-                      '/settings/source?source=${Uri.encodeQueryComponent(sourceForSettings.key)}',
+                  icon: Icons.source_outlined,
+                  label: '源管理',
+                  value: '$enabledSourceCount 个已启用',
+                  onTap: _openSourceManager,
                 ),
-            ],
-          ),
-          _SettingsGroup(
-            title: '阅读',
-            items: [
-              _SettingsItem(
-                icon: Icons.menu_book_rounded,
-                label: '阅读设置',
-                onTap: _openReaderSettings,
-              ),
-              _SettingsItem(
-                icon: Icons.swap_horiz_rounded,
-                label: '默认阅读模式',
-                value: ReaderConf.instance.readMode.displayName,
-              ),
-            ],
-          ),
-          const _SettingsGroup(title: '外观', items: [_ThemeModeItem()]),
-          _SettingsGroup(
-            title: '数据与存储',
-            items: [
-              _SettingsItem(
-                icon: Icons.cloud_sync_outlined,
-                label: 'WebDAV 同步',
-                value: _webDavStatus,
-                onTap: _openWebDavSettings,
-              ),
-              _SettingsItem(
-                icon: Icons.cleaning_services_outlined,
-                label: '清除缓存',
-                value: _loadingCache
-                    ? '处理中…'
-                    : _cacheSize == null
-                    ? '读取中…'
-                    : formatCacheBytes(_cacheSize!.totalBytes),
-                onTap: _loadingCache ? null : _clearCaches,
-                loading: _loadingCache,
-              ),
-              _SettingsItem(
-                icon: Icons.delete_sweep_outlined,
-                label: '删除已完成下载',
-                value: '危险操作',
-                onTap: _loadingCache ? null : _clearCompletedDownloads,
-                iconColor: context.colorScheme.error,
-              ),
-            ],
-          ),
-          const _SettingsGroup(
-            title: '关于',
-            items: [
-              _SettingsItem(
-                icon: Icons.info_outline_rounded,
-                label: '版本',
-                value: '0.1.0',
-              ),
-              _SettingsItem(
-                icon: Icons.code_rounded,
-                label: '开源说明',
-                route: '/about',
-              ),
-              _SettingsItem(
-                icon: Icons.article_outlined,
-                label: '诊断日志',
-                route: '/logs',
-              ),
-            ],
-          ),
-        ],
+              ],
+            ),
+            _SettingsGroup(
+              title: '账号',
+              items: [
+                if (accountSources.isEmpty)
+                  const _SettingsItem(
+                    icon: Icons.person_off_outlined,
+                    label: '暂无可登录源',
+                    value: '请先启用漫画源',
+                  )
+                else
+                  for (final source in accountSources)
+                    Builder(
+                      builder: (context) {
+                        final profile = SourceAccountProfile.fromSource(source);
+                        return _SettingsItem(
+                          icon: Icons.account_circle_outlined,
+                          label: '${profile.sourceName}账号',
+                          value: profile.settingsStatus,
+                          onTap: () => _openAccount(source, profile),
+                        );
+                      },
+                    ),
+              ],
+            ),
+            _SettingsGroup(
+              title: '线路与域名',
+              items: [
+                if (jmSource != null)
+                  const _SettingsItem(
+                    icon: Icons.speed_rounded,
+                    label: '禁漫线路与图床测速',
+                    value: '分流、图床、API 域名',
+                    route: '/settings/source?source=jm',
+                  ),
+                if (picaSource != null)
+                  const _SettingsItem(
+                    icon: Icons.dns_outlined,
+                    label: '哔咔接入域名',
+                    value: '直连与中转',
+                    route: '/settings/source?source=picacg',
+                  ),
+              ],
+            ),
+            const _SettingsGroup(title: '外观', items: [_ThemeModeItem()]),
+            _SettingsGroup(
+              title: '数据与存储',
+              items: [
+                _SettingsItem(
+                  icon: Icons.cloud_sync_outlined,
+                  label: 'WebDAV 同步',
+                  value: _webDavStatus,
+                  onTap: _openWebDavSettings,
+                ),
+                _SettingsItem(
+                  icon: Icons.cleaning_services_outlined,
+                  label: '清除缓存',
+                  value: _loadingCache
+                      ? '处理中…'
+                      : _cacheSize == null
+                      ? '读取中…'
+                      : formatCacheBytes(_cacheSize!.totalBytes),
+                  onTap: _loadingCache ? null : _clearCaches,
+                  loading: _loadingCache,
+                ),
+                _SettingsItem(
+                  icon: Icons.delete_sweep_outlined,
+                  label: '删除已完成下载',
+                  value: '危险操作',
+                  onTap: _loadingCache ? null : _clearCompletedDownloads,
+                  iconColor: context.colorScheme.error,
+                ),
+              ],
+            ),
+            _SettingsGroup(
+              title: '阅读',
+              items: [
+                _SettingsItem(
+                  icon: Icons.menu_book_rounded,
+                  label: '阅读设置',
+                  onTap: _openReaderSettings,
+                ),
+                _SettingsItem(
+                  icon: Icons.swap_horiz_rounded,
+                  label: '默认阅读模式',
+                  value: ReaderConf.instance.readMode.displayName,
+                ),
+              ],
+            ),
+            const _SettingsGroup(
+              title: '关于',
+              items: [
+                _SettingsItem(
+                  icon: Icons.info_outline_rounded,
+                  label: '版本',
+                  value: '0.1.0',
+                ),
+                _SettingsItem(
+                  icon: Icons.code_rounded,
+                  label: '开源说明',
+                  route: '/about',
+                ),
+                _SettingsItem(
+                  icon: Icons.article_outlined,
+                  label: '诊断日志',
+                  route: '/logs',
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

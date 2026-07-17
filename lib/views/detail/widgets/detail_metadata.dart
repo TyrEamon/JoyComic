@@ -4,7 +4,6 @@ import '../../../theme/app_radius.dart';
 import '../../../theme/app_spacing.dart';
 import '../../../theme/app_theme_context.dart';
 import '../../../theme/app_typography.dart';
-import '../../common/widgets/rating_stars.dart';
 
 class DetailMetadata extends StatelessWidget {
   const DetailMetadata({
@@ -27,6 +26,8 @@ class DetailMetadata extends StatelessWidget {
   final List<String> authors;
   final List<String> categories;
   final List<String> labels;
+  // Kept in the public constructor for compatibility; the score is displayed
+  // beside the cover and intentionally not repeated in the metrics panel.
   final double? rating;
   final int? viewCount;
   final int? likeCount;
@@ -46,7 +47,6 @@ class DetailMetadata extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _MetricsPanel(
-            rating: rating,
             viewCount: viewCount,
             likeCount: likeCount,
             commentCount: commentCount,
@@ -103,14 +103,12 @@ class DetailMetadata extends StatelessWidget {
 
 class _MetricsPanel extends StatelessWidget {
   const _MetricsPanel({
-    required this.rating,
     required this.viewCount,
     required this.likeCount,
     required this.commentCount,
     required this.chapterCount,
   });
 
-  final double? rating;
   final int? viewCount;
   final int? likeCount;
   final int? commentCount;
@@ -131,7 +129,7 @@ class _MetricsPanel extends StatelessWidget {
         ),
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final metricWidth = (constraints.maxWidth - AppSpacing.sm * 3) / 4;
+            final metricWidth = (constraints.maxWidth - AppSpacing.sm) / 2;
             return Wrap(
               spacing: AppSpacing.sm,
               runSpacing: AppSpacing.sm,
@@ -160,23 +158,6 @@ class _MetricsPanel extends StatelessWidget {
                   label: '章节',
                   value: chapterCount.toString(),
                 ),
-                if (rating != null)
-                  SizedBox(
-                    width: constraints.maxWidth,
-                    child: Row(
-                      children: [
-                        Text(
-                          rating!.toStringAsFixed(1),
-                          style: AppTypography.meta(context).copyWith(
-                            color: context.primaryTextColor,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(width: AppSpacing.xs),
-                        RatingStars(rating: rating! / 2, size: 14),
-                      ],
-                    ),
-                  ),
               ],
             );
           },
@@ -203,21 +184,21 @@ class _Metric extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: width,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
           Icon(icon, size: 18, color: context.secondaryTextColor),
-          const SizedBox(height: AppSpacing.xs),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: AppTypography.meta(context).copyWith(
-              color: context.primaryTextColor,
-              fontWeight: FontWeight.w700,
+          const SizedBox(width: AppSpacing.xs),
+          Expanded(
+            child: Text(
+              '$value $label',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.meta(context).copyWith(
+                color: context.primaryTextColor,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
-          Text(label, style: AppTypography.cardMeta(context)),
         ],
       ),
     );

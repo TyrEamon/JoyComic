@@ -105,15 +105,23 @@ class _ReaderState extends State<Reader> {
     super.dispose();
   }
 
-  ReaderImageLoader? _resolveImageLoader() => resolveReaderImageLoader(
-    state: widget.comicState,
-    supplied: widget.imageLoader,
-    source: ComicSource.find(widget.comicState.sourceKey),
-  );
+  ReaderImageLoader? _resolveImageLoader(ComicSource? source) =>
+      resolveReaderImageLoader(
+        state: widget.comicState,
+        supplied: widget.imageLoader,
+        source: source,
+      );
+
+  ReaderImageConfigResolver? _resolveImageConfig(ComicSource? source) {
+    if (widget.comicState.type == ReaderType.local) return null;
+    return source?.getImageLoadingConfig;
+  }
 
   @override
   Widget build(BuildContext context) {
-    final imageLoader = _resolveImageLoader();
+    final source = ComicSource.find(widget.comicState.sourceKey);
+    final imageLoader = _resolveImageLoader(source);
+    final imageConfigResolver = _resolveImageConfig(source);
 
     return MultiProvider(
       providers: [
@@ -121,6 +129,7 @@ class _ReaderState extends State<Reader> {
           create: (_) => ReaderProvider(
             state: widget.comicState,
             imageLoader: imageLoader,
+            imageConfigResolver: imageConfigResolver,
             readRecordHelper: widget.readRecordHelper,
             readRecordDebounce: widget.readRecordDebounce,
           ),
@@ -202,11 +211,11 @@ class _ReaderContent extends StatelessWidget {
                 onRetry: context.reader.retry,
                 canPop: true,
               ),
-              ReaderLoadState.loading => const Center(
-                child: CircularProgressIndicator(),
+              ReaderLoadState.loading => const _ReaderLoadingView(
+                message: '正在加载章节图片…',
               ),
-              ReaderLoadState.idle => const Center(
-                child: CircularProgressIndicator(),
+              ReaderLoadState.idle => const _ReaderLoadingView(
+                message: '正在准备阅读器…',
               ),
             },
           ),
@@ -256,6 +265,40 @@ class _ReaderContent extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _ReaderLoadingView extends StatelessWidget {
+  const _ReaderLoadingView({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              Text(message, style: Theme.of(context).textTheme.bodyMedium),
+            ],
+          ),
+        ),
+        SafeArea(
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: IconButton(
+              tooltip: '返回',
+              onPressed: context.canPop() ? () => context.pop() : null,
+              icon: const Icon(Icons.arrow_back_rounded),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

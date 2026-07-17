@@ -24,6 +24,7 @@ import 'views/search/search_page.dart';
 import 'views/settings/reader_settings_page.dart';
 import 'views/settings/settings_page.dart';
 import 'views/settings/about_page.dart';
+import 'views/settings/source_manager_page.dart';
 import 'views/settings/source_settings_page.dart';
 import 'views/settings/webdav_settings_page.dart';
 import 'views/settings/log_viewer_page.dart';
@@ -119,6 +120,10 @@ final appRouter = GoRouter(
       builder: (context, state) => const SettingsPage(),
     ),
     GoRoute(path: '/about', builder: (context, state) => const AboutPage()),
+    GoRoute(
+      path: '/settings/sources',
+      builder: (context, state) => const SourceManagerPage(),
+    ),
     GoRoute(
       path: '/settings/source',
       builder: (context, state) => SourceSettingsPage(

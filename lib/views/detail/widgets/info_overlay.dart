@@ -31,17 +31,14 @@ class InfoOverlay extends StatelessWidget {
   Widget build(BuildContext context) {
     final onImage = context.onImageColor;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+      padding: const EdgeInsets.fromLTRB(AppSpacing.md, 56, AppSpacing.md, 0),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 56),
-            child: ComicCover(
-              url: frontCover,
-              width: _coverWidth,
-              headers: coverHeaders,
-            ),
+          ComicCover(
+            url: frontCover,
+            width: _coverWidth,
+            headers: coverHeaders,
           ),
           const SizedBox(width: AppSpacing.md),
           Expanded(

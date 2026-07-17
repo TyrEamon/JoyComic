@@ -14,6 +14,7 @@ import '../../foundation/log.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
 import '../common/source_account_profile.dart';
+import '../common/source_account_sheet.dart';
 
 typedef MineStatsLoader = MineStats Function();
 
@@ -77,10 +78,15 @@ class _MinePageState extends State<MinePage> {
     _refreshStats();
   }
 
+  Future<void> _openAccount(ComicSource source) async {
+    final changed = await showSourceAccountSheet(context, source);
+    if (changed && mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
-    final accounts = ComicSource.sources
-        .map(SourceAccountProfile.fromSource)
+    final accountSources = ComicSource.sources
+        .where((source) => source.account != null)
         .toList(growable: false);
     return Scaffold(
       backgroundColor: context.pageBackground,
@@ -88,17 +94,25 @@ class _MinePageState extends State<MinePage> {
         child: ListView(
           padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
           children: [
-            if (accounts.isEmpty)
-              _NoSourceCard(onTap: () => _open('/login'))
+            if (accountSources.isEmpty)
+              _NoSourceCard(onTap: () => _open('/settings/sources'))
             else
-              for (final account in accounts)
+              for (final source in accountSources)
                 Padding(
                   padding: const EdgeInsets.only(bottom: AppSpacing.xs),
-                  child: _UserCard(
-                    profile: account,
-                    onTap: () => _open(
-                      '/login?source=${Uri.encodeQueryComponent(account.sourceKey)}',
-                    ),
+                  child: Builder(
+                    builder: (context) {
+                      final profile = SourceAccountProfile.fromSource(source);
+                      return _UserCard(
+                        source: source,
+                        profile: profile,
+                        onTap: profile.isLoggedIn
+                            ? () => _openAccount(source)
+                            : () => _open(
+                                '/login?source=${Uri.encodeQueryComponent(source.key)}',
+                              ),
+                      );
+                    },
                   ),
                 ),
             const SizedBox(height: AppSpacing.xs),
@@ -130,8 +144,8 @@ class _MinePageState extends State<MinePage> {
               items: [
                 _MenuItem(
                   icon: Icons.source_outlined,
-                  label: '源管理 / 登录',
-                  onTap: () => _open('/login'),
+                  label: '源管理',
+                  onTap: () => _open('/settings/sources'),
                 ),
                 _MenuItem(
                   icon: Icons.menu_book_rounded,
@@ -196,7 +210,12 @@ class _NoSourceCard extends StatelessWidget {
 }
 
 class _UserCard extends StatelessWidget {
-  const _UserCard({required this.profile, required this.onTap});
+  const _UserCard({
+    required this.source,
+    required this.profile,
+    required this.onTap,
+  });
+  final ComicSource source;
   final SourceAccountProfile profile;
   final VoidCallback onTap;
 
@@ -207,10 +226,17 @@ class _UserCard extends StatelessWidget {
               ? profile.sourceName
               : '${profile.sourceName} · Lv.${profile.level}'
         : profile.sourceStatus;
+    final avatarConfig = profile.avatarUrl == null
+        ? null
+        : source.getThumbnailLoadingConfig?.call(profile.avatarUrl!);
+    final avatarUrl = avatarConfig?['url'] is String
+        ? avatarConfig!['url'] as String
+        : profile.avatarUrl;
+    final avatarHeaders = _sourceImageHeaders(avatarConfig);
     return _AccountContainer(
       key: ValueKey('mine-account-${profile.sourceKey}'),
       onTap: onTap,
-      avatar: _Avatar(url: profile.avatarUrl),
+      avatar: _Avatar(url: avatarUrl, headers: avatarHeaders),
       title: profile.isLoggedIn ? profile.displayName : '点击登录',
       subtitle: subtitle,
     );
@@ -218,8 +244,9 @@ class _UserCard extends StatelessWidget {
 }
 
 class _Avatar extends StatelessWidget {
-  const _Avatar({this.url});
+  const _Avatar({this.url, this.headers});
   final String? url;
+  final Map<String, String>? headers;
 
   @override
   Widget build(BuildContext context) {
@@ -229,6 +256,7 @@ class _Avatar extends StatelessWidget {
     return ClipOval(
       child: Image.network(
         url!,
+        headers: headers,
         width: 56,
         height: 56,
         fit: BoxFit.cover,
@@ -475,4 +503,22 @@ class _MenuItem extends StatelessWidget {
       ),
     ),
   );
+}
+
+Map<String, String>? _sourceImageHeaders(Map<String, dynamic>? config) {
+  if (config == null) return null;
+  final value = config['headers'] is Map ? config['headers'] : config;
+  if (value is! Map) return null;
+  final headers = <String, String>{};
+  for (final entry in value.entries) {
+    if (entry.key is String && entry.value != null) {
+      if (entry.key == 'url' ||
+          entry.key == 'cacheKey' ||
+          entry.key == 'method') {
+        continue;
+      }
+      headers[entry.key as String] = entry.value.toString();
+    }
+  }
+  return headers.isEmpty ? null : headers;
 }

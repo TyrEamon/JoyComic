@@ -104,6 +104,14 @@ class _DetailScaffold extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
+              leading: const Icon(Icons.ios_share_rounded),
+              title: const Text('分享'),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                _share(vm);
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.title_rounded),
               title: const Text('复制标题'),
               onTap: () => _copyAndClose(sheetContext, info.title, '已复制标题'),

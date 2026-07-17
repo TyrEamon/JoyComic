@@ -132,6 +132,7 @@ class ImagePreloadController implements ImagePreloadControllerRef {
                 item.url,
                 cacheManager: cacheManager,
                 cacheKey: item.cacheKey,
+                headers: item.headers,
               )
             : FileImage(File(item.url));
 

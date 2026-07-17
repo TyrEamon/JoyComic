@@ -156,8 +156,12 @@ class JmStateImpl implements JmState {
   }
 
   @override
-  String? get username =>
-      source.data['authenticated'] == true ? 'authenticated' : null;
+  String? get username {
+    if (source.data['authenticated'] != true) return null;
+    final user = jsonMap(source.data['user']);
+    final name = jsonString(user['name'] ?? user['username']).trim();
+    return name.isEmpty ? 'authenticated' : name;
+  }
 
   @override
   List<String>? getAccount() => null;
@@ -248,6 +252,20 @@ ComicSource buildJmSource({
           } else {
             client.state?.setImageBaseUrl(jmBuiltInImgUrls[0]);
           }
+          final profile = client.lastLoginProfile;
+          if (profile != null) {
+            final photo = profile.photo?.trim();
+            s.data['user'] = <String, dynamic>{
+              'name': profile.name,
+              if (profile.id != null) 'id': profile.id,
+              if (profile.nickname != null) 'nickname': profile.nickname,
+              if (profile.level != null) 'level': profile.level,
+              if (photo != null && photo.isNotEmpty)
+                'avatarUrl': photo.startsWith('http')
+                    ? photo
+                    : getJmAvatarUrl(photo),
+            };
+          }
           await s.saveData();
           return const Res(true);
         } catch (_) {
@@ -262,6 +280,7 @@ ComicSource buildJmSource({
         final s = ComicSource.find('jm');
         if (s == null) return;
         s.data.remove('name');
+        s.data.remove('user');
         s.data.remove('account');
         s.data.remove('authenticated');
         await s.saveData();

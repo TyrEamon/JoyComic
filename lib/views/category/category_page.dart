@@ -1,7 +1,9 @@
 /// Dual-source category browser with independent source state.
 library;
 
+import 'package:cached_network_image_ce/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:joycomic/theme/app_theme_context.dart';
 import 'package:go_router/go_router.dart';
 
@@ -201,47 +203,36 @@ class _SourceCategoryViewState extends State<_SourceCategoryView>
       );
     }
 
-    final byParent = <String, List<SourceCategory>>{};
-    final keys = {for (final category in _categories) category.key};
-    final roots = <SourceCategory>[];
-    for (final category in _categories) {
-      final parentKey = category.parentKey;
-      if (parentKey == null || !keys.contains(parentKey)) {
-        roots.add(category);
-      } else {
-        byParent.putIfAbsent(parentKey, () => []).add(category);
-      }
-    }
-
+    final bottomPadding =
+        60 + MediaQuery.paddingOf(context).bottom + AppSpacing.lg;
     return RefreshIndicator(
       onRefresh: () => _load(refreshing: true),
-      child: ListView.builder(
+      child: GridView.builder(
         key: PageStorageKey('category-scroll-${widget.source.key}'),
         controller: _scrollController,
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.md,
-          AppSpacing.md,
-          AppSpacing.md,
-          AppSpacing.xl,
+        scrollCacheExtent: ScrollCacheExtent.pixels(
+          MediaQuery.sizeOf(context).height * 1.5,
         ),
-        itemCount: roots.length + (_error == null ? 0 : 1),
+        padding: EdgeInsets.fromLTRB(8, AppSpacing.md, 8, bottomPadding),
+        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: 140,
+          mainAxisSpacing: 5,
+          crossAxisSpacing: 3,
+          childAspectRatio: 1 / 1.35,
+        ),
+        itemCount: _categories.length,
         itemBuilder: (context, index) {
-          if (index == roots.length) {
-            return Center(
-              child: TextButton.icon(
-                onPressed: () => _load(refreshing: true),
-                icon: const Icon(Icons.refresh_rounded),
-                label: Text('刷新失败：$_error，点击重试'),
+          final category = _categories[index];
+          return _CategoryGridItem(
+            source: widget.source,
+            category: category,
+            onTap: () => context.push(
+              buildCategoryContentLocation(
+                sourceKey: widget.source.key,
+                category: category,
               ),
-            );
-          }
-          final parent = roots[index];
-          final children = byParent[parent.key] ?? const <SourceCategory>[];
-          return _CategoryGroup(
-            sourceKey: widget.source.key,
-            parent: parent,
-            children: children,
+            ),
           );
         },
       ),
@@ -249,63 +240,99 @@ class _SourceCategoryViewState extends State<_SourceCategoryView>
   }
 }
 
-class _CategoryGroup extends StatelessWidget {
-  const _CategoryGroup({
-    required this.sourceKey,
-    required this.parent,
-    required this.children,
+class _CategoryGridItem extends StatelessWidget {
+  const _CategoryGridItem({
+    required this.source,
+    required this.category,
+    required this.onTap,
   });
 
-  final String sourceKey;
-  final SourceCategory parent;
-  final List<SourceCategory> children;
+  final ComicSource source;
+  final SourceCategory category;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    void open(SourceCategory category) => context.push(
-      buildCategoryContentLocation(sourceKey: sourceKey, category: category),
-    );
+    final cover = category.cover?.trim();
+    final config = cover == null || cover.isEmpty
+        ? null
+        : source.getThumbnailLoadingConfig?.call(cover);
+    final requestUrl = config?['url'] is String
+        ? config!['url'] as String
+        : cover;
+    final headers = _stringHeaders(config?['headers'] ?? config);
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+    return InkWell(
+      key: ValueKey('category-${source.key}-${category.key}'),
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text(
-              parent.title,
-              style: TextStyle(
-                color: context.primaryTextColor,
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            trailing: const Icon(Icons.chevron_right_rounded),
-            onTap: () => open(parent),
-          ),
-          if (children.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(left: AppSpacing.md),
-              child: Wrap(
-                spacing: AppSpacing.sm,
-                runSpacing: AppSpacing.sm,
-                children: [
-                  for (final child in children)
-                    ActionChip(
-                      key: ValueKey('category-$sourceKey-${child.key}'),
-                      label: Text(child.title),
-                      avatar: const Icon(
-                        Icons.subdirectory_arrow_right,
-                        size: 16,
-                      ),
-                      onPressed: () => open(child),
+        children: <Widget>[
+          AspectRatio(
+            aspectRatio: 1,
+            child: Card(
+              clipBehavior: Clip.hardEdge,
+              elevation: 0,
+              margin: EdgeInsets.zero,
+              child: requestUrl == null || requestUrl.isEmpty
+                  ? _CategoryPlaceholder(title: category.title)
+                  : CachedNetworkImage(
+                      imageUrl: requestUrl,
+                      httpHeaders: headers,
+                      fit: BoxFit.cover,
+                      memCacheWidth: 300,
+                      placeholder: (_, __) =>
+                          _CategoryPlaceholder(title: category.title),
+                      errorBuilder: (_, __, ___) =>
+                          _CategoryPlaceholder(title: category.title),
                     ),
-                ],
-              ),
             ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            category.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.labelLarge,
+          ),
         ],
       ),
     );
   }
+}
+
+class _CategoryPlaceholder extends StatelessWidget {
+  const _CategoryPlaceholder({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) => ColoredBox(
+    color: context.semanticColors.surfaceMuted,
+    child: Center(
+      child: Icon(
+        Icons.collections_bookmark_rounded,
+        size: 38,
+        color: context.colorScheme.primary,
+        semanticLabel: '$title 分类图片',
+      ),
+    ),
+  );
+}
+
+Map<String, String>? _stringHeaders(Object? value) {
+  if (value is! Map) return null;
+  final headers = <String, String>{};
+  for (final entry in value.entries) {
+    if (entry.key is String && entry.value != null) {
+      if (entry.key == 'url' ||
+          entry.key == 'cacheKey' ||
+          entry.key == 'method') {
+        continue;
+      }
+      headers[entry.key as String] = entry.value.toString();
+    }
+  }
+  return headers.isEmpty ? null : headers;
 }

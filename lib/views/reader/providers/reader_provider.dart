@@ -34,7 +34,10 @@ class ReaderImage {
   /// ImageCache 去重键（应与最终送入图片加载器的 key 一致）。
   final String cacheKey;
 
-  const ReaderImage({required this.url, required this.cacheKey});
+  /// 源要求的网络图片请求头；本地图片为 null。
+  final Map<String, String>? headers;
+
+  const ReaderImage({required this.url, required this.cacheKey, this.headers});
 
   @override
   bool operator ==(Object other) =>
@@ -53,6 +56,14 @@ class ReaderImage {
 /// 接收漫画 id + 章节 ep，返回图片 URL 列表或错误。
 typedef ReaderImageLoader =
     Future<Res<List<String>>> Function(String comicId, String? episodeKey);
+
+/// 将源返回的图片 key 解析为实际 URL、请求头与缓存键。
+typedef ReaderImageConfigResolver =
+    Map<String, dynamic>? Function(
+      String imageKey,
+      String comicId,
+      String episodeId,
+    );
 
 // ============================ BuildContext 扩展 ============================
 
@@ -85,9 +96,11 @@ class ReaderProvider extends ChangeNotifier {
   ReaderProvider({
     required ComicState state,
     ReaderImageLoader? imageLoader,
+    ReaderImageConfigResolver? imageConfigResolver,
     ReadRecordHelper? readRecordHelper,
     this.readRecordDebounce = const Duration(milliseconds: 250),
   }) : _imageLoader = imageLoader,
+       _imageConfigResolver = imageConfigResolver,
        _readRecordHelper = readRecordHelper ?? ReadRecordHelper() {
     id = state.id;
     title = state.title;
@@ -127,6 +140,9 @@ class ReaderProvider extends ChangeNotifier {
 
   /// 外部图片加载回调。
   final ReaderImageLoader? _imageLoader;
+
+  /// 漫画源提供的单图请求配置。
+  final ReaderImageConfigResolver? _imageConfigResolver;
 
   /// 阅读记录助手。
   final ReadRecordHelper _readRecordHelper;
@@ -207,60 +223,127 @@ class ReaderProvider extends ChangeNotifier {
   /// 失败时置错误态留 UI 层展示 [ErrorPage]。
   Future<void> _loadImageUrls() async {
     if (_disposed) return;
-    final imageLoader = _imageLoader;
-    if (imageLoader == null) return;
     final generation = ++_loadGeneration;
     final chapterSnapshot = _chapter;
+    final imageLoader = _imageLoader;
+
     _loadingState = ReaderLoadState.loading;
+    _loadingErrorMessage = null;
     notifyListeners();
+
+    if (imageLoader == null) {
+      _setLoadError(generation, chapterSnapshot, '未配置章节图片加载器');
+      return;
+    }
 
     Log.i('Reader load images', 'chapter: ${chapterSnapshot.id}');
 
-    final res = await imageLoader(
-      id,
-      chapterSnapshot.id.isNotEmpty ? chapterSnapshot.id : null,
-    );
-    if (!_isCurrentLoad(generation, chapterSnapshot)) return;
-
-    if (res.error) {
-      _loadingState = ReaderLoadState.error;
-      _loadingErrorMessage = res.errorMessage ?? '加载章节图片失败';
-      Log.e('Reader load failed', error: res.errorMessage);
-      notifyListeners();
-      return;
-    }
-
-    final urls = res.data;
-    if (urls.isEmpty) {
-      _loadingState = ReaderLoadState.error;
-      _loadingErrorMessage = '该章节暂无图片';
-      Log.w(
-        'Reader load empty',
-        error: 'chapter ${chapterSnapshot.id} has no images',
+    try {
+      final res = await imageLoader(
+        id,
+        chapterSnapshot.id.isNotEmpty ? chapterSnapshot.id : null,
       );
+      if (!_isCurrentLoad(generation, chapterSnapshot)) return;
+
+      if (res.error) {
+        _setLoadError(
+          generation,
+          chapterSnapshot,
+          res.errorMessage ?? '加载章节图片失败',
+        );
+        return;
+      }
+
+      final urls = res.data
+          .map((url) => url.trim())
+          .where((url) => url.isNotEmpty)
+          .toList(growable: false);
+      if (urls.isEmpty) {
+        _setLoadError(generation, chapterSnapshot, '该章节暂无图片');
+        return;
+      }
+
+      final images = <ReaderImage>[
+        for (final url in urls) _resolveReaderImage(url, chapterSnapshot.id),
+      ];
+      if (!_isCurrentLoad(generation, chapterSnapshot)) return;
+
+      _images = List<ReaderImage>.unmodifiable(images);
+      Log.i('Reader loaded', '${_images.length} images');
+      _multiPageImagesCache = null;
+      if (_pageNo >= _images.length) {
+        _pageNo = _images.length - 1;
+      }
+      _loadingState = ReaderLoadState.success;
+      _scheduleReadRecordSave();
+
+      if (_preloadController != null) {
+        _preloadController!.replaceItems(_images);
+        final anchor = _readMode.isDoublePage
+            ? toCorrectMultiPageNo(_pageNo, 2)
+            : _pageNo;
+        _preloadController!.onAnchorChanged([anchor]);
+      }
+
       notifyListeners();
-      return;
+    } catch (error, stackTrace) {
+      if (!_isCurrentLoad(generation, chapterSnapshot)) return;
+      Log.e('Reader load threw', error: error, stackTrace: stackTrace);
+      _setLoadError(
+        generation,
+        chapterSnapshot,
+        '章节图片加载失败：${_readableError(error)}',
+      );
     }
+  }
 
-    _images = urls.map((url) => ReaderImage(url: url, cacheKey: url)).toList();
-    Log.i('Reader loaded', '${_images.length} images');
-    _multiPageImagesCache = null; // 强制重建分组缓存
-    if (_pageNo >= _images.length) {
-      _pageNo = _images.length - 1;
-    }
-    _loadingState = ReaderLoadState.success;
-    _scheduleReadRecordSave();
+  ReaderImage _resolveReaderImage(String imageKey, String episodeId) {
+    final config = _imageConfigResolver?.call(imageKey, id, episodeId);
+    final configuredUrl = config?['url'];
+    final url = configuredUrl is String && configuredUrl.trim().isNotEmpty
+        ? configuredUrl.trim()
+        : imageKey;
+    final configuredCacheKey = config?['cacheKey'];
+    final cacheKey =
+        configuredCacheKey is String && configuredCacheKey.trim().isNotEmpty
+        ? configuredCacheKey.trim()
+        : imageKey;
+    final isStructured =
+        config?.containsKey('url') == true ||
+        config?.containsKey('headers') == true ||
+        config?.containsKey('cacheKey') == true ||
+        config?.containsKey('method') == true;
+    final headers = _stringHeaders(isStructured ? config!['headers'] : config);
+    return ReaderImage(url: url, cacheKey: cacheKey, headers: headers);
+  }
 
-    // 通知预加载控制器（如已初始化）
-    if (_preloadController != null) {
-      _preloadController!.replaceItems(_images);
-      final anchor = _readMode.isDoublePage
-          ? toCorrectMultiPageNo(_pageNo, 2)
-          : _pageNo;
-      _preloadController!.onAnchorChanged([anchor]);
-    }
-
+  void _setLoadError(
+    int generation,
+    ReaderChapter chapterSnapshot,
+    String message,
+  ) {
+    if (!_isCurrentLoad(generation, chapterSnapshot)) return;
+    _loadingState = ReaderLoadState.error;
+    _loadingErrorMessage = message;
+    Log.e('Reader load failed', error: message);
     notifyListeners();
+  }
+
+  static Map<String, String>? _stringHeaders(Object? value) {
+    if (value is! Map) return null;
+    final headers = <String, String>{};
+    for (final entry in value.entries) {
+      if (entry.key is String && entry.value != null) {
+        headers[entry.key as String] = entry.value.toString();
+      }
+    }
+    return headers.isEmpty ? null : Map<String, String>.unmodifiable(headers);
+  }
+
+  static String _readableError(Object error) {
+    final message = error.toString().trim();
+    if (message.isEmpty) return '未知错误';
+    return message.replaceFirst(RegExp(r'^Exception:\s*'), '');
   }
 
   bool _isCurrentLoad(int generation, ReaderChapter chapterSnapshot) {

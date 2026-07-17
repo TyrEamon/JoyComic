@@ -21,6 +21,7 @@ class ReaderImage extends StatelessWidget {
     super.key,
     required this.url,
     this.cacheKey,
+    this.headers,
     this.fit = BoxFit.contain,
     this.filterQuality = FilterQuality.medium,
     this.cacheWidth,
@@ -30,6 +31,7 @@ class ReaderImage extends StatelessWidget {
 
   final String url;
   final String? cacheKey;
+  final Map<String, String>? headers;
   final BoxFit fit;
   final FilterQuality filterQuality;
   final int? cacheWidth;
@@ -47,6 +49,7 @@ class ReaderImage extends StatelessWidget {
             url,
             cacheManager: cacheManager,
             cacheKey: cacheKey,
+            headers: headers,
           )
         : FileImage(File(url));
     return ResizeImage.resizeIfNeeded(cacheWidth, null, base);
@@ -69,10 +72,29 @@ class ReaderImage extends StatelessWidget {
           );
         }
         if (status.isExhausted) {
-          return Center(
-            child: IconButton(
-              onPressed: status.retry,
-              icon: const Icon(Icons.refresh),
+          return ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 220),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.broken_image_outlined, size: 40),
+                    const SizedBox(height: 10),
+                    Text(
+                      '图片加载失败',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    const SizedBox(height: 8),
+                    FilledButton.tonalIcon(
+                      onPressed: status.retry,
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('重试'),
+                    ),
+                  ],
+                ),
+              ),
             ),
           );
         }

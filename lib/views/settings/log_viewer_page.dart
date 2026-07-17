@@ -26,6 +26,7 @@ class LogViewerPage extends StatefulWidget {
 class _LogViewerPageState extends State<LogViewerPage> {
   List<JoyLogEntry> _logs = const [];
   bool _loading = true;
+  bool _exporting = false;
   String? _levelFilter;
 
   @override
@@ -69,41 +70,85 @@ class _LogViewerPageState extends State<LogViewerPage> {
 
   /// 导出全部日志为 TXT 文件并分享。
   Future<void> _exportLogs() async {
-    if (_logs.isEmpty) return;
-
-    final buffer = StringBuffer();
-    buffer.writeln('JoyComic 诊断日志');
-    buffer.writeln('导出时间：${DateTime.now().toIso8601String()}');
-    buffer.writeln('条目数：${_logs.length}');
-    buffer.writeln('=' * 60);
-    buffer.writeln('');
-
-    // 正序导出（最早的在前）
-    for (final log in _logs.reversed) {
-      buffer.writeln('[${log.time}][${log.level.toUpperCase()}]');
-      buffer.writeln(log.message);
-      if (log.error != null && log.error!.isNotEmpty) {
-        buffer.writeln('Error: ${log.error}');
-      }
-      if (log.stackTrace != null && log.stackTrace!.isNotEmpty) {
-        buffer.writeln('Stack: ${log.stackTrace}');
-      }
-      buffer.writeln('');
-      buffer.writeln('-' * 40);
-      buffer.writeln('');
+    if (_exporting) return;
+    if (_logs.isEmpty) {
+      _showMessage('暂无日志可导出');
+      return;
     }
 
-    // 写入临时文件
-    final dir = await getTemporaryDirectory();
-    final file = File(
-      '${dir.path}/joycomic_logs_${DateTime.now().millisecondsSinceEpoch}.txt',
-    );
-    await file.writeAsString(buffer.toString());
+    final renderObject = context.findRenderObject();
+    final shareOrigin = renderObject is RenderBox && renderObject.hasSize
+        ? renderObject.localToGlobal(Offset.zero) & renderObject.size
+        : null;
+    setState(() => _exporting = true);
 
+    try {
+      final buffer = StringBuffer();
+      buffer.writeln('JoyComic 诊断日志');
+      buffer.writeln('导出时间：${DateTime.now().toIso8601String()}');
+      buffer.writeln('条目数：${_logs.length}');
+      buffer.writeln('=' * 60);
+      buffer.writeln();
+
+      for (final log in _logs.reversed) {
+        buffer.writeln('[${log.time}][${log.level.toUpperCase()}]');
+        buffer.writeln(log.message);
+        if (log.error != null && log.error!.isNotEmpty) {
+          buffer.writeln('Error: ${log.error}');
+        }
+        if (log.stackTrace != null && log.stackTrace!.isNotEmpty) {
+          buffer.writeln('Stack: ${log.stackTrace}');
+        }
+        buffer.writeln();
+        buffer.writeln('-' * 40);
+        buffer.writeln();
+      }
+
+      final dir = await getTemporaryDirectory();
+      final fileName =
+          'joycomic_logs_${DateTime.now().millisecondsSinceEpoch}.txt';
+      final file = File('${dir.path}/$fileName');
+      await file.writeAsString(buffer.toString(), flush: true);
+      if (!mounted) return;
+
+      final result = await Share.shareXFiles(
+        [XFile(file.path, mimeType: 'text/plain')],
+        subject: 'JoyComic 诊断日志',
+        text: 'JoyComic 诊断日志',
+        sharePositionOrigin: shareOrigin,
+        fileNameOverrides: [fileName],
+      );
+      if (!mounted) return;
+
+      switch (result.status) {
+        case ShareResultStatus.success:
+          _showMessage('日志导出成功');
+        case ShareResultStatus.dismissed:
+          _showMessage('已取消日志导出');
+        case ShareResultStatus.unavailable:
+          _showMessage('日志已生成并交给系统分享');
+      }
+    } catch (error, stackTrace) {
+      Log.e('Log export failed', error: error, stackTrace: stackTrace);
+      if (mounted) {
+        _showMessage('日志导出失败：${_readableError(error)}');
+      }
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  void _showMessage(String message) {
     if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
 
-    // 分享文件
-    await Share.shareXFiles([XFile(file.path)], text: 'JoyComic 诊断日志');
+  static String _readableError(Object error) {
+    final message = error.toString().trim();
+    if (message.isEmpty) return '未知错误';
+    return message.replaceFirst(RegExp(r'^Exception:\s*'), '');
   }
 
   Color _levelColor(String level) => switch (level) {
@@ -123,15 +168,19 @@ class _LogViewerPageState extends State<LogViewerPage> {
         title: const Text('诊断日志'),
         backgroundColor: context.pageBackground,
         actions: [
-          if (_logs.isNotEmpty)
-            IconButton(
-              icon: Icon(
-                Icons.file_upload_outlined,
-                color: context.secondaryTextColor,
-              ),
-              onPressed: _exportLogs,
-              tooltip: '导出日志',
-            ),
+          IconButton(
+            icon: _exporting
+                ? const SizedBox.square(
+                    dimension: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Icon(
+                    Icons.file_upload_outlined,
+                    color: context.secondaryTextColor,
+                  ),
+            onPressed: _exporting ? null : _exportLogs,
+            tooltip: _exporting ? '正在导出日志' : '导出日志',
+          ),
           IconButton(
             icon: Icon(
               Icons.refresh_rounded,

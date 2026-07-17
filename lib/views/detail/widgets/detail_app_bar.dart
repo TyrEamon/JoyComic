@@ -1,6 +1,6 @@
 /// 详情页导航栏（常驻最顶层，完全透明）。
 ///
-/// 左：返回 Icon；右：分享 + 更多操作 Icon 组合。
+/// 左：返回 Icon；右：更多操作 Icon。
 /// 滚动时顶部叠加一层渐变（深色从透明到微实），保证白图标在亮封面上可读。
 library;
 
@@ -21,6 +21,7 @@ class DetailAppBar extends StatelessWidget {
   /// 是否处于"滚动到内容区"状态，影响底色。
   final bool scrolledUnder;
   final VoidCallback? onBack;
+  // Retained for source compatibility; sharing is exposed through the more menu.
   final VoidCallback? onShare;
   final VoidCallback? onMore;
 
@@ -35,7 +36,6 @@ class DetailAppBar extends StatelessWidget {
         child: _Bar(
           scrolledUnder: scrolledUnder,
           onBack: onBack,
-          onShare: onShare,
           onMore: onMore,
         ),
       ),
@@ -47,12 +47,10 @@ class _Bar extends StatelessWidget {
   const _Bar({
     required this.scrolledUnder,
     required this.onBack,
-    required this.onShare,
     required this.onMore,
   });
   final bool scrolledUnder;
   final VoidCallback? onBack;
-  final VoidCallback? onShare;
   final VoidCallback? onMore;
 
   @override
@@ -75,11 +73,6 @@ class _Bar extends StatelessWidget {
             onTap: onBack,
           ),
           const Spacer(),
-          _IconBtn(
-            icon: Icons.ios_share_rounded,
-            tooltip: '分享',
-            onTap: onShare,
-          ),
           _IconBtn(
             icon: Icons.more_horiz_rounded,
             tooltip: '更多',
