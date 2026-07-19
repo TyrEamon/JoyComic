@@ -17,6 +17,7 @@ import '../json_value.dart';
 import '../res.dart';
 import '../source_state.dart';
 import 'picacg_headers.dart';
+import 'picacg_media.dart';
 import 'picacg_models.dart';
 import 'picacg_parsing.dart';
 
@@ -100,13 +101,13 @@ int? picacgMaxPage({
 String? _picacgMediaUrl(Object? value) {
   if (value is String) {
     final url = value.trim();
-    return url.isEmpty ? null : url;
+    return url.isEmpty ? null : normalizePicacgMediaUrl(url);
   }
   final media = jsonMap(value);
   final fileServer = jsonString(media['fileServer']).trim();
   final path = jsonString(media['path']).trim();
   if (fileServer.isEmpty || path.isEmpty) return null;
-  return '$fileServer/static/$path';
+  return normalizePicacgMediaUrl('$fileServer/static/$path');
 }
 
 Res<CommentPageData> parsePicacgCommentPage(

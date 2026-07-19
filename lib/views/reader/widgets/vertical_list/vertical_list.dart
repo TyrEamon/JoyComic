@@ -149,6 +149,8 @@ class _VerticalListState extends State<VerticalList> {
                   url: item.url,
                   cacheKey: item.cacheKey,
                   headers: item.headers,
+                  fallbackUrls: item.fallbackUrls,
+                  bytesTransformer: item.bytesTransformer,
                   cacheWidth: cacheWidth,
                 );
               },

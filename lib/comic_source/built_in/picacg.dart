@@ -10,6 +10,7 @@ import '../../foundation/source_credential_store.dart';
 import '../../network/base_comic.dart';
 import '../../network/json_value.dart';
 import '../../network/picacg/picacg_network.dart';
+import '../../network/picacg/picacg_media.dart';
 import '../../network/res.dart';
 import '../../network/source_state.dart';
 import '../../views/common/source_content_models.dart';
@@ -314,8 +315,16 @@ ComicSource buildPicacgSource({
       if (res.error) return Res(null, errorMessage: res.errorMessage);
       return Res(res.data);
     },
-    // 哔咔图片（封面/内文）无额外鉴权头，走默认 dio 即可。
-    getImageLoadingConfig: null,
+    // 哔咔媒体优先走 go2778 镜像，picacomic 直连作为备用地址。
+    getImageLoadingConfig: (imageKey, comicId, epId) {
+      final primary = normalizePicacgMediaUrl(imageKey);
+      final fallback = picacgOriginalMediaUrl(primary);
+      return <String, dynamic>{
+        'url': primary,
+        'cacheKey': imageKey,
+        if (fallback != primary) 'fallbackUrls': <String>[fallback],
+      };
+    },
     getThumbnailLoadingConfig: null,
     // 收藏。
     favoriteData: FavoriteData.named(

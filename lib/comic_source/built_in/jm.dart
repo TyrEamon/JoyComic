@@ -369,7 +369,31 @@ ComicSource buildJmSource({
     // 单卷优先复用详情内联页，分章继续调用 chapter 端点。
     loadComicPages: (comicId, ep) => client.getComicPages(comicId, ep),
     // 禁漫图片（封面/内文）统一带仿浏览器头，部分图床校验 UA/Referer。
-    getImageLoadingConfig: (imageKey, comicId, epId) => imageHeaders(),
+    getImageLoadingConfig: (imageKey, comicId, epId) {
+      final current = stateFacade.imageBaseUrl;
+      final fallbacks = <String>[];
+      for (final candidate in jmBuiltInImgUrls) {
+        if (candidate != current) {
+          fallbacks.add(_replaceJmImageHost(imageKey, candidate));
+        }
+      }
+      final parsedImage = Uri.tryParse(imageKey);
+      final rawName = parsedImage != null && parsedImage.pathSegments.isNotEmpty
+          ? parsedImage.pathSegments.last
+          : imageKey.split('/').last;
+      return <String, dynamic>{
+        'url': imageKey,
+        'cacheKey': imageKey,
+        'headers': imageHeaders(),
+        'fallbackUrls': fallbacks,
+        if (epId.isNotEmpty)
+          'transform': <String, String>{
+            'type': 'jm',
+            'episodeId': epId,
+            'imageName': rawName,
+          },
+      };
+    },
     getThumbnailLoadingConfig: (imageKey) => imageHeaders(),
     // 收藏。
     favoriteData: FavoriteData.named(
@@ -406,6 +430,14 @@ ComicSource buildJmSource({
   stateFacade = JmStateImpl(source);
   client.state = stateFacade;
   return source;
+}
+
+String _replaceJmImageHost(String url, String host) {
+  final parsed = Uri.tryParse(url);
+  if (parsed == null || parsed.host.isEmpty) return url;
+  return parsed
+      .replace(scheme: Uri.parse(host).scheme, host: Uri.parse(host).host)
+      .toString();
 }
 
 List<SourceCategory> adaptJmSourceCategories(

@@ -5,9 +5,6 @@
 /// 以 [Row] 并排渲染，RTL 模式自动反转图片顺序。
 library;
 
-import 'dart:io';
-
-import 'package:cached_network_image_ce/cached_network_image.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -20,7 +17,7 @@ import '../../providers/reader_provider.dart';
 import '../../state/read_mode.dart';
 import '../../utils/image_preload_controller.dart';
 import '../../utils/reader_utils.dart';
-import '../retry_for_image.dart';
+import '../../utils/reader_image_provider.dart';
 import '../reader_image.dart' as img_widget;
 
 /// 横向翻页模式。
@@ -231,10 +228,13 @@ class _HorizontalListState extends State<HorizontalList> {
     return PhotoViewGalleryPageOptions(
       minScale: PhotoViewComputedScale.contained * 1.0,
       maxScale: PhotoViewComputedScale.covered * 4.0,
-      imageProvider: ResizeImage.resizeIfNeeded(
-        cacheWidth,
-        null,
-        _providerFor(item),
+      imageProvider: readerImageProvider(
+        url: item.url,
+        cacheKey: item.cacheKey,
+        fallbackUrls: item.fallbackUrls,
+        headers: item.headers,
+        bytesTransformer: item.bytesTransformer,
+        cacheWidth: cacheWidth,
       ),
       filterQuality: FilterQuality.medium,
       errorBuilder: (context, error, stackTrace) {
@@ -250,7 +250,14 @@ class _HorizontalListState extends State<HorizontalList> {
                 icon: const Icon(Icons.refresh_rounded),
                 label: const Text('重试'),
                 onPressed: () async {
-                  await _providerFor(item).evict();
+                  await readerImageProvider(
+                    url: item.url,
+                    cacheKey: item.cacheKey,
+                    fallbackUrls: item.fallbackUrls,
+                    headers: item.headers,
+                    bytesTransformer: item.bytesTransformer,
+                    cacheWidth: cacheWidth,
+                  ).evict();
                   if (mounted) setState(() {});
                 },
               ),
@@ -261,18 +268,6 @@ class _HorizontalListState extends State<HorizontalList> {
     );
   }
 
-  ImageProvider _providerFor(ReaderImage item) {
-    final scheme = Uri.tryParse(item.url)?.scheme.toLowerCase();
-    if (scheme == 'http' || scheme == 'https') {
-      return CachedNetworkImageProvider(
-        item.url,
-        cacheManager: cacheManager,
-        cacheKey: item.cacheKey,
-        headers: item.headers,
-      );
-    }
-    return FileImage(File(item.url));
-  }
   // ============================ 双页选项 ============================
 
   PhotoViewGalleryPageOptions _buildDoublePageOptions(
@@ -306,6 +301,8 @@ class _HorizontalListState extends State<HorizontalList> {
             url: item.url,
             cacheKey: item.cacheKey,
             headers: item.headers,
+            fallbackUrls: item.fallbackUrls,
+            bytesTransformer: item.bytesTransformer,
             cacheWidth: cacheWidth,
             alignment: count == 1
                 ? Alignment.center

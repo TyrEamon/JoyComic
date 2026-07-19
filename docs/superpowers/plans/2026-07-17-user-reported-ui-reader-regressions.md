@@ -23,7 +23,7 @@
 | 7 | 分类页 cell/chip 布局 | 已修复 | `category_page.dart` | 已改为  风格响应式图片+名称网格，哔咔使用分类封面，JM 使用同尺寸占位 |
 | 8 | 分类页底部被遮挡 | 已修复 | `category_page.dart` | 底部 padding 包含 60px TabBar、系统安全区和额外间距 |
 | 9 | 设置源管理和测速混乱 | 已修复 | `settings_page.dart`、`source_manager_page.dart`、`main.dart` | 漫画源、账号、线路与域名已分组；JM 图床/API 测速与哔咔接入域名入口独立 |
-| 10 | JM/哔咔阅读器黑屏 | 已修复 | `reader.dart`、`reader_provider.dart`、`reader_image.dart`、预加载与横竖列表 | loader 缺失/异常/空结果进入可见错误态；源 URL/headers/cacheKey 同时供显示和预加载；加载与单图失败均可见并可重试 |
+| 10 | JM/哔咔阅读器黑屏 | 已修复 | `reader.dart`、`reader_provider.dart`、`reader_image_provider.dart`、预加载与横竖列表、JM/哔咔网络层 | JM 原始图片下载后按指纹规则重组；图床支持 fallback；哔咔媒体优先使用 go2778；显示和预加载共用最终图片 provider |
 | 11 | 日志导出无反应 | 已修复 | `log_viewer_page.dart` | 空日志、忙状态、TXT MIME、iPad 分享锚点、成功/取消/失败反馈均已实现 |
 
 ### Task 1：账号、登录与源管理边界
@@ -133,3 +133,13 @@
 - 登录或退出成功后通知已挂载的首页自动重新加载。
 - 首页保留在 `IndexedStack` 中时无需用户手动下拉刷新，哔咔内容会在登录完成后自动出现。
 - 不重建主 Tab，不丢失分类、收藏和其他页面状态。
+
+## 补充修复：双源真实图片协议（方案 B）
+
+- 新增源感知阅读图片 provider，统一负责 headers、备用 URL、原始字节下载、源专属转换和 Flutter 解码。
+- JM 在线阅读复用现有 `JmRecombine`：按 `episodeId + 图片文件名` 计算分段数，在 Isolate 中逆序重组后再解码显示。
+- JM 显示端和预加载端共用同一 provider/cacheKey；首选图床失败时依次尝试内置图床候选。
+- JM 默认图床调整为已验证可达的 `cdn-msp3.jmapiproxy1.cc`；测速改为请求真实封面，不再用返回 404 的 `/favicon.ico`。
+- 哔咔列表、详情、分类、头像和章节图统一将 `picacomic` 媒体 host 转换为 `go2778`，阅读器保留原直连 host 作为 fallback。
+- 未新增或修改测试文件。针对阅读/JM/哔咔的 38 项现有测试全部通过；`flutter analyze --no-pub` 为 `No issues found`。
+- 全量现有测试仍为 397 项通过、5 项旧 UI 断言失败，失败集合与上方既有记录一致，本轮按约束未修改测试。

@@ -10,13 +10,12 @@ library;
 import 'dart:async';
 import 'dart:io';
 
-import 'package:cached_network_image_ce/cached_network_image.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../../foundation/log.dart';
 import '../providers/reader_provider.dart';
 import '../state/comic_state.dart';
-import '../widgets/retry_for_image.dart';
+import 'reader_image_provider.dart';
 
 /// 方向感知的图片预加载控制器。
 ///
@@ -127,21 +126,23 @@ class ImagePreloadController implements ImagePreloadControllerRef {
         count++;
 
         final item = items[i];
-        final ImageProvider base = type == ReaderType.network
-            ? CachedNetworkImageProvider(
-                item.url,
-                cacheManager: cacheManager,
+        final ImageProvider provider = type == ReaderType.network
+            ? readerImageProvider(
+                url: item.url,
                 cacheKey: item.cacheKey,
+                fallbackUrls: item.fallbackUrls,
                 headers: item.headers,
+                bytesTransformer: item.bytesTransformer,
+                cacheWidth: cacheWidth,
               )
-            : FileImage(File(item.url));
+            : ResizeImage.resizeIfNeeded(
+                cacheWidth,
+                null,
+                FileImage(File(item.url)),
+              );
 
         // 用与显示端一致的 ResizeImage 包裹，保证预加载进入的缓存键与显示一致。
         // 否则显示时会因键不同而重新解码一次，预加载就浪费了。
-        final ImageProvider provider = cacheWidth != null
-            ? ResizeImage.resizeIfNeeded(cacheWidth, null, base)
-            : base;
-
         precacheImage(
           provider,
           context,

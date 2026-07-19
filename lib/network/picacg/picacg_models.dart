@@ -9,6 +9,8 @@ import '../base_comic.dart';
 import '../json_value.dart';
 import 'package:flutter/foundation.dart';
 
+import 'picacg_media.dart';
+
 /// 哔咔用户档案。
 @immutable
 class Profile {
@@ -85,10 +87,10 @@ class ComicItemBrief extends BaseComic {
       author: jsonString(json['author']),
       likes: jsonInt(json['totalLikes'] ?? json['likes'] ?? json['likesCount']),
       coverPath: rawThumb is String
-          ? rawThumb
+          ? normalizePicacgMediaUrl(rawThumb)
           : fileServer.isNotEmpty && path.isNotEmpty
-          ? '$fileServer/static/$path'
-          : jsonString(json['cover']),
+          ? normalizePicacgMediaUrl('$fileServer/static/$path')
+          : normalizePicacgMediaUrl(jsonString(json['cover'])),
       id: jsonString(json['_id'] ?? json['id']),
       tags: <String>{
         ...jsonStringList(json['tags']),

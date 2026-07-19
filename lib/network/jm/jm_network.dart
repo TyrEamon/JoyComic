@@ -51,11 +51,11 @@ const jmBuiltInDomains = <String>[
 /// 仅作兜底初值：实际生效域名以登录后 `/setting` 返回的 `img_host` 及用户
 /// 在 [selectShunt] 中测速选中者为准，写入 [JmState] 持久化。
 const jmBuiltInImgUrls = <String>[
-  'https://cdn-msp.18comic.vip',
   'https://cdn-msp3.jmapiproxy1.cc',
   'https://cdn-msp.jmapiproxy3.cc',
   'https://cdn-msp2.jmapiproxy2.cc',
   'https://cdn-msp3.jmapiproxy3.cc',
+  'https://cdn-msp.18comic.vip',
 ];
 
 /// 快速通道的 shunt key（对端 `express=on` 快速图床分流项）。
@@ -728,7 +728,7 @@ class JmNetwork {
     return clean.isEmpty ? null : clean;
   }
 
-  /// 测试某图床延迟（HEAD `/favicon.ico`，8s 超时）。失败返回 -1。
+  /// 测试某图床延迟：请求一个真实存在的轻量封面图片，失败返回 -1。
   Future<int> testImgHostLatency(String host) async {
     final clean = host.replaceAll(RegExp(r'^https?://'), '');
     final dio = _dioFactory(
@@ -740,7 +740,13 @@ class JmNetwork {
     );
     final stopwatch = Stopwatch()..start();
     try {
-      final response = await dio.head('https://$clean/favicon.ico');
+      final response = await dio.get<List<int>>(
+        'https://$clean/media/albums/438696_3x4.jpg',
+        options: Options(
+          headers: imageHeaders(),
+          responseType: ResponseType.bytes,
+        ),
+      );
       final status = response.statusCode;
       return status != null && status >= 200 && status < 300
           ? stopwatch.elapsedMilliseconds

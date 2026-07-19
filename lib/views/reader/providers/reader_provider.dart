@@ -19,6 +19,7 @@ import '../../../network/res.dart';
 import '../state/comic_state.dart';
 import '../state/read_mode.dart';
 import '../utils/reader_utils.dart';
+import '../utils/reader_image_provider.dart';
 import '../widgets/toast.dart';
 
 // ============================ 图片类型 ============================
@@ -37,7 +38,19 @@ class ReaderImage {
   /// 源要求的网络图片请求头；本地图片为 null。
   final Map<String, String>? headers;
 
-  const ReaderImage({required this.url, required this.cacheKey, this.headers});
+  /// 首选地址失败时按顺序尝试的备用地址。
+  final List<String> fallbackUrls;
+
+  /// 下载原始字节后、交给 Flutter 解码前执行的源专属转换。
+  final ReaderImageBytesTransformer? bytesTransformer;
+
+  const ReaderImage({
+    required this.url,
+    required this.cacheKey,
+    this.headers,
+    this.fallbackUrls = const <String>[],
+    this.bytesTransformer,
+  });
 
   @override
   bool operator ==(Object other) =>
@@ -312,9 +325,38 @@ class ReaderProvider extends ChangeNotifier {
         config?.containsKey('url') == true ||
         config?.containsKey('headers') == true ||
         config?.containsKey('cacheKey') == true ||
-        config?.containsKey('method') == true;
+        config?.containsKey('method') == true ||
+        config?.containsKey('fallbackUrls') == true ||
+        config?.containsKey('transform') == true;
     final headers = _stringHeaders(isStructured ? config!['headers'] : config);
-    return ReaderImage(url: url, cacheKey: cacheKey, headers: headers);
+    final fallbackUrls = <String>[];
+    final rawFallbacks = config?['fallbackUrls'];
+    if (rawFallbacks is Iterable) {
+      for (final fallback in rawFallbacks) {
+        if (fallback is String && fallback.trim().isNotEmpty) {
+          fallbackUrls.add(fallback.trim());
+        }
+      }
+    }
+    ReaderImageBytesTransformer? bytesTransformer;
+    final transform = config?['transform'];
+    if (transform is Map && transform['type']?.toString() == 'jm') {
+      final transformEpisode = transform['episodeId']?.toString() ?? '';
+      final transformImageName = transform['imageName']?.toString() ?? '';
+      if (transformEpisode.isNotEmpty && transformImageName.isNotEmpty) {
+        bytesTransformer = jmReaderTransformer(
+          episodeId: transformEpisode,
+          imageName: transformImageName,
+        );
+      }
+    }
+    return ReaderImage(
+      url: url,
+      cacheKey: cacheKey,
+      headers: headers,
+      fallbackUrls: List<String>.unmodifiable(fallbackUrls),
+      bytesTransformer: bytesTransformer,
+    );
   }
 
   void _setLoadError(

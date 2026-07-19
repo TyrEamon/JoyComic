@@ -1,15 +1,15 @@
 /// 漫画单图加载显示的通用组件。
 ///
-/// 使用 [CachedNetworkImageProvider] 或 [FileImage] 加载，以
+/// 使用源感知网络图片 provider 或 [FileImage] 加载，以
 /// [ResizeImage.resizeIfNeeded] 包裹保证缓存键与预加载一致。
 /// 集成 [RetryForImage] 提供自动重试、进度指示和容错。
 library;
 
 import 'dart:io';
 
-import 'package:cached_network_image_ce/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../utils/reader_image_provider.dart';
 import 'retry_for_image.dart';
 
 /// 漫画单图加载显示组件。
@@ -22,6 +22,8 @@ class ReaderImage extends StatelessWidget {
     required this.url,
     this.cacheKey,
     this.headers,
+    this.fallbackUrls = const <String>[],
+    this.bytesTransformer,
     this.fit = BoxFit.contain,
     this.filterQuality = FilterQuality.medium,
     this.cacheWidth,
@@ -32,6 +34,8 @@ class ReaderImage extends StatelessWidget {
   final String url;
   final String? cacheKey;
   final Map<String, String>? headers;
+  final List<String> fallbackUrls;
+  final ReaderImageBytesTransformer? bytesTransformer;
   final BoxFit fit;
   final FilterQuality filterQuality;
   final int? cacheWidth;
@@ -45,14 +49,18 @@ class ReaderImage extends StatelessWidget {
 
   ImageProvider _buildProvider() {
     final ImageProvider base = _isNetwork
-        ? CachedNetworkImageProvider(
-            url,
-            cacheManager: cacheManager,
-            cacheKey: cacheKey,
+        ? readerImageProvider(
+            url: url,
+            cacheKey: cacheKey ?? url,
+            fallbackUrls: fallbackUrls,
             headers: headers,
+            bytesTransformer: bytesTransformer,
+            cacheWidth: cacheWidth,
           )
         : FileImage(File(url));
-    return ResizeImage.resizeIfNeeded(cacheWidth, null, base);
+    return base is ResizeImage
+        ? base
+        : ResizeImage.resizeIfNeeded(cacheWidth, null, base);
   }
 
   @override
