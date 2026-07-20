@@ -210,6 +210,10 @@ class JmRecombine {
   static Future<void> _recover() async {
     _receivePort?.close();
     _errorPort?.close();
+    // Ports must be nulled after close; otherwise restart is skipped and
+    // _pushTask runs with a null SendPort, permanently stalling recombine.
+    _receivePort = null;
+    _errorPort = null;
     _isolate = null;
     _sendPort = null;
     if (_current != null) {

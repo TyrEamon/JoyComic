@@ -427,13 +427,20 @@ class DownloadManager extends ChangeNotifier implements PartialDownloadStore {
             throw StateError('图片 ${index + 1} 返回空数据');
           }
           final rawBytes = data is Uint8List ? data : Uint8List.fromList(data);
-          final imageName = p.basenameWithoutExtension(Uri.parse(url).path);
-          final recombined = await JmRecombine.recombine(
-            rawBytes,
-            task.chapterId,
-            jmScrambleId,
-            imageName,
-          );
+          // Extensionless picture name — same key the scramble MD5 uses online.
+          final segments = Uri.tryParse(url)?.pathSegments;
+          final pathName = (segments != null && segments.isNotEmpty)
+              ? segments.last
+              : p.basename(url);
+          final imageName = p.basenameWithoutExtension(pathName);
+          final recombined = pathName.toLowerCase().endsWith('.gif')
+              ? rawBytes
+              : await JmRecombine.recombine(
+                  rawBytes,
+                  task.chapterId,
+                  jmScrambleId,
+                  imageName,
+                );
           await temporary.writeAsBytes(recombined, flush: true);
         } else {
           final response = await _dio.request<ResponseBody>(
@@ -637,11 +644,26 @@ class DownloadManager extends ChangeNotifier implements PartialDownloadStore {
   static Map<String, dynamic>? _extractHeaders(Map<String, dynamic>? config) {
     if (config == null || config.isEmpty) return null;
     final nested = config['headers'];
-    if (nested is Map) return Map<String, dynamic>.from(nested);
-    return <String, dynamic>{
-      for (final entry in config.entries)
-        if (entry.key != 'url' && entry.key != 'method') entry.key: entry.value,
-    };
+    final raw = nested is Map
+        ? Map<String, dynamic>.from(nested)
+        : <String, dynamic>{
+            for (final entry in config.entries)
+              if (entry.key != 'url' &&
+                  entry.key != 'method' &&
+                  entry.key != 'cacheKey' &&
+                  entry.key != 'fallbackUrls' &&
+                  entry.key != 'transform')
+                entry.key: entry.value,
+          };
+    // Match reader path: never force Accept-Encoding; let HttpClient decompress.
+    raw.removeWhere(
+      (key, _) =>
+          key.toLowerCase() == 'accept-encoding' ||
+          key.toLowerCase() == 'content-encoding' ||
+          key.toLowerCase() == 'content-length' ||
+          key.toLowerCase() == 'transfer-encoding',
+    );
+    return raw.isEmpty ? null : raw;
   }
 
   static Future<int> _contiguousPageCount(

@@ -572,6 +572,10 @@ class JmNetwork {
 
   /// 按候选域名依次尝试请求 [url]，首个成功者（非空 Res）返回；
   /// 全部失败则返回最后一个错误 Res。最多轮询 [_domainCandidates] 个域名。
+  ///
+  /// 每次 attempt 使用独立 [time]（fresh token/time）。瞬态失败（网络/超时/
+  /// 空体/解析/Dio 抛出的 403 等）返回 null 并轮换下一域；401 与其它业务
+  /// Res 不轮换。真正成功（!error）时把可用 host 写回 [JmState.apiBaseUrl]。
   Future<Res<dynamic>> _withDomainFailover(
     String url,
     Future<Res<dynamic>?> Function(String, int) attempt, {
@@ -585,12 +589,33 @@ class JmNetwork {
       final res = await attempt(_urlWithDomain(url, d), time);
       if (res != null) {
         Log.d('JM OK', '$url (domain: $d)');
+        // Mirror verifier: cache the first host that completed a non-error hop.
+        // 401 / empty-data business Res still stop rotation but are not success.
+        if (!res.error) {
+          _rememberSuccessfulApiHost(d);
+        }
         return res;
       }
       Log.w('JM failover: $url', error: 'domain: $d');
       last = res ?? last;
     }
     return last!;
+  }
+
+  /// Persist a working API host so the next request prefers it (verifier parity).
+  void _rememberSuccessfulApiHost(String domain) {
+    final clean = domain
+        .replaceAll(RegExp(r'^https?://'), '')
+        .split('/')
+        .first
+        .trim();
+    if (clean.isEmpty) return;
+    final current = state?.apiBaseUrl ?? '';
+    final currentHost =
+        Uri.tryParse(current)?.host ??
+        current.replaceAll(RegExp(r'^https?://'), '').split('/').first;
+    if (currentHost.toLowerCase() == clean.toLowerCase()) return;
+    state?.setApiBaseUrl('https://$clean');
   }
 
   Future<Res<dynamic>> get(
@@ -1195,12 +1220,13 @@ class JmNetwork {
     final normalizedBaseUrl = imageBaseUrl.endsWith('/')
         ? imageBaseUrl.substring(0, imageBaseUrl.length - 1)
         : imageBaseUrl;
+    // Prefer the live image base; keep absolute URLs that already target a host.
     return List<String>.unmodifiable([
       for (final image in rawImages)
         if (_isAbsoluteHttpUrl(image))
           image
-        else
-          '$normalizedBaseUrl/media/photos/$comicId/$image',
+        else if (image.trim().isNotEmpty)
+          '$normalizedBaseUrl/media/photos/$comicId/${image.trim()}',
     ]);
   }
 

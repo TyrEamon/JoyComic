@@ -3,6 +3,9 @@
 /// 使用源感知网络图片 provider 或 [FileImage] 加载，以
 /// [ResizeImage.resizeIfNeeded] 包裹保证缓存键与预加载一致。
 /// 集成 [RetryForImage] 提供自动重试、进度指示和容错。
+///
+/// 加载中/失败时使用 3:4 占位高度，避免竖直列表 item 高度为 0 时
+/// 整页只剩黑色 canvas（用户感知为“黑屏”）。
 library;
 
 import 'dart:io';
@@ -42,6 +45,8 @@ class ReaderImage extends StatelessWidget {
   final AlignmentGeometry alignment;
   final void Function(int width, int height)? onImageSizeChanged;
 
+  static const double _fallbackAspectRatio = 3 / 4;
+
   bool get _isNetwork {
     final scheme = Uri.tryParse(url)?.scheme.toLowerCase();
     return scheme == 'http' || scheme == 'https';
@@ -63,6 +68,18 @@ class ReaderImage extends StatelessWidget {
         : ResizeImage.resizeIfNeeded(cacheWidth, null, base);
   }
 
+  Widget _placeholder(BuildContext context, Widget child) {
+    return AspectRatio(
+      aspectRatio: _fallbackAspectRatio,
+      child: ColoredBox(
+        color: Theme.of(
+          context,
+        ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+        child: Center(child: child),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return RetryForImage(
@@ -80,33 +97,42 @@ class ReaderImage extends StatelessWidget {
           );
         }
         if (status.isExhausted) {
-          return ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 220),
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.broken_image_outlined, size: 40),
-                    const SizedBox(height: 10),
+          final detail = _friendlyError(status.error);
+          return _placeholder(
+            context,
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.broken_image_outlined,
+                    size: 40,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                  const SizedBox(height: 10),
+                  Text('图片加载失败', style: Theme.of(context).textTheme.titleSmall),
+                  if (detail != null) ...[
+                    const SizedBox(height: 6),
                     Text(
-                      '图片加载失败',
-                      style: Theme.of(context).textTheme.titleSmall,
-                    ),
-                    const SizedBox(height: 8),
-                    FilledButton.tonalIcon(
-                      onPressed: status.retry,
-                      icon: const Icon(Icons.refresh_rounded),
-                      label: const Text('重试'),
+                      detail,
+                      textAlign: TextAlign.center,
+                      maxLines: 4,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],
-                ),
+                  const SizedBox(height: 8),
+                  FilledButton.tonalIcon(
+                    onPressed: status.retry,
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('重试'),
+                  ),
+                ],
               ),
             ),
           );
         }
-        // loading: show progress indicator
         final chunk = status.chunk;
         double? progress;
         if (chunk != null) {
@@ -116,8 +142,9 @@ class ReaderImage extends StatelessWidget {
             progress = (loaded / total).clamp(0.0, 1.0);
           }
         }
-        return Center(
-          child: CircularProgressIndicator(
+        return _placeholder(
+          context,
+          CircularProgressIndicator(
             value: progress,
             strokeWidth: 3,
             constraints: const BoxConstraints(maxWidth: 28, maxHeight: 28),
@@ -126,5 +153,18 @@ class ReaderImage extends StatelessWidget {
         );
       },
     );
+  }
+
+  static String? _friendlyError(Object? error) {
+    if (error == null) return null;
+    var message = error.toString().trim();
+    message = message.replaceFirst(RegExp(r'^Exception:\s*'), '');
+    message = message.replaceFirst(RegExp(r'^Bad state:\s*'), '');
+    message = message.replaceFirst(RegExp(r'^StateError:\s*'), '');
+    if (message.isEmpty) return null;
+    if (message.length > 160) {
+      return '${message.substring(0, 157)}...';
+    }
+    return message;
   }
 }

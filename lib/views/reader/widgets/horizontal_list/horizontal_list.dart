@@ -238,30 +238,64 @@ class _HorizontalListState extends State<HorizontalList> {
       ),
       filterQuality: FilterQuality.medium,
       errorBuilder: (context, error, stackTrace) {
-        return Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.broken_image_outlined, size: 40),
-              const SizedBox(height: 10),
-              const Text('图片加载失败'),
-              const SizedBox(height: 8),
-              FilledButton.tonalIcon(
-                icon: const Icon(Icons.refresh_rounded),
-                label: const Text('重试'),
-                onPressed: () async {
-                  await readerImageProvider(
-                    url: item.url,
-                    cacheKey: item.cacheKey,
-                    fallbackUrls: item.fallbackUrls,
-                    headers: item.headers,
-                    bytesTransformer: item.bytesTransformer,
-                    cacheWidth: cacheWidth,
-                  ).evict();
-                  if (mounted) setState(() {});
-                },
+        final scheme = Theme.of(context).colorScheme;
+        final detail = error.toString().replaceFirst(
+          RegExp(r'^Exception:\s*'),
+          '',
+        );
+        return ColoredBox(
+          color: scheme.surfaceContainerHighest.withValues(alpha: 0.35),
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.broken_image_outlined,
+                    size: 40,
+                    color: scheme.onSurface,
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    '图片加载失败',
+                    style: Theme.of(
+                      context,
+                    ).textTheme.titleSmall?.copyWith(color: scheme.onSurface),
+                  ),
+                  if (detail.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      detail.length > 160
+                          ? '${detail.substring(0, 157)}...'
+                          : detail,
+                      textAlign: TextAlign.center,
+                      maxLines: 4,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  FilledButton.tonalIcon(
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('重试'),
+                    onPressed: () async {
+                      await readerImageProvider(
+                        url: item.url,
+                        cacheKey: item.cacheKey,
+                        fallbackUrls: item.fallbackUrls,
+                        headers: item.headers,
+                        bytesTransformer: item.bytesTransformer,
+                        cacheWidth: cacheWidth,
+                      ).evict();
+                      if (mounted) setState(() {});
+                    },
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         );
       },

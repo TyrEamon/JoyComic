@@ -99,13 +99,21 @@ BaseOptions buildApiOptions(
   );
 }
 
-/// 图片请求头（仿浏览器图片请求）。
+/// 图片请求头（对齐  `getImgHeaders` / 官方 App 图片拉取）。
+///
+/// 不包含 `Accept-Encoding`：由 HttpClient 自行协商解压，避免手动声明
+/// 压缩编码后拿到未解码字节导致图片解码失败。
 Map<String, String> imageHeaders() => {
-  ...baseHeaders(),
-  'user-agent': _jmUserAgent,
+  'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+  'Accept-Language': 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
+  'Connection': 'keep-alive',
+  'Referer': 'https://localhost/',
   'Sec-Fetch-Dest': 'image',
   'Sec-Fetch-Mode': 'no-cors',
   'Sec-Fetch-Site': 'cross-site',
+  'Sec-Fetch-Storage-Access': 'active',
+  'User-Agent': _jmUserAgent,
+  'X-Requested-With': _jmPkgName,
 };
 
 /// 解密禁漫 API 响应体中的加密 data 字段。

@@ -368,29 +368,47 @@ ComicSource buildJmSource({
     },
     // 单卷优先复用详情内联页，分章继续调用 chapter 端点。
     loadComicPages: (comicId, ep) => client.getComicPages(comicId, ep),
-    // 禁漫图片（封面/内文）统一带仿浏览器头，部分图床校验 UA/Referer。
+    // 禁漫图片：仿官方图床请求头 + 多图床 fallback + 按章节 id/无扩展名文件名重组。
     getImageLoadingConfig: (imageKey, comicId, epId) {
       final current = stateFacade.imageBaseUrl;
       final fallbacks = <String>[];
-      for (final candidate in jmBuiltInImgUrls) {
-        if (candidate != current) {
-          fallbacks.add(_replaceJmImageHost(imageKey, candidate));
-        }
+      final seenHosts = <String>{};
+      // Prefer session image base, then built-in CDN pool (verifier order).
+      // Skip hosts that would only reproduce the primary URL.
+      void addCandidate(String hostBase) {
+        if (hostBase.isEmpty) return;
+        final host = Uri.tryParse(hostBase)?.host ?? '';
+        if (host.isEmpty || !seenHosts.add(host)) return;
+        final replaced = _replaceJmImageHost(imageKey, hostBase);
+        if (replaced == imageKey) return;
+        fallbacks.add(replaced);
       }
+
+      addCandidate(current);
+      for (final candidate in jmBuiltInImgUrls) {
+        addCandidate(candidate);
+      }
+
       final parsedImage = Uri.tryParse(imageKey);
       final rawName = parsedImage != null && parsedImage.pathSegments.isNotEmpty
           ? parsedImage.pathSegments.last
-          : imageKey.split('/').last;
+          : imageKey
+                .split('/')
+                .lastWhere((s) => s.isNotEmpty, orElse: () => imageKey);
+      final episodeId = epId.trim().isNotEmpty ? epId.trim() : comicId.trim();
+      final isGif = rawName.toLowerCase().endsWith('.gif');
       return <String, dynamic>{
         'url': imageKey,
-        'cacheKey': imageKey,
+        // Cache key ignores query noise and host so fallbacks share one entry.
+        'cacheKey': _jmImageCacheKey(imageKey),
         'headers': imageHeaders(),
-        'fallbackUrls': fallbacks,
-        if (epId.isNotEmpty)
+        if (fallbacks.isNotEmpty) 'fallbackUrls': fallbacks,
+        if (episodeId.isNotEmpty && rawName.isNotEmpty && !isGif)
           'transform': <String, String>{
             'type': 'jm',
-            'episodeId': epId,
+            'episodeId': episodeId,
             'imageName': rawName,
+            'scrambleId': jmScrambleId,
           },
       };
     },
@@ -435,9 +453,23 @@ ComicSource buildJmSource({
 String _replaceJmImageHost(String url, String host) {
   final parsed = Uri.tryParse(url);
   if (parsed == null || parsed.host.isEmpty) return url;
+  final base = Uri.tryParse(host);
+  if (base == null || base.host.isEmpty) return url;
   return parsed
-      .replace(scheme: Uri.parse(host).scheme, host: Uri.parse(host).host)
+      .replace(
+        scheme: base.scheme.isEmpty ? parsed.scheme : base.scheme,
+        host: base.host,
+      )
       .toString();
+}
+
+/// Stable cache key for JM media: path without host/query so host fallbacks hit.
+String _jmImageCacheKey(String url) {
+  final parsed = Uri.tryParse(url);
+  if (parsed == null || parsed.path.isEmpty) {
+    return url.replaceAll(RegExp(r'\?.*$'), '');
+  }
+  return parsed.path;
 }
 
 List<SourceCategory> adaptJmSourceCategories(
