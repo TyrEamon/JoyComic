@@ -11,7 +11,6 @@ class DetailMetadata extends StatelessWidget {
     required this.authors,
     required this.categories,
     required this.labels,
-    required this.rating,
     required this.viewCount,
     required this.likeCount,
     required this.commentCount,
@@ -26,9 +25,6 @@ class DetailMetadata extends StatelessWidget {
   final List<String> authors;
   final List<String> categories;
   final List<String> labels;
-  // Kept in the public constructor for compatibility; the score is displayed
-  // beside the cover and intentionally not repeated in the metrics panel.
-  final double? rating;
   final int? viewCount;
   final int? likeCount;
   final int? commentCount;
@@ -46,11 +42,55 @@ class DetailMetadata extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _MetricsPanel(
-            viewCount: viewCount,
-            likeCount: likeCount,
-            commentCount: commentCount,
-            chapterCount: chapterCount,
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final metrics = <({IconData icon, String label, String value})>[
+                if (viewCount != null)
+                  (
+                    icon: Icons.visibility_outlined,
+                    label: '阅读',
+                    value: _formatCount(viewCount),
+                  ),
+                if (likeCount != null)
+                  (
+                    icon: Icons.favorite_border_rounded,
+                    label: '喜欢',
+                    value: _formatCount(likeCount),
+                  ),
+                if (commentCount != null)
+                  (
+                    icon: Icons.chat_bubble_outline_rounded,
+                    label: '评论',
+                    value: _formatCount(commentCount),
+                  ),
+                (
+                  icon: Icons.menu_book_outlined,
+                  label: '章节',
+                  value: chapterCount.toString(),
+                ),
+              ];
+              final columns = constraints.maxWidth >= 720
+                  ? metrics.length.clamp(1, 4)
+                  : metrics.length >= 3
+                  ? 2
+                  : metrics.length.clamp(1, 2);
+              final width =
+                  (constraints.maxWidth - AppSpacing.sm * (columns - 1)) /
+                  columns;
+              return Wrap(
+                spacing: AppSpacing.sm,
+                runSpacing: AppSpacing.sm,
+                children: [
+                  for (final metric in metrics)
+                    _Metric(
+                      width: width,
+                      icon: metric.icon,
+                      label: metric.label,
+                      value: metric.value,
+                    ),
+                ],
+              );
+            },
           ),
           if (jmNumber != null && jmNumber!.trim().isNotEmpty) ...[
             const SizedBox(height: AppSpacing.sm),
@@ -96,72 +136,6 @@ class DetailMetadata extends StatelessWidget {
             ),
           ],
         ],
-      ),
-    );
-  }
-}
-
-class _MetricsPanel extends StatelessWidget {
-  const _MetricsPanel({
-    required this.viewCount,
-    required this.likeCount,
-    required this.commentCount,
-    required this.chapterCount,
-  });
-
-  final int? viewCount;
-  final int? likeCount;
-  final int? commentCount;
-  final int chapterCount;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: context.semanticColors.surfaceMuted,
-        borderRadius: AppRadius.brMd,
-        border: Border.all(color: context.borderColor),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.sm,
-          vertical: AppSpacing.sm,
-        ),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final metricWidth = (constraints.maxWidth - AppSpacing.sm) / 2;
-            return Wrap(
-              spacing: AppSpacing.sm,
-              runSpacing: AppSpacing.sm,
-              children: [
-                _Metric(
-                  width: metricWidth,
-                  icon: Icons.visibility_outlined,
-                  label: '阅读',
-                  value: _formatCount(viewCount),
-                ),
-                _Metric(
-                  width: metricWidth,
-                  icon: Icons.favorite_border_rounded,
-                  label: '喜欢',
-                  value: _formatCount(likeCount),
-                ),
-                _Metric(
-                  width: metricWidth,
-                  icon: Icons.chat_bubble_outline_rounded,
-                  label: '评论',
-                  value: _formatCount(commentCount),
-                ),
-                _Metric(
-                  width: metricWidth,
-                  icon: Icons.menu_book_outlined,
-                  label: '章节',
-                  value: chapterCount.toString(),
-                ),
-              ],
-            );
-          },
-        ),
       ),
     );
   }
@@ -310,7 +284,7 @@ class _MetadataChip extends StatelessWidget {
 }
 
 String _formatCount(int? value) {
-  if (value == null) return '—';
+  if (value == null) return '0';
   if (value >= 100000000) {
     return '${(value / 100000000).toStringAsFixed(1)}亿';
   }

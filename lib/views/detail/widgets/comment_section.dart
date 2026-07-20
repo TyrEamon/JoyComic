@@ -47,7 +47,7 @@ class CommentSection extends StatelessWidget {
             )
           else
             for (final comment in comments)
-              _CommentCard(comment: comment, onReply: () => onReply(comment)),
+              CommentTile(comment: comment, onReply: () => onReply(comment)),
           if (hasMore)
             Padding(
               padding: const EdgeInsets.only(top: AppSpacing.sm),
@@ -71,11 +71,17 @@ class CommentSection extends StatelessWidget {
   }
 }
 
-class _CommentCard extends StatelessWidget {
-  const _CommentCard({required this.comment, required this.onReply});
+class CommentTile extends StatelessWidget {
+  const CommentTile({
+    super.key,
+    required this.comment,
+    this.onReply,
+    this.compact = false,
+  });
 
   final Comment comment;
-  final VoidCallback onReply;
+  final VoidCallback? onReply;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -102,12 +108,18 @@ class _CommentCard extends StatelessWidget {
                   style: AppTypography.cardTitle(context),
                 ),
               ),
-              TextButton(onPressed: onReply, child: const Text('回复')),
+              if (onReply != null)
+                TextButton(onPressed: onReply, child: const Text('回复')),
             ],
           ),
           const SizedBox(height: AppSpacing.xs),
-          Text(comment.content, style: AppTypography.body(context)),
-          if (comment.replies.isNotEmpty) ...[
+          Text(
+            comment.content,
+            maxLines: compact ? 2 : null,
+            overflow: compact ? TextOverflow.ellipsis : TextOverflow.visible,
+            style: AppTypography.body(context),
+          ),
+          if (!compact && comment.replies.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.sm),
             DecoratedBox(
               decoration: BoxDecoration(

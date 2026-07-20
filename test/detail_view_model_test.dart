@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:joycomic/comic_source/comic_source.dart';
 import 'package:joycomic/database/favorites_helper.dart';
 import 'package:joycomic/database/joy_database.dart';
+import 'package:joycomic/database/read_record_helper.dart';
 import 'package:joycomic/network/res.dart';
 import 'package:joycomic/views/detail/detail_view_model.dart';
 import 'package:joycomic/views/reader/state/comic_state.dart';
@@ -237,6 +238,62 @@ void main() {
       expect(remoteCalls, 0);
     },
   );
+
+  test('read action label switches after a reading record is saved', () async {
+    final database = sqlite3.openInMemory();
+    addTearDown(database.dispose);
+    JoyDatabase.migrateCore(database);
+    FavoriteNotifier.instance.loadFromDb(database);
+    final source = ComicSource.named(
+      name: 'Read progress',
+      key: 'read-progress',
+      filePath: 'test',
+      loadComicInfo: (_) async => Res<ComicInfoData>(_detailInfo()),
+    );
+    ComicSource.sources.add(source);
+    addTearDown(() => ComicSource.sources.remove(source));
+    final records = ReadRecordHelper(database);
+    final viewModel = DetailViewModel(
+      sourceKey: source.key,
+      comicId: 'comic-1',
+      favoritesHelper: FavoritesHelper(database),
+      readRecordHelper: records,
+    );
+    addTearDown(viewModel.dispose);
+
+    await viewModel.load();
+    expect(viewModel.readActionLabel, '开始阅读');
+    expect(viewModel.hasReadProgress, isFalse);
+
+    records.upsert(
+      const ReadRecord(
+        source: 'read-progress',
+        comic: 'comic-1',
+        title: 'Comic',
+        chapterId: '2',
+        chapterTitle: '第二章',
+        pageNo: 3,
+        updatedAt: 1,
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(viewModel.hasReadProgress, isTrue);
+    expect(viewModel.readActionLabel, '继续阅读');
+    expect(viewModel.readRecord?.chapterId, '2');
+  });
+
+  test('sources without commentsLoader report canLoadComments false', () async {
+    final source = ComicSource.named(
+      name: 'No comments',
+      key: 'no-comments',
+      filePath: 'test',
+      loadComicInfo: (_) async => Res<ComicInfoData>(_detailInfo()),
+    );
+    final viewModel = _mount(source);
+    await viewModel.load();
+    expect(viewModel.canLoadComments, isFalse);
+  });
 }
 
 DetailViewModel _mount(ComicSource source) {
@@ -250,6 +307,7 @@ DetailViewModel _mount(ComicSource source) {
     sourceKey: source.key,
     comicId: 'comic-1',
     favoritesHelper: FavoritesHelper(database),
+    readRecordHelper: ReadRecordHelper(database),
   );
   addTearDown(viewModel.dispose);
   return viewModel;

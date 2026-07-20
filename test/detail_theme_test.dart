@@ -31,16 +31,35 @@ void main() {
       final hero = File(
         'lib/views/detail/widgets/hero_header.dart',
       ).readAsStringSync();
-      final overlay = File(
-        'lib/views/detail/widgets/info_overlay.dart',
-      ).readAsStringSync();
 
-      expect('$hero\n$overlay', contains('context.onImageColor'));
-      expect('$hero\n$overlay', isNot(contains('热度')));
-      expect('$hero\n$overlay', isNot(contains('人评价')));
-      expect('$hero\n$overlay', isNot(contains('ratingCount')));
+      expect(hero, contains('context.onImageColor'));
+      expect(hero, isNot(contains('热度')));
+      expect(hero, isNot(contains('人评价')));
+      expect(hero, isNot(contains('ratingCount')));
     },
   );
+
+  test('detail excludes rating-count and popularity ranking copy', () {
+    final files = <File>[
+      File('lib/views/detail/detail_page.dart'),
+      ...Directory('lib/views/detail/widgets')
+          .listSync()
+          .whereType<File>()
+          .where((file) => file.path.endsWith('.dart')),
+    ];
+    final source = files.map((file) => file.readAsStringSync()).join('\n');
+    for (final forbidden in const <String>[
+      '人已评分',
+      '人评价',
+      '评分人数',
+      '人气榜',
+      '热度榜',
+      'No.1',
+    ]) {
+      expect(source, isNot(contains(forbidden)), reason: forbidden);
+    }
+    expect(source, contains('RatingStars'));
+  });
 
   testWidgets('metadata exposes 44px tappable semantics', (tester) async {
     final tapped = <String>[];
@@ -52,7 +71,6 @@ void main() {
             authors: const <String>['Alice'],
             categories: const <String>['青年'],
             labels: const <String>['冒险'],
-            rating: 8.6,
             viewCount: 12000,
             likeCount: 900,
             commentCount: 37,

@@ -10,6 +10,7 @@ import 'package:pool/pool.dart';
 
 import '../../comic_source/comic_source.dart';
 import '../../database/favorites_helper.dart';
+import '../../database/read_record_helper.dart';
 import '../../foundation/detail_rating.dart';
 import '../../foundation/log.dart';
 import '../../network/res.dart';
@@ -28,12 +29,17 @@ class DetailViewModel extends ChangeNotifier {
     required this.sourceKey,
     required this.comicId,
     FavoritesHelper? favoritesHelper,
-  }) : _favHelper = favoritesHelper ?? FavoritesHelper();
+    ReadRecordHelper? readRecordHelper,
+  }) : _favHelper = favoritesHelper ?? FavoritesHelper(),
+       _readRecordHelper = readRecordHelper ?? ReadRecordHelper() {
+    ReadRecordNotifier.instance.addListener(_handleReadRecordChanged);
+  }
 
   final String sourceKey;
   final String comicId;
 
   final FavoritesHelper _favHelper;
+  final ReadRecordHelper _readRecordHelper;
   final Pool _thumbnailPool = Pool(3);
   final Map<String, Future<Res<List<String>>>> _chapterPageRequests =
       <String, Future<Res<List<String>>>>{};
@@ -96,10 +102,15 @@ class DetailViewModel extends ChangeNotifier {
   String? _commentSendError;
   String? get commentSendError => _commentSendError;
 
+  ReadRecord? get readRecord => _readRecordHelper.get(sourceKey, comicId);
+  bool get hasReadProgress => readRecord != null;
+  String get readActionLabel => hasReadProgress ? '继续阅读' : '开始阅读';
+
   @override
   void dispose() {
     if (_disposed) return;
     _disposed = true;
+    ReadRecordNotifier.instance.removeListener(_handleReadRecordChanged);
     _commentGeneration++;
     unawaited(_thumbnailPool.close());
     super.dispose();
@@ -108,6 +119,8 @@ class DetailViewModel extends ChangeNotifier {
   void _notifyListeners() {
     if (!_disposed) notifyListeners();
   }
+
+  void _handleReadRecordChanged() => _notifyListeners();
 
   /// 封面图鉴权 headers（来源的 getThumbnailLoadingConfig）。
   Map<String, dynamic>? get coverHeaders {

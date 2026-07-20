@@ -1,5 +1,9 @@
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+
+import '../../comic_source/detail_models.dart';
+import '../reader/state/comic_state.dart';
+import 'detail_view_model.dart';
 
 String detailSearchRoute({required String sourceKey, required String keyword}) {
   return Uri(
@@ -13,6 +17,18 @@ String detailCategoryRoute({
   required String category,
 }) =>
     '/category/${Uri.encodeComponent(sourceKey)}/${Uri.encodeComponent(category.trim())}';
+
+String detailChaptersRoute({
+  required String sourceKey,
+  required String comicId,
+}) =>
+    '/detail/${Uri.encodeComponent(sourceKey)}/${Uri.encodeComponent(comicId)}/chapters';
+
+String detailCommentsRoute({
+  required String sourceKey,
+  required String comicId,
+}) =>
+    '/detail/${Uri.encodeComponent(sourceKey)}/${Uri.encodeComponent(comicId)}/comments';
 
 void openDetailKeywordSearch(
   BuildContext context, {
@@ -28,4 +44,69 @@ void openDetailCategory(
   required String category,
 }) {
   context.push(detailCategoryRoute(sourceKey: sourceKey, category: category));
+}
+
+void openDetailChapters(
+  BuildContext context, {
+  required String sourceKey,
+  required String comicId,
+}) {
+  context.push(detailChaptersRoute(sourceKey: sourceKey, comicId: comicId));
+}
+
+void openDetailComments(
+  BuildContext context, {
+  required String sourceKey,
+  required String comicId,
+}) {
+  context.push(detailCommentsRoute(sourceKey: sourceKey, comicId: comicId));
+}
+
+/// Opens the reader from detail or full-chapters pages.
+///
+/// Direct chapter taps always start that chapter at page 0.
+/// The main resume action uses the saved [DetailViewModel.readRecord].
+void openDetailReader(
+  BuildContext context,
+  DetailViewModel viewModel,
+  ComicChapter? entry,
+) {
+  final info = viewModel.data?.info;
+  final chapters = ReaderChapter.fromComicChapters(viewModel.chapters);
+  if (info == null || chapters.isEmpty) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('暂无章节')));
+    return;
+  }
+
+  final record = viewModel.readRecord;
+  final start = entry != null
+      ? chapters.firstWhere(
+          (chapter) => chapter.id == entry.id,
+          orElse: () => chapters.last,
+        )
+      : record == null
+      ? chapters.last
+      : chapters.firstWhere(
+          (chapter) => chapter.id == record.chapterId,
+          orElse: () => chapters.last,
+        );
+  final pageNo = entry == null && record?.chapterId == start.id
+      ? record!.pageNo.clamp(0, 1 << 30)
+      : 0;
+
+  context.push(
+    '/reader',
+    extra: ComicState(
+      id: info.comicId,
+      title: info.title,
+      coverUrl: info.cover,
+      author: viewModel.author,
+      chapters: chapters,
+      chapter: start,
+      pageNo: pageNo,
+      sourceKey: viewModel.sourceKey,
+    ),
+  );
 }

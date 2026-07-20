@@ -8,54 +8,27 @@ import 'package:joycomic/theme/app_theme.dart';
 import 'package:joycomic/views/detail/widgets/chapter_thumbnail.dart';
 import 'package:joycomic/views/detail/widgets/comment_composer.dart';
 import 'package:joycomic/views/detail/widgets/detail_app_bar.dart';
-import 'package:joycomic/views/detail/widgets/detail_tab_bar.dart';
-import 'package:joycomic/views/detail/widgets/sticky_action_bar.dart';
 
 void main() {
   test(
-    'detail source orders synopsis before tabs and uses dynamic bottom padding',
+    'detail source orders synopsis before recent chapters and inline actions',
     () {
       final source = File(
         'lib/views/detail/detail_page.dart',
       ).readAsStringSync();
       expect(
         source.indexOf('SynopsisBlock('),
-        lessThan(source.indexOf('DetailTabBarDelegate(')),
+        lessThan(source.indexOf('RecentChapterStrip(')),
       );
-      expect(source, contains('StickyActionBar.contentHeight +'));
-      expect(source, contains('MediaQuery.viewPaddingOf(context).bottom'));
-      expect(source, isNot(contains('SizedBox(height: 96)')));
+      expect(
+        source.indexOf('RecentChapterStrip('),
+        lessThan(source.indexOf('DetailActions(')),
+      );
+      expect(source, contains('CommentPreview('));
+      expect(source, isNot(contains('DetailTabBar')));
+      expect(source, isNot(contains('StickyActionBar')));
       expect(source, contains('onShare: ready ?'));
       expect(source, contains('onMore: ready ?'));
-    },
-  );
-
-  testWidgets(
-    'chapter tab is selected by default and comments show the true total',
-    (tester) async {
-      var selected = DetailTab.chapters;
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: AppTheme.light(),
-          home: StatefulBuilder(
-            builder: (context, setState) => Scaffold(
-              body: DetailTabBar(
-                selected: selected,
-                commentTotal: 37,
-                onChanged: (value) => setState(() => selected = value),
-              ),
-            ),
-          ),
-        ),
-      );
-
-      expect(find.text('章节'), findsOneWidget);
-      expect(find.text('评论 37'), findsOneWidget);
-      expect(selected, DetailTab.chapters);
-
-      await tester.tap(find.text('评论 37'));
-      await tester.pump();
-      expect(selected, DetailTab.comments);
     },
   );
 
@@ -138,7 +111,11 @@ void main() {
         home: Scaffold(
           body: Stack(
             children: [
-              DetailAppBar(onShare: () => shares++, onMore: () => more++),
+              DetailAppBar(
+                title: 'Comic',
+                onShare: () => shares++,
+                onMore: () => more++,
+              ),
             ],
           ),
         ),
@@ -149,39 +126,5 @@ void main() {
     await tester.tap(find.byIcon(Icons.more_horiz_rounded));
     expect(shares, 1);
     expect(more, 1);
-  });
-
-  testWidgets('favorite and read actions are both exactly 52px high', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.light(),
-        home: Scaffold(
-          body: StickyActionBar(
-            isFavorite: false,
-            readHint: '第一章',
-            onFavorite: () {},
-            onRead: () {},
-          ),
-        ),
-      ),
-    );
-
-    expect(StickyActionBar.buttonHeight, 52);
-    expect(StickyActionBar.contentHeight, 68);
-    expect(
-      tester
-          .getSize(find.byKey(const ValueKey<String>('sticky-favorite-button')))
-          .height,
-      52,
-    );
-    expect(
-      tester
-          .getSize(find.byKey(const ValueKey<String>('sticky-read-button')))
-          .height,
-      52,
-    );
-    expect(find.byType(SafeArea), findsOneWidget);
   });
 }

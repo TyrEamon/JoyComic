@@ -15,7 +15,7 @@ class SynopsisBlock extends StatefulWidget {
   const SynopsisBlock({
     super.key,
     required this.text,
-    this.maxLinesWhenCollapsed = 4,
+    this.maxLinesWhenCollapsed = 3,
   });
 
   final String? text;
@@ -92,19 +92,16 @@ class _SynopsisBlockState extends State<SynopsisBlock>
     String text,
   ) {
     if (_overflows != null) return;
-    // 用 TextPainter 测折叠行数是否溢出。
     final tp = TextPainter(
       text: TextSpan(text: text, style: AppTypography.body(context)),
       textDirection: TextDirection.ltr,
       maxLines: widget.maxLinesWhenCollapsed,
     )..layout(maxWidth: constraints.maxWidth);
     final overflow = tp.didExceedMaxLines;
-    // 延迟到 build 后 setState，避免在 build 中改状态。
-    if (_overflows != overflow) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) setState(() => _overflows = overflow);
-      });
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _overflows == overflow) return;
+      setState(() => _overflows = overflow);
+    });
   }
 }
 
@@ -121,23 +118,26 @@ class _ToggleLink extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Solid surface keeps the action readable without decorative gradients.
     return Container(
       padding: const EdgeInsets.only(left: 24),
       color: context.pageBackground,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(4),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-            child: Text(
-              expanded ? '收起' : '展开',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: accent,
+      child: Semantics(
+        button: true,
+        label: expanded ? '收起简介' : '展开简介',
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(4),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              child: Text(
+                expanded ? '收起' : '展开',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: accent,
+                ),
               ),
             ),
           ),

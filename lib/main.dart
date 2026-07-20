@@ -11,6 +11,8 @@ import 'foundation/log.dart';
 import 'theme/app_theme.dart';
 import 'views/auth/login_page.dart';
 import 'views/common/source_content_page.dart';
+import 'views/detail/detail_chapters_page.dart';
+import 'views/detail/detail_comments_page.dart';
 import 'views/detail/detail_page.dart';
 import 'views/download/download_page.dart';
 import 'views/favorites/favorites_page.dart';
@@ -141,11 +143,26 @@ final appRouter = GoRouter(
     ),
     GoRoute(
       path: '/detail/:sourceKey/:comicId',
-      builder: (context, state) {
-        final sourceKey = state.pathParameters['sourceKey']!;
-        final comicId = state.pathParameters['comicId']!;
-        return DetailPage(sourceKey: sourceKey, comicId: comicId);
-      },
+      builder: (context, state) => DetailPage(
+        sourceKey: state.pathParameters['sourceKey']!,
+        comicId: state.pathParameters['comicId']!,
+      ),
+      routes: [
+        GoRoute(
+          path: 'chapters',
+          builder: (context, state) => DetailChaptersPage(
+            sourceKey: state.pathParameters['sourceKey']!,
+            comicId: state.pathParameters['comicId']!,
+          ),
+        ),
+        GoRoute(
+          path: 'comments',
+          builder: (context, state) => DetailCommentsPage(
+            sourceKey: state.pathParameters['sourceKey']!,
+            comicId: state.pathParameters['comicId']!,
+          ),
+        ),
+      ],
     ),
     GoRoute(
       path: '/reader',

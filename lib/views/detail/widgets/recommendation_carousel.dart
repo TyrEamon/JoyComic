@@ -1,7 +1,7 @@
 /// 相关推荐组件（Recommendation Carousel）。
 ///
-/// - 顶部栏："相关推荐" + 右"换一换"（旋转 Icon）
-/// - 下方横向滑动卡片流，每卡 = 竖版海报(3:4) + 作品名 + 评分数字
+/// - 顶部栏："相关推荐" + 右"换一换"
+/// - 下方横向滑动卡片流；无数据时整块隐藏
 library;
 
 import 'package:flutter/material.dart';
@@ -27,7 +27,12 @@ class RecommendationCarousel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (items.isEmpty) return const SizedBox.shrink();
+
     final accent = context.colorScheme.primary;
+    final motionDisabled = MediaQuery.disableAnimationsOf(context);
+    final batchKey = ValueKey<String>(items.map((item) => item.id).join('|'));
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -64,36 +69,43 @@ class RecommendationCarousel extends StatelessWidget {
           ),
         ),
         const SizedBox(height: AppSpacing.sm),
-        SizedBox(
-          height: 210,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-            itemCount: items.isEmpty ? 1 : items.length,
-            separatorBuilder: (_, __) => const SizedBox(width: AppSpacing.sm),
-            itemBuilder: (context, i) {
-              if (items.isEmpty) {
-                return SizedBox(
-                  width: 220,
-                  child: Center(
-                    child: Text(
-                      '暂无推荐',
-                      style: TextStyle(color: context.tertiaryTextColor),
-                    ),
-                  ),
+        AnimatedSwitcher(
+          duration: motionDisabled
+              ? Duration.zero
+              : const Duration(milliseconds: 220),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          transitionBuilder: (child, animation) => FadeTransition(
+            opacity: animation,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0.04, 0),
+                end: Offset.zero,
+              ).animate(animation),
+              child: child,
+            ),
+          ),
+          child: SizedBox(
+            key: batchKey,
+            height: 210,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+              itemCount: items.length,
+              separatorBuilder: (_, __) => const SizedBox(width: AppSpacing.sm),
+              itemBuilder: (context, index) {
+                final item = items[index];
+                return ComicCard.poster(
+                  title: item.title,
+                  coverUrl: item.cover,
+                  subtitle: item.author,
+                  rating: item.rating,
+                  width: 132,
+                  headers: coverHeaders,
+                  onTap: onSelect == null ? null : () => onSelect!(item),
                 );
-              }
-              final e = items[i];
-              return ComicCard.poster(
-                title: e.title,
-                coverUrl: e.cover,
-                subtitle: e.author,
-                rating: e.rating,
-                width: 132,
-                headers: coverHeaders,
-                onTap: onSelect == null ? null : () => onSelect!(e),
-              );
-            },
+              },
+            ),
           ),
         ),
       ],

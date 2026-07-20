@@ -39,7 +39,7 @@ class ChapterGrid extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text('章节', style: AppTypography.section(context)),
+              Text('章节列表', style: AppTypography.section(context)),
               const SizedBox(width: AppSpacing.xs),
               if (latest != null)
                 Expanded(
@@ -66,31 +66,40 @@ class ChapterGrid extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: AppSpacing.xl),
               child: Center(
                 child: Text(
-                  '暂无章节',
+                  '暂无可阅读章节',
                   style: TextStyle(color: context.tertiaryTextColor),
                 ),
               ),
             )
           else
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: chapters.length,
-              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: 220,
-                mainAxisSpacing: AppSpacing.sm,
-                crossAxisSpacing: AppSpacing.sm,
-                childAspectRatio: 16 / 11,
-              ),
-              itemBuilder: (context, index) {
-                final chapter = chapters[index];
-                return _ChapterCard(
-                  chapter: chapter,
-                  isNew: index == chapters.length - 1,
-                  thumbnail: loadThumbnail(chapter),
-                  coverHeaders: coverHeaders,
-                  onTap: () => onSelect(chapter),
-                  onDownload: () => onDownload(chapter),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final maxExtent = constraints.maxWidth >= 720
+                    ? 200.0
+                    : constraints.maxWidth >= 480
+                    ? 220.0
+                    : constraints.maxWidth;
+                return GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: chapters.length,
+                  gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: maxExtent,
+                    mainAxisSpacing: AppSpacing.sm,
+                    crossAxisSpacing: AppSpacing.sm,
+                    childAspectRatio: 16 / 11,
+                  ),
+                  itemBuilder: (context, index) {
+                    final chapter = chapters[index];
+                    return _ChapterCard(
+                      chapter: chapter,
+                      isNew: index == chapters.length - 1,
+                      thumbnail: loadThumbnail(chapter),
+                      coverHeaders: coverHeaders,
+                      onTap: () => onSelect(chapter),
+                      onDownload: () => onDownload(chapter),
+                    );
+                  },
                 );
               },
             ),
@@ -171,13 +180,16 @@ class _ChapterCard extends StatelessWidget {
             Positioned(
               right: 4,
               bottom: 2,
-              child: IconButton(
-                tooltip: '下载本章',
-                onPressed: onDownload,
-                icon: Icon(
-                  Icons.download_rounded,
-                  size: 18,
-                  color: context.onImageColor,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                child: IconButton(
+                  tooltip: '下载本章',
+                  onPressed: onDownload,
+                  icon: Icon(
+                    Icons.download_rounded,
+                    size: 18,
+                    color: context.onImageColor,
+                  ),
                 ),
               ),
             ),

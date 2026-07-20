@@ -91,4 +91,15 @@ void main() {
       expect(category.pathSegments, <String>['category', 'picacg', '校园/恋爱 中文']);
     },
   );
+
+  test('detail subpage routes encode source and comic ids', () {
+    expect(
+      detailChaptersRoute(sourceKey: 'pica source', comicId: 'comic/id'),
+      '/detail/pica%20source/comic%2Fid/chapters',
+    );
+    expect(
+      detailCommentsRoute(sourceKey: 'pica source', comicId: 'comic/id'),
+      '/detail/pica%20source/comic%2Fid/comments',
+    );
+  });
 }
