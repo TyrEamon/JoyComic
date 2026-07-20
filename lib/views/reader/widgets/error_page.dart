@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../utils/reader_utils.dart';
@@ -11,12 +12,16 @@ class ErrorPage extends StatefulWidget {
     required this.onRetry,
     this.canPop = false,
     this.extraButton,
+    this.traceId,
+    this.onOpenLogs,
   });
 
   final String errorMessage;
   final Function() onRetry;
   final bool canPop;
   final Widget? extraButton;
+  final String? traceId;
+  final VoidCallback? onOpenLogs;
 
   @override
   State<ErrorPage> createState() => _ErrorPageState();
@@ -40,6 +45,15 @@ class _ErrorPageState extends State<ErrorPage> {
               style: context.textTheme.bodyMedium,
             ),
           ),
+          if (widget.traceId != null && widget.traceId!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: SelectableText(
+                'trace ${widget.traceId}',
+                style: context.textTheme.bodySmall,
+                textAlign: TextAlign.center,
+              ),
+            ),
           Row(
             spacing: 8,
             mainAxisAlignment: MainAxisAlignment.center,
@@ -53,6 +67,19 @@ class _ErrorPageState extends State<ErrorPage> {
                 ),
             ],
           ),
+          if (widget.onOpenLogs != null || widget.traceId != null)
+            TextButton(
+              onPressed: () {
+                if (widget.onOpenLogs != null) {
+                  widget.onOpenLogs!();
+                  return;
+                }
+                final id = widget.traceId;
+                if (id == null || id.isEmpty) return;
+                Clipboard.setData(ClipboardData(text: id));
+              },
+              child: const Text('查看诊断日志'),
+            ),
           ?widget.extraButton,
         ],
       ),

@@ -210,6 +210,14 @@ class _ReaderContent extends StatelessWidget {
                 errorMessage: loadingErrorMessage ?? '加载失败',
                 onRetry: context.reader.retry,
                 canPop: true,
+                traceId: context.reader.traceId,
+                onOpenLogs: () {
+                  try {
+                    context.push('/logs');
+                  } catch (_) {
+                    // Navigation unavailable — trace ID remains copyable.
+                  }
+                },
               ),
               ReaderLoadState.loading => const _ReaderLoadingView(
                 message: '正在加载章节图片…',

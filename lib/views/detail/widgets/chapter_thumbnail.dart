@@ -1,18 +1,17 @@
-import 'package:cached_network_image_ce/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../../theme/app_theme_context.dart';
+import '../../reader/utils/reader_image_provider.dart';
+import '../../reader/utils/source_aware_image.dart';
 
 class ChapterThumbnail extends StatefulWidget {
   const ChapterThumbnail({
     super.key,
     required this.load,
-    this.headers,
     this.fit = BoxFit.cover,
   });
 
-  final Future<String?> Function() load;
-  final Map<String, dynamic>? headers;
+  final Future<SourceAwareImageDescriptor?> Function() load;
   final BoxFit fit;
 
   @override
@@ -20,7 +19,7 @@ class ChapterThumbnail extends StatefulWidget {
 }
 
 class _ChapterThumbnailState extends State<ChapterThumbnail> {
-  late Future<String?> _future;
+  late Future<SourceAwareImageDescriptor?> _future;
 
   @override
   void initState() {
@@ -36,17 +35,27 @@ class _ChapterThumbnailState extends State<ChapterThumbnail> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<String?>(
+    return FutureBuilder<SourceAwareImageDescriptor?>(
       future: _future,
       builder: (context, snapshot) {
-        final url = snapshot.data;
-        if (url == null || url.isEmpty) return const _Placeholder();
-        return CachedNetworkImage(
-          imageUrl: url,
-          httpHeaders: widget.headers?.cast<String, String>(),
+        final descriptor = snapshot.data;
+        if (descriptor == null || descriptor.url.isEmpty) {
+          return const _Placeholder();
+        }
+        return Image(
+          image: readerImageProvider(
+            url: descriptor.url,
+            cacheKey: descriptor.cacheKey,
+            fallbackUrls: descriptor.fallbackUrls,
+            headers: descriptor.headers,
+            bytesTransformer: descriptor.bytesTransformer,
+          ),
           fit: widget.fit,
-          placeholder: (_, __) => const _Placeholder(),
           errorBuilder: (_, __, ___) => const _Placeholder(),
+          frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+            if (wasSynchronouslyLoaded || frame != null) return child;
+            return const _Placeholder();
+          },
         );
       },
     );

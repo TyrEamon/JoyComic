@@ -68,6 +68,17 @@ class ReaderAppBar extends StatelessWidget {
                 ],
               ),
             ),
+            IconButton(
+              tooltip: '查看诊断日志',
+              icon: Icon(Icons.bug_report_outlined, color: foreground),
+              onPressed: () {
+                try {
+                  context.push('/logs');
+                } catch (_) {
+                  // Keep reading if log route is unavailable.
+                }
+              },
+            ),
           ],
         ),
       ),

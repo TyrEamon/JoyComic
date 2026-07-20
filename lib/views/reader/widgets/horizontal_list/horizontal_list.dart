@@ -40,6 +40,7 @@ class _HorizontalListState extends State<HorizontalList> {
       items: reader.images,
       type: reader.readerType,
       maxPreloadCount: ReaderConf.instance.preloadImageCount,
+      traceId: reader.traceId,
     );
     reader.initPreloadController(_preloadController!);
   }
@@ -171,16 +172,26 @@ class _HorizontalListState extends State<HorizontalList> {
                 : singleCacheWidth;
             context.reader.updatePreloadCacheWidth(cacheWidth);
 
+            final traceId = context.reader.traceId;
             // 构建 PhotoViewGallery 页面选项列表
             final pageOptions = List.generate(pageCount, (index) {
               if (!readMode.isDoublePage) {
-                return _buildSinglePageOptions(images[index], singleCacheWidth);
+                return _buildSinglePageOptions(
+                  images[index],
+                  singleCacheWidth,
+                  imageIndex: index,
+                  traceId: traceId,
+                );
               }
+              // Double-page gallery index maps to absolute image base index.
+              final baseIndex = toCorrectSinglePageNo(index, 2);
               return _buildDoublePageOptions(
                 multiPageImages[index],
                 readMode,
                 doubleCacheWidth,
                 constraints,
+                baseIndex: baseIndex,
+                traceId: traceId,
               );
             });
 
@@ -223,8 +234,10 @@ class _HorizontalListState extends State<HorizontalList> {
 
   PhotoViewGalleryPageOptions _buildSinglePageOptions(
     ReaderImage item,
-    int cacheWidth,
-  ) {
+    int cacheWidth, {
+    required int imageIndex,
+    String? traceId,
+  }) {
     return PhotoViewGalleryPageOptions(
       minScale: PhotoViewComputedScale.contained * 1.0,
       maxScale: PhotoViewComputedScale.covered * 4.0,
@@ -235,13 +248,17 @@ class _HorizontalListState extends State<HorizontalList> {
         headers: item.headers,
         bytesTransformer: item.bytesTransformer,
         cacheWidth: cacheWidth,
+        traceId: traceId,
+        imageIndex: imageIndex,
       ),
       filterQuality: FilterQuality.medium,
       errorBuilder: (context, error, stackTrace) {
         final scheme = Theme.of(context).colorScheme;
-        final detail = error.toString().replaceFirst(
-          RegExp(r'^Exception:\s*'),
-          '',
+        // Prefer sanitized diagnostics; never surface raw network payloads.
+        final detail = ReaderDiagnostics.sanitizeCaughtError(
+          error,
+          candidateUrl: item.url,
+          headers: item.headers,
         );
         return ColoredBox(
           color: scheme.surfaceContainerHighest.withValues(alpha: 0.35),
@@ -289,6 +306,8 @@ class _HorizontalListState extends State<HorizontalList> {
                         headers: item.headers,
                         bytesTransformer: item.bytesTransformer,
                         cacheWidth: cacheWidth,
+                        traceId: traceId,
+                        imageIndex: imageIndex,
                       ).evict();
                       if (mounted) setState(() {});
                     },
@@ -308,42 +327,58 @@ class _HorizontalListState extends State<HorizontalList> {
     List<ReaderImage> items,
     ReadMode readMode,
     int cacheWidth,
-    BoxConstraints constraints,
-  ) {
+    BoxConstraints constraints, {
+    required int baseIndex,
+    String? traceId,
+  }) {
     return PhotoViewGalleryPageOptions.customChild(
       childSize: Size(constraints.maxWidth, constraints.maxHeight) * 2,
       minScale: PhotoViewComputedScale.contained * 1.0,
       maxScale: PhotoViewComputedScale.covered * 10.0,
-      child: _buildPageImagesRow(items, readMode.isReverse, cacheWidth),
+      child: _buildPageImagesRow(
+        items,
+        readMode.isReverse,
+        cacheWidth,
+        baseIndex: baseIndex,
+        traceId: traceId,
+      ),
     );
   }
 
   Widget _buildPageImagesRow(
     List<ReaderImage> items,
     bool isReverse,
-    int cacheWidth,
-  ) {
-    final correctImages = isReverse ? items.reversed.toList() : items;
+    int cacheWidth, {
+    required int baseIndex,
+    String? traceId,
+  }) {
+    // Keep absolute gallery indexes even when RTL reverses visual order.
+    final indexed = <(int, ReaderImage)>[
+      for (var i = 0; i < items.length; i++) (baseIndex + i, items[i]),
+    ];
+    final ordered = isReverse ? indexed.reversed.toList() : indexed;
     return Row(
-      children: correctImages.asMap().entries.map((entry) {
-        final idx = entry.key;
-        final item = entry.value;
-        final count = correctImages.length;
-        return Expanded(
-          child: img_widget.ReaderImage(
-            key: ValueKey(item.cacheKey),
-            url: item.url,
-            cacheKey: item.cacheKey,
-            headers: item.headers,
-            fallbackUrls: item.fallbackUrls,
-            bytesTransformer: item.bytesTransformer,
-            cacheWidth: cacheWidth,
-            alignment: count == 1
-                ? Alignment.center
-                : (idx == 0 ? Alignment.centerRight : Alignment.centerLeft),
+      children: [
+        for (var visualSlot = 0; visualSlot < ordered.length; visualSlot++)
+          Expanded(
+            child: img_widget.ReaderImage(
+              key: ValueKey(ordered[visualSlot].$2.cacheKey),
+              url: ordered[visualSlot].$2.url,
+              cacheKey: ordered[visualSlot].$2.cacheKey,
+              headers: ordered[visualSlot].$2.headers,
+              fallbackUrls: ordered[visualSlot].$2.fallbackUrls,
+              bytesTransformer: ordered[visualSlot].$2.bytesTransformer,
+              cacheWidth: cacheWidth,
+              traceId: traceId,
+              imageIndex: ordered[visualSlot].$1,
+              alignment: ordered.length == 1
+                  ? Alignment.center
+                  : (visualSlot == 0
+                        ? Alignment.centerRight
+                        : Alignment.centerLeft),
+            ),
           ),
-        );
-      }).toList(),
+      ],
     );
   }
 

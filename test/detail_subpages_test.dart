@@ -21,6 +21,24 @@ void main() {
     expect(chapters, contains('showChapterDownloadSheet('));
   });
 
+  test(
+    'recent and full chapter surfaces route thumbnails through the descriptor API',
+    () {
+      final detail = File('lib/views/detail/detail_page.dart').readAsStringSync();
+      final chapters = File(
+        'lib/views/detail/detail_chapters_page.dart',
+      ).readAsStringSync();
+      final thumbnail = File(
+        'lib/views/detail/widgets/chapter_thumbnail.dart',
+      ).readAsStringSync();
+      expect(detail, contains('loadChapterThumbnailDescriptor'));
+      expect(chapters, contains('loadChapterThumbnailDescriptor'));
+      expect(thumbnail, contains('readerImageProvider'));
+      expect(thumbnail, isNot(contains('CachedNetworkImage')));
+      expect(thumbnail, contains('bytesTransformer'));
+    },
+  );
+
   testWidgets('full chapters page exposes download and empty states', (
     tester,
   ) async {

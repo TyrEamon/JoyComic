@@ -20,6 +20,7 @@ import '../state/comic_state.dart';
 import '../state/read_mode.dart';
 import '../utils/reader_utils.dart';
 import '../utils/reader_image_provider.dart';
+import '../utils/source_aware_image.dart';
 import '../widgets/toast.dart';
 
 // ============================ 图片类型 ============================
@@ -98,6 +99,11 @@ enum ReaderLoadState { idle, loading, success, error }
 abstract class ImagePreloadControllerRef {
   int? get cacheWidth;
   set cacheWidth(int? v);
+
+  /// Active reader load trace for correlated preload failure logs.
+  String? get traceId;
+  set traceId(String? value);
+
   void replaceItems(List<ReaderImage> items);
   void onAnchorChanged(List<int> anchors);
   void invalidatePreloaded();
@@ -227,6 +233,10 @@ class ReaderProvider extends ChangeNotifier {
   String? _loadingErrorMessage;
   String? get loadingErrorMessage => _loadingErrorMessage;
 
+  /// Short-lived correlation id for one chapter load pipeline.
+  String? _traceId;
+  String? get traceId => _traceId;
+
   int _loadGeneration = 0;
   bool _disposed = false;
 
@@ -239,17 +249,24 @@ class ReaderProvider extends ChangeNotifier {
     final generation = ++_loadGeneration;
     final chapterSnapshot = _chapter;
     final imageLoader = _imageLoader;
+    final trace = ReaderDiagnostics.newTraceId();
+    _traceId = trace;
+    _preloadController?.traceId = trace;
 
     _loadingState = ReaderLoadState.loading;
     _loadingErrorMessage = null;
     notifyListeners();
 
+    Log.i(
+      'Reader load begin',
+      'trace=$trace source=$_sourceKey comic=$id chapter=${chapterSnapshot.id} '
+      'mode=$_readMode page=$_pageNo',
+    );
+
     if (imageLoader == null) {
       _setLoadError(generation, chapterSnapshot, '未配置章节图片加载器');
       return;
     }
-
-    Log.i('Reader load images', 'chapter: ${chapterSnapshot.id}');
 
     try {
       final res = await imageLoader(
@@ -259,10 +276,18 @@ class ReaderProvider extends ChangeNotifier {
       if (!_isCurrentLoad(generation, chapterSnapshot)) return;
 
       if (res.error) {
+        final display = res.errorMessage ?? '加载章节图片失败';
+        final logDetail = ReaderDiagnostics.formatProviderLoadFailure(
+          traceId: trace,
+          chapterId: chapterSnapshot.id,
+          error: res.errorMessage ?? 'unknown',
+        );
+        Log.e('Reader API failed', error: logDetail);
         _setLoadError(
           generation,
           chapterSnapshot,
-          res.errorMessage ?? '加载章节图片失败',
+          display,
+          logDetail: logDetail,
         );
         return;
       }
@@ -271,18 +296,27 @@ class ReaderProvider extends ChangeNotifier {
           .map((url) => url.trim())
           .where((url) => url.isNotEmpty)
           .toList(growable: false);
+      Log.i(
+        'Reader API ok',
+        'trace=$trace chapter=${chapterSnapshot.id} urls=${urls.length}',
+      );
       if (urls.isEmpty) {
         _setLoadError(generation, chapterSnapshot, '该章节暂无图片');
         return;
       }
 
       final images = <ReaderImage>[
-        for (final url in urls) _resolveReaderImage(url, chapterSnapshot.id),
+        for (var i = 0; i < urls.length; i++)
+          _resolveReaderImage(urls[i], chapterSnapshot.id, i),
       ];
       if (!_isCurrentLoad(generation, chapterSnapshot)) return;
 
       _images = List<ReaderImage>.unmodifiable(images);
-      Log.i('Reader loaded', '${_images.length} images');
+      Log.i(
+        'Reader loaded',
+        'trace=$trace chapter=${chapterSnapshot.id} images=${_images.length} '
+        'state=success',
+      );
       _multiPageImagesCache = null;
       if (_pageNo >= _images.length) {
         _pageNo = _images.length - 1;
@@ -301,44 +335,41 @@ class ReaderProvider extends ChangeNotifier {
       notifyListeners();
     } catch (error, stackTrace) {
       if (!_isCurrentLoad(generation, chapterSnapshot)) return;
-      Log.e('Reader load threw', error: error, stackTrace: stackTrace);
+      final logDetail = ReaderDiagnostics.formatProviderLoadFailure(
+        traceId: trace,
+        chapterId: chapterSnapshot.id,
+        error: error,
+      );
+      final redacted = ReaderDiagnostics.redactStackTrace(stackTrace);
+      Log.e(
+        'Reader load threw',
+        error: logDetail,
+        stackTrace: redacted == null ? null : StackTrace.fromString(redacted),
+      );
       _setLoadError(
         generation,
         chapterSnapshot,
         '章节图片加载失败：${_readableError(error)}',
+        logDetail: logDetail,
       );
     }
   }
 
-  ReaderImage _resolveReaderImage(String imageKey, String episodeId) {
+  ReaderImage _resolveReaderImage(
+    String imageKey,
+    String episodeId,
+    int index,
+  ) {
     final config = _imageConfigResolver?.call(imageKey, id, episodeId);
-    final configuredUrl = config?['url'];
-    final url = configuredUrl is String && configuredUrl.trim().isNotEmpty
-        ? configuredUrl.trim()
-        : imageKey;
-    final configuredCacheKey = config?['cacheKey'];
-    final cacheKey =
-        configuredCacheKey is String && configuredCacheKey.trim().isNotEmpty
-        ? configuredCacheKey.trim()
-        : imageKey;
-    final isStructured =
-        config?.containsKey('url') == true ||
-        config?.containsKey('headers') == true ||
-        config?.containsKey('cacheKey') == true ||
-        config?.containsKey('method') == true ||
-        config?.containsKey('fallbackUrls') == true ||
-        config?.containsKey('transform') == true;
-    final headers = _stringHeaders(isStructured ? config!['headers'] : config);
-    final fallbackUrls = <String>[];
-    final rawFallbacks = config?['fallbackUrls'];
-    if (rawFallbacks is Iterable) {
-      for (final fallback in rawFallbacks) {
-        if (fallback is String && fallback.trim().isNotEmpty) {
-          fallbackUrls.add(fallback.trim());
-        }
-      }
-    }
-    ReaderImageBytesTransformer? bytesTransformer;
+    final descriptor = SourceAwareImageDescriptor.resolve(
+      imageKey: imageKey,
+      comicId: id,
+      episodeId: episodeId,
+      config: config,
+    );
+
+    // Rebuild JM transformer with the active load trace for correlated logs.
+    ReaderImageBytesTransformer? bytesTransformer = descriptor.bytesTransformer;
     final transform = config?['transform'];
     if (transform is Map && transform['type']?.toString() == 'jm') {
       final transformEpisode = transform['episodeId']?.toString() ?? '';
@@ -347,39 +378,61 @@ class ReaderProvider extends ChangeNotifier {
         bytesTransformer = jmReaderTransformer(
           episodeId: transformEpisode,
           imageName: transformImageName,
+          traceId: _traceId,
         );
       }
     }
+
+    final isStructured =
+        config?.containsKey('url') == true ||
+        config?.containsKey('headers') == true ||
+        config?.containsKey('cacheKey') == true ||
+        config?.containsKey('method') == true ||
+        config?.containsKey('fallbackUrls') == true ||
+        config?.containsKey('transform') == true;
+
+    Log.i(
+      'Reader image config',
+      'trace=$_traceId idx=$index structured=$isStructured '
+      'fallbacks=${descriptor.fallbackUrls.length} '
+      'jm=${bytesTransformer != null} '
+      'cache=${ReaderDiagnostics.cacheKeySummary(descriptor.cacheKey)} '
+      'headers=${ReaderDiagnostics.headerSummary(descriptor.headers)} '
+      'url=${ReaderDiagnostics.redactUrl(descriptor.url)}',
+    );
+
     return ReaderImage(
-      url: url,
-      cacheKey: cacheKey,
-      headers: headers,
-      fallbackUrls: List<String>.unmodifiable(fallbackUrls),
+      url: descriptor.url,
+      cacheKey: descriptor.cacheKey,
+      headers: descriptor.headers,
+      fallbackUrls: descriptor.fallbackUrls,
       bytesTransformer: bytesTransformer,
     );
   }
 
+  /// Sets the error UI state.
+  ///
+  /// [message] is the user-facing display string (may retain useful API text).
+  /// [logDetail] is the only text persisted to [Log]; when omitted a sanitized
+  /// detail is derived from [message] so raw network/API text is never logged.
   void _setLoadError(
     int generation,
     ReaderChapter chapterSnapshot,
-    String message,
-  ) {
+    String message, {
+    String? logDetail,
+  }) {
     if (!_isCurrentLoad(generation, chapterSnapshot)) return;
     _loadingState = ReaderLoadState.error;
     _loadingErrorMessage = message;
-    Log.e('Reader load failed', error: message);
+    final safeDetail =
+        logDetail ??
+        ReaderDiagnostics.formatProviderLoadFailure(
+          traceId: _traceId,
+          chapterId: chapterSnapshot.id,
+          error: message,
+        );
+    Log.e('Reader load failed', error: safeDetail);
     notifyListeners();
-  }
-
-  static Map<String, String>? _stringHeaders(Object? value) {
-    if (value is! Map) return null;
-    final headers = <String, String>{};
-    for (final entry in value.entries) {
-      if (entry.key is String && entry.value != null) {
-        headers[entry.key as String] = entry.value.toString();
-      }
-    }
-    return headers.isEmpty ? null : Map<String, String>.unmodifiable(headers);
   }
 
   static String _readableError(Object error) {
@@ -816,6 +869,7 @@ class ReaderProvider extends ChangeNotifier {
   /// 在章节切换 / 图片加载完成后能通知预加载控制器。
   void initPreloadController(ImagePreloadControllerRef controller) {
     _preloadController = controller;
+    controller.traceId = _traceId;
   }
 
   /// 更新预加载解码宽度（与显示端保持一致，保证 ImageCache 命中）。

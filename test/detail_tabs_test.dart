@@ -8,6 +8,7 @@ import 'package:joycomic/theme/app_theme.dart';
 import 'package:joycomic/views/detail/widgets/chapter_thumbnail.dart';
 import 'package:joycomic/views/detail/widgets/comment_composer.dart';
 import 'package:joycomic/views/detail/widgets/detail_app_bar.dart';
+import 'package:joycomic/views/reader/utils/source_aware_image.dart';
 
 void main() {
   test(
@@ -82,8 +83,8 @@ void main() {
     tester,
   ) async {
     var calls = 0;
-    final completer = Completer<String?>();
-    Future<String?> loader() {
+    final completer = Completer<SourceAwareImageDescriptor?>();
+    Future<SourceAwareImageDescriptor?> loader() {
       calls++;
       return completer.future;
     }

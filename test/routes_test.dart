@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:joycomic/comic_source/comic_source.dart';
@@ -54,6 +56,29 @@ void main() {
     expect(find.text('404'), findsOneWidget);
     expect(find.text('阅读器参数无效'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  test('reader error and menu expose diagnostics log navigation', () {
+    final errorPage = File(
+      'lib/views/reader/widgets/error_page.dart',
+    ).readAsStringSync();
+    final reader = File('lib/views/reader/reader.dart').readAsStringSync();
+    final appBar = File(
+      'lib/views/reader/widgets/app_bar.dart',
+    ).readAsStringSync();
+    expect(
+      errorPage.contains('查看诊断日志') || reader.contains('查看诊断日志'),
+      isTrue,
+    );
+    expect(
+      reader.contains("'/logs'") ||
+          reader.contains('"/logs"') ||
+          appBar.contains("'/logs'") ||
+          appBar.contains('"/logs"') ||
+          errorPage.contains("'/logs'") ||
+          errorPage.contains('"/logs"'),
+      isTrue,
+    );
   });
 
   testWidgets('search route forwards q and submits the initial query', (

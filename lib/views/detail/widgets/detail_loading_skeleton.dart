@@ -6,6 +6,7 @@ import 'package:joycomic/theme/app_theme_context.dart';
 
 import '../../../theme/app_radius.dart';
 import '../../../theme/app_spacing.dart';
+import 'detail_hero_geometry.dart';
 
 class DetailLoadingSkeleton extends StatelessWidget {
   const DetailLoadingSkeleton({super.key});
@@ -19,14 +20,15 @@ class DetailLoadingSkeleton extends StatelessWidget {
         final width = constraints.maxWidth.isFinite
             ? constraints.maxWidth
             : MediaQuery.sizeOf(context).width;
-        final coverWidth = width >= 900
-            ? 188.0
-            : width >= 600
-            ? 164.0
-            : (width * 0.34).clamp(116.0, 144.0);
-        final backdropHeight = width >= 600 ? 340.0 : 300.0;
-        final seamTop = backdropHeight - 34;
-        final totalHeight = backdropHeight + (width >= 600 ? 190.0 : 170.0);
+        final mediaPadding = MediaQuery.paddingOf(context);
+        final appBarReserved = mediaPadding.top + 52 + AppSpacing.sm;
+        final textScale = MediaQuery.textScalerOf(context).scale(1);
+        final geometry = DetailHeroGeometry.calculate(
+          layoutWidth: width,
+          appBarReserved: appBarReserved,
+          textScale: textScale,
+          sectionSpacing: AppSpacing.md,
+        );
 
         return SingleChildScrollView(
           physics: const NeverScrollableScrollPhysics(),
@@ -35,7 +37,7 @@ class DetailLoadingSkeleton extends StatelessWidget {
             children: [
               SizedBox(
                 key: const ValueKey('detail-skeleton-hero'),
-                height: totalHeight,
+                height: geometry.totalHeight,
                 child: Stack(
                   clipBehavior: Clip.none,
                   children: [
@@ -43,13 +45,13 @@ class DetailLoadingSkeleton extends StatelessWidget {
                       left: 0,
                       right: 0,
                       top: 0,
-                      height: backdropHeight,
+                      height: geometry.backdropHeight,
                       child: ColoredBox(color: elevated),
                     ),
                     Positioned(
                       left: 0,
                       right: 0,
-                      top: seamTop,
+                      top: geometry.surfaceTop,
                       bottom: 0,
                       child: DecoratedBox(
                         decoration: BoxDecoration(
@@ -63,8 +65,8 @@ class DetailLoadingSkeleton extends StatelessWidget {
                     Positioned(
                       key: const ValueKey('detail-skeleton-cover'),
                       left: AppSpacing.md,
-                      top: seamTop - coverWidth * 0.56,
-                      width: coverWidth,
+                      top: geometry.coverTop,
+                      width: geometry.coverWidth,
                       child: AspectRatio(
                         aspectRatio: 3 / 4,
                         child: DecoratedBox(
@@ -76,16 +78,29 @@ class DetailLoadingSkeleton extends StatelessWidget {
                       ),
                     ),
                     Positioned(
-                      left: AppSpacing.md + coverWidth + AppSpacing.md,
+                      left: AppSpacing.md + geometry.coverWidth + AppSpacing.md,
                       right: AppSpacing.md,
-                      top: seamTop - 72,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _Bone(width: width * 0.42, height: 22, color: muted),
-                          const SizedBox(height: AppSpacing.sm),
-                          _Bone(width: width * 0.28, height: 14, color: muted),
-                        ],
+                      top: geometry.titleBandTop,
+                      height: geometry.titleBandHeight,
+                      child: Align(
+                        alignment: Alignment.bottomLeft,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _Bone(
+                              width: width * 0.42,
+                              height: 22,
+                              color: muted,
+                            ),
+                            const SizedBox(height: AppSpacing.sm),
+                            _Bone(
+                              width: width * 0.28,
+                              height: 14,
+                              color: muted,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ],
@@ -96,6 +111,7 @@ class DetailLoadingSkeleton extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    SizedBox(height: geometry.sectionSpacing),
                     Wrap(
                       spacing: AppSpacing.sm,
                       runSpacing: AppSpacing.sm,

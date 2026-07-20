@@ -304,6 +304,8 @@ class _ContentState extends State<_Content> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // Metadata starts after the floating cover bottom; hero stack
+                // ends at coverBottom so only this design spacing remains.
                 const SizedBox(height: AppSpacing.md),
                 DetailMetadata(
                   authors: info.authors,
@@ -338,14 +340,13 @@ class _ContentState extends State<_Content> {
                 const SizedBox(height: AppSpacing.sectionGap),
                 RecentChapterStrip(
                   chapters: vm.chapters,
-                  loadThumbnail: vm.loadChapterThumbnail,
+                  loadThumbnail: vm.loadChapterThumbnailDescriptor,
                   onSelect: (chapter) => openDetailReader(context, vm, chapter),
                   onShowAll: () => openDetailChapters(
                     context,
                     sourceKey: vm.sourceKey,
                     comicId: info.comicId,
                   ),
-                  coverHeaders: vm.coverHeaders,
                 ),
                 const SizedBox(height: AppSpacing.md),
                 DetailActions(
@@ -382,7 +383,12 @@ class _ContentState extends State<_Content> {
                     ),
                   ),
                 ],
-                const SizedBox(height: AppSpacing.xl),
+                // System bottom inset + design spacing; no fixed action bar.
+                SizedBox(
+                  key: const ValueKey('detail-bottom-safe-padding'),
+                  height:
+                      MediaQuery.paddingOf(context).bottom + AppSpacing.xl,
+                ),
               ],
             ),
           ),

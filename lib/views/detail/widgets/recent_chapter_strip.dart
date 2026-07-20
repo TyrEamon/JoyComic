@@ -10,6 +10,7 @@ import '../../../theme/app_gradients.dart';
 import '../../../theme/app_radius.dart';
 import '../../../theme/app_spacing.dart';
 import '../../../theme/app_typography.dart';
+import '../../reader/utils/source_aware_image.dart';
 import 'chapter_thumbnail.dart';
 
 class RecentChapterStrip extends StatelessWidget {
@@ -19,7 +20,6 @@ class RecentChapterStrip extends StatelessWidget {
     required this.loadThumbnail,
     required this.onSelect,
     required this.onShowAll,
-    this.coverHeaders,
   });
 
   /// Keep only a little extra beyond the visible cards so off-screen
@@ -27,10 +27,10 @@ class RecentChapterStrip extends StatelessWidget {
   static const double listCacheExtent = 96;
 
   final List<ComicChapter> chapters;
-  final Future<String?> Function(ComicChapter chapter) loadThumbnail;
+  final Future<SourceAwareImageDescriptor?> Function(ComicChapter chapter)
+  loadThumbnail;
   final ValueChanged<ComicChapter> onSelect;
   final VoidCallback onShowAll;
-  final Map<String, dynamic>? coverHeaders;
 
   @override
   Widget build(BuildContext context) {
@@ -93,7 +93,6 @@ class RecentChapterStrip extends StatelessWidget {
                     chapter: chapter,
                     isLatest: chapter.id == chapters.last.id,
                     thumbnail: loadThumbnail(chapter),
-                    coverHeaders: coverHeaders,
                     onTap: () => onSelect(chapter),
                   );
                 },
@@ -110,14 +109,12 @@ class _RecentChapterCard extends StatelessWidget {
     required this.chapter,
     required this.isLatest,
     required this.thumbnail,
-    required this.coverHeaders,
     required this.onTap,
   });
 
   final ComicChapter chapter;
   final bool isLatest;
-  final Future<String?> thumbnail;
-  final Map<String, dynamic>? coverHeaders;
+  final Future<SourceAwareImageDescriptor?> thumbnail;
   final VoidCallback onTap;
 
   @override
@@ -146,10 +143,7 @@ class _RecentChapterCard extends StatelessWidget {
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      ChapterThumbnail(
-                        load: () => thumbnail,
-                        headers: coverHeaders,
-                      ),
+                      ChapterThumbnail(load: () => thumbnail),
                       Positioned(
                         left: 0,
                         right: 0,

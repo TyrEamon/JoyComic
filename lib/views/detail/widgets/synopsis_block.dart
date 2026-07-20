@@ -2,7 +2,7 @@
 ///
 /// - 顶部小标题"简介"
 /// - 多行文本框，默认折叠到 [maxLinesWhenCollapsed]
-/// - 右下角"展开/收起"文字切换按钮
+/// - 右侧独立"展开/收起"控件，不遮挡正文
 library;
 
 import 'package:flutter/material.dart';
@@ -20,6 +20,9 @@ class SynopsisBlock extends StatefulWidget {
 
   final String? text;
   final int maxLinesWhenCollapsed;
+
+  /// Width reserved on the right for the expand/collapse control.
+  static const double toggleLaneWidth = 56;
 
   @override
   State<SynopsisBlock> createState() => _SynopsisBlockState();
@@ -55,31 +58,51 @@ class _SynopsisBlockState extends State<SynopsisBlock>
     return LayoutBuilder(
       builder: (context, constraints) {
         _measureOverflowIfNeeded(context, constraints, text);
-        return Stack(
+        final showToggle = _overflows == true;
+        final toggleLane = showToggle ? SynopsisBlock.toggleLaneWidth : 0.0;
+
+        if (_expanded) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(text, style: AppTypography.body(context)),
+              if (showToggle)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: _ToggleLink(
+                    expanded: true,
+                    accent: accent,
+                    onTap: () => setState(() => _expanded = false),
+                  ),
+                ),
+            ],
+          );
+        }
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            AnimatedSize(
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOutCubic,
-              alignment: Alignment.topLeft,
-              child: Text(
-                text,
-                style: AppTypography.body(context),
-                maxLines: _expanded ? null : widget.maxLinesWhenCollapsed,
-                overflow: _expanded
-                    ? TextOverflow.visible
-                    : TextOverflow.ellipsis,
-              ),
-            ),
-            if (_overflows == true)
-              Positioned(
-                right: 0,
-                bottom: 0,
-                child: _ToggleLink(
-                  expanded: _expanded,
-                  accent: accent,
-                  onTap: () => setState(() => _expanded = !_expanded),
+            Expanded(
+              child: AnimatedSize(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                alignment: Alignment.topLeft,
+                child: Text(
+                  text,
+                  style: AppTypography.body(context),
+                  maxLines: widget.maxLinesWhenCollapsed,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
+            ),
+            if (showToggle) ...[
+              SizedBox(width: toggleLane > 0 ? 4 : 0),
+              _ToggleLink(
+                expanded: false,
+                accent: accent,
+                onTap: () => setState(() => _expanded = true),
+              ),
+            ],
           ],
         );
       },
@@ -92,12 +115,24 @@ class _SynopsisBlockState extends State<SynopsisBlock>
     String text,
   ) {
     if (_overflows != null) return;
-    final tp = TextPainter(
-      text: TextSpan(text: text, style: AppTypography.body(context)),
+    // Measure against full width first; if it overflows three lines even
+    // without the toggle lane, show the control. Re-measure with lane width
+    // subtracted so short-but-wide text is not mis-flagged.
+    final style = AppTypography.body(context);
+    final full = TextPainter(
+      text: TextSpan(text: text, style: style),
       textDirection: TextDirection.ltr,
       maxLines: widget.maxLinesWhenCollapsed,
     )..layout(maxWidth: constraints.maxWidth);
-    final overflow = tp.didExceedMaxLines;
+    final withLane = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: TextDirection.ltr,
+      maxLines: widget.maxLinesWhenCollapsed,
+    )..layout(
+      maxWidth: (constraints.maxWidth - SynopsisBlock.toggleLaneWidth)
+          .clamp(0.0, constraints.maxWidth),
+    );
+    final overflow = full.didExceedMaxLines || withLane.didExceedMaxLines;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _overflows == overflow) return;
       setState(() => _overflows = overflow);
@@ -118,25 +153,28 @@ class _ToggleLink extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.only(left: 24),
-      color: context.pageBackground,
-      child: Semantics(
-        button: true,
-        label: expanded ? '收起简介' : '展开简介',
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(4),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-              child: Text(
-                expanded ? '收起' : '展开',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: accent,
+    return Semantics(
+      button: true,
+      label: expanded ? '收起简介' : '展开简介',
+      child: Material(
+        key: const ValueKey('synopsis-toggle'),
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Text(
+                  expanded ? '收起' : '展开',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: accent,
+                  ),
                 ),
               ),
             ),

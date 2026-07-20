@@ -10,12 +10,61 @@ import 'package:joycomic/views/detail/widgets/detail_actions.dart';
 import 'package:joycomic/views/detail/widgets/detail_app_bar.dart';
 import 'package:joycomic/views/detail/widgets/detail_loading_skeleton.dart';
 import 'package:joycomic/views/detail/widgets/detail_metadata.dart';
+import 'package:joycomic/views/detail/widgets/detail_hero_geometry.dart';
 import 'package:joycomic/views/detail/widgets/hero_header.dart';
 import 'package:joycomic/views/detail/widgets/recent_chapter_strip.dart';
 import 'package:joycomic/views/detail/widgets/recommendation_carousel.dart';
 import 'package:joycomic/views/detail/widgets/synopsis_block.dart';
+import 'package:joycomic/theme/app_spacing.dart';
 
 void main() {
+  group('detail hero geometry contract', () {
+    test('mobile 3:4 cover places surface at two-thirds cover height', () {
+      final geometry = DetailHeroGeometry.calculate(
+        layoutWidth: 375,
+        appBarReserved: 76,
+        coverAspectRatio: 3 / 4,
+        sectionSpacing: AppSpacing.md,
+      );
+
+      expect(
+        geometry.surfaceTop,
+        closeTo(geometry.coverTop + geometry.coverHeight * 2 / 3, 1.0),
+      );
+      expect(geometry.coverBottom, greaterThan(geometry.surfaceTop));
+      expect(geometry.coverBottom, lessThanOrEqualTo(geometry.totalHeight));
+      expect(
+        geometry.metadataTop,
+        closeTo(geometry.coverBottom + AppSpacing.md, 1.0),
+      );
+      expect(
+        geometry.metadataTop - geometry.coverBottom,
+        closeTo(AppSpacing.md, 1.0),
+      );
+    });
+
+    test(
+      'large text title band bottoms at cover and stays below app bar band',
+      () {
+        final geometry = DetailHeroGeometry.calculate(
+          layoutWidth: 375,
+          appBarReserved: 76,
+          coverAspectRatio: 3 / 4,
+          textScale: 1.3,
+          sectionSpacing: AppSpacing.md,
+        );
+
+        expect(geometry.titleBandBottom, lessThanOrEqualTo(geometry.coverBottom));
+        expect(geometry.titleBandTop, greaterThanOrEqualTo(76));
+        expect(geometry.titleBandBottom, greaterThan(geometry.titleBandTop));
+        expect(
+          geometry.titleBandTop,
+          greaterThanOrEqualTo(geometry.appBarReserved),
+        );
+      },
+    );
+  });
+
   testWidgets('hero floats the cover across backdrop and content surface', (
     tester,
   ) async {
@@ -45,6 +94,106 @@ void main() {
     expect(find.text('8.8'), findsOneWidget);
     expect(find.byType(RatingStars), findsOneWidget);
   });
+
+  testWidgets(
+    'hero surface seam follows two-thirds cover rule across breakpoints',
+    (tester) async {
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      Future<void> assertSeamAt(Size size) async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1.0;
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: AppTheme.light(),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                padding: const EdgeInsets.only(top: 24),
+              ),
+              child: child!,
+            ),
+            home: const Scaffold(
+              body: CustomScrollView(
+                slivers: [
+                  HeroHeader(
+                    title: 'Comic',
+                    subTitle: 'Author',
+                    backgroundCover: null,
+                    frontCover: null,
+                    rating: 8.2,
+                    tags: <String>['冒险'],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
+
+        final cover = tester.getRect(
+          find.byKey(const ValueKey('detail-floating-cover')),
+        );
+        final surface = tester.getRect(
+          find.byKey(const ValueKey('detail-hero-surface')),
+        );
+        final titleBand = tester.getRect(
+          find.byKey(const ValueKey('detail-hero-title-band')),
+        );
+        final expectedSurfaceTop = cover.top + cover.height * 2 / 3;
+
+        expect(surface.top, closeTo(expectedSurfaceTop, 1.5));
+        expect(cover.bottom, greaterThan(surface.top));
+        expect(titleBand.bottom, lessThanOrEqualTo(cover.bottom + 1.5));
+        expect(tester.takeException(), isNull);
+      }
+
+      await assertSeamAt(const Size(375, 812));
+      await assertSeamAt(const Size(768, 1024));
+      await assertSeamAt(const Size(1280, 900));
+    },
+  );
+
+  testWidgets(
+    'synopsis reserves a right toggle lane so expand does not overlap text',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: SizedBox(
+              width: 280,
+              child: SynopsisBlock(
+                text:
+                    '第一行很长很长很长很长很长很长很长。第二行很长很长很长很长很长很长很长。第三行很长很长很长很长很长很长很长。第四行很长很长很长很长很长很长很长。第五行继续加长确保会超过三行折叠。',
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('展开'), findsOneWidget);
+      final bodyText = tester.widget<Text>(find.textContaining('第一行'));
+      expect(bodyText.maxLines, 3);
+
+      final textRect = tester.getRect(find.textContaining('第一行'));
+      final toggleRect = tester.getRect(find.text('展开'));
+      // Toggle is a separate right-side control; it must not overlap the body.
+      expect(toggleRect.left, greaterThanOrEqualTo(textRect.right - 1));
+      expect(toggleRect.left, greaterThan(textRect.left + textRect.width * 0.45));
+      // Hit target is at least 44 logical px via the control.
+      final toggleControl = tester.getRect(
+        find.byKey(const ValueKey('synopsis-toggle')),
+      );
+      expect(toggleControl.height, greaterThanOrEqualTo(44));
+      expect(toggleControl.width, greaterThanOrEqualTo(44));
+    },
+  );
 
   testWidgets('collapsed detail app bar shows the title and share action', (
     tester,
@@ -389,6 +538,65 @@ void main() {
     expect(find.text('相关推荐'), findsNothing);
     expect(find.text('暂无推荐'), findsNothing);
   });
+
+  testWidgets(
+    'recommendation poster titles allow two lines with a stable card height',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: RecommendationCarousel(
+              items: [
+                RecommendItem(
+                  id: '1',
+                  title: '这是一个非常非常长的推荐标题用来验证两行省略不会把卡片撑高',
+                  cover: null,
+                  author: 'Author',
+                ),
+                RecommendItem(
+                  id: '2',
+                  title: '短标题',
+                  cover: null,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final longTitle = tester.widget<Text>(
+        find.textContaining('这是一个非常非常长的推荐标题'),
+      );
+      expect(longTitle.maxLines, 2);
+
+      final carousel = tester.getRect(
+        find.byType(RecommendationCarousel),
+      );
+      // List height is fixed so mixed one/two-line titles stay stable.
+      final listSizedBox = tester.widgetList<SizedBox>(find.byType(SizedBox)).where(
+        (box) => box.height == 250 || box.height == 230 || box.height == 210,
+      );
+      expect(listSizedBox, isNotEmpty);
+      expect(carousel.height, greaterThan(180));
+    },
+  );
+
+  test(
+    'detail page appends system bottom inset to the design end spacing',
+    () {
+      final source = File(
+        'lib/views/detail/detail_page.dart',
+      ).readAsStringSync();
+      expect(source, contains("ValueKey('detail-bottom-safe-padding')"));
+      expect(
+        source,
+        contains('MediaQuery.paddingOf(context).bottom + AppSpacing.xl'),
+      );
+      expect(source, isNot(contains('StickyActionBar')));
+    },
+  );
 
   testWidgets('approved composition renders without overflow at breakpoints', (
     tester,

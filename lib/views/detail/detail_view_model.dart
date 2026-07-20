@@ -14,6 +14,7 @@ import '../../database/read_record_helper.dart';
 import '../../foundation/detail_rating.dart';
 import '../../foundation/log.dart';
 import '../../network/res.dart';
+import '../reader/utils/source_aware_image.dart';
 
 /// 详情页加载状态。
 enum DetailLoadState { idle, loading, success, error }
@@ -43,8 +44,8 @@ class DetailViewModel extends ChangeNotifier {
   final Pool _thumbnailPool = Pool(3);
   final Map<String, Future<Res<List<String>>>> _chapterPageRequests =
       <String, Future<Res<List<String>>>>{};
-  final Map<String, Future<String?>> _chapterThumbnailRequests =
-      <String, Future<String?>>{};
+  final Map<String, Future<SourceAwareImageDescriptor?>>
+  _chapterThumbnailRequests = <String, Future<SourceAwareImageDescriptor?>>{};
 
   bool _disposed = false;
   int _commentGeneration = 0;
@@ -391,18 +392,58 @@ class DetailViewModel extends ChangeNotifier {
     }
   }
 
-  Future<String?> loadChapterThumbnail(ComicChapter chapter) {
+  /// Source-aware first-page thumbnail for chapter cards.
+  ///
+  /// Routes through [ComicSource.getImageLoadingConfig] so JM thumbs use the
+  /// same scramble transformer / cache key / fallbacks as the reader.
+  Future<SourceAwareImageDescriptor?> loadChapterThumbnailDescriptor(
+    ComicChapter chapter,
+  ) {
     return _chapterThumbnailRequests.putIfAbsent(
       chapter.id,
-      () => _thumbnailPool.withResource(() async {
-        final direct = _directChapterThumbnail(chapter);
-        if (direct != null) return direct;
-        final pages = await loadChapterPages(chapter);
-        if (pages.error || pages.data.isEmpty) return null;
-        final first = pages.data.first.trim();
-        return first.isEmpty ? null : first;
-      }),
+      () => _thumbnailPool.withResource(
+        () => _loadChapterThumbnailDescriptor(chapter),
+      ),
     );
+  }
+
+  /// Back-compat alias used only by tests that still call the old name.
+  Future<String?> loadChapterThumbnail(ComicChapter chapter) async {
+    final descriptor = await loadChapterThumbnailDescriptor(chapter);
+    return descriptor?.url;
+  }
+
+  Future<SourceAwareImageDescriptor?> _loadChapterThumbnailDescriptor(
+    ComicChapter chapter,
+  ) async {
+    final imageKey = await _chapterThumbnailImageKey(chapter);
+    if (imageKey == null || imageKey.isEmpty) return null;
+
+    final source = ComicSource.find(sourceKey);
+    Map<String, dynamic>? config;
+    final resolver = source?.getImageLoadingConfig;
+    if (resolver != null) {
+      config = resolver(imageKey, comicId, chapter.id);
+    }
+    // Headers-only fallback when the source has no structured page config.
+    final thumbnailHeaders = source?.getThumbnailLoadingConfig?.call(imageKey);
+
+    return SourceAwareImageDescriptor.resolve(
+      imageKey: imageKey,
+      comicId: comicId,
+      episodeId: chapter.id,
+      config: config,
+      thumbnailHeaders: thumbnailHeaders,
+    );
+  }
+
+  Future<String?> _chapterThumbnailImageKey(ComicChapter chapter) async {
+    final direct = _directChapterThumbnail(chapter);
+    if (direct != null) return direct;
+    final pages = await loadChapterPages(chapter);
+    if (pages.error || pages.data.isEmpty) return null;
+    final first = pages.data.first.trim();
+    return first.isEmpty ? null : first;
   }
 
   String? _directChapterThumbnail(ComicChapter chapter) {

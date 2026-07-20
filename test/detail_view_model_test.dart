@@ -188,17 +188,62 @@ void main() {
 
       final first = await Future.wait([
         for (final chapter in viewModel.chapters)
-          viewModel.loadChapterThumbnail(chapter),
+          viewModel.loadChapterThumbnailDescriptor(chapter),
       ]);
       final second = await Future.wait([
         for (final chapter in viewModel.chapters)
-          viewModel.loadChapterThumbnail(chapter),
+          viewModel.loadChapterThumbnailDescriptor(chapter),
       ]);
 
-      expect(first.whereType<String>(), hasLength(6));
-      expect(second, first);
+      expect(first.whereType<Object>(), hasLength(6));
+      expect(second.map((d) => d?.url), first.map((d) => d?.url));
       expect(pageCalls, 6);
       expect(maxActive, lessThanOrEqualTo(3));
+    },
+  );
+
+  test(
+    'JM chapter thumbnail descriptor includes transform fallbacks and cache key',
+    () async {
+      final chapters = <ComicChapter>[
+        const ComicChapter(id: 'ep-9', title: 'Chapter 9', order: 9),
+      ];
+      final source = ComicSource.named(
+        name: 'JM thumbs',
+        key: 'jm-thumbs',
+        filePath: 'test',
+        loadComicInfo: (_) async =>
+            Res<ComicInfoData>(_detailInfo(chapters: chapters)),
+        loadComicPages: (_, chapterId) async => Res<List<String>>(
+          <String>['https://cdn.example/media/$chapterId/00001.webp'],
+        ),
+        getImageLoadingConfig: (imageKey, comicId, epId) => <String, dynamic>{
+          'url': imageKey,
+          'cacheKey': 'jm|$comicId|$epId|00001',
+          'headers': <String, String>{'Referer': 'https://jm.example/'},
+          'fallbackUrls': <String>['https://cdn2.example/media/$epId/00001.webp'],
+          'transform': <String, String>{
+            'type': 'jm',
+            'episodeId': epId,
+            'imageName': '00001.webp',
+          },
+        },
+      );
+      final viewModel = _mount(source);
+      await viewModel.load();
+
+      final descriptor = await viewModel.loadChapterThumbnailDescriptor(
+        viewModel.chapters.single,
+      );
+
+      expect(descriptor, isNotNull);
+      expect(descriptor!.url, contains('cdn.example'));
+      expect(descriptor.cacheKey, 'jm|comic-1|ep-9|00001');
+      expect(descriptor.headers, containsPair('Referer', 'https://jm.example/'));
+      expect(descriptor.fallbackUrls, isNotEmpty);
+      expect(descriptor.bytesTransformer, isNotNull);
+      // Raw URL alone must not be the only contract — structured path is required.
+      expect(descriptor.cacheKey, isNot(equals(descriptor.url)));
     },
   );
 

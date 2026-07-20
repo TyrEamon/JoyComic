@@ -87,7 +87,8 @@ class RecommendationCarousel extends StatelessWidget {
           ),
           child: SizedBox(
             key: batchKey,
-            height: 210,
+            // Cover (176) + gap + two-line title slot + optional subtitle.
+            height: 250,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
@@ -102,6 +103,7 @@ class RecommendationCarousel extends StatelessWidget {
                   rating: item.rating,
                   width: 132,
                   headers: coverHeaders,
+                  titleMaxLines: 2,
                   onTap: onSelect == null ? null : () => onSelect!(item),
                 );
               },

@@ -26,6 +26,7 @@ class ComicCard extends StatelessWidget {
     this.headers,
     this.onTap,
     this.sourceKey,
+    this.titleMaxLines = 1,
   }) : _layout = _Layout.poster,
        badge = null,
        tags = null;
@@ -42,7 +43,8 @@ class ComicCard extends StatelessWidget {
     this.onTap,
     this.sourceKey,
   }) : _layout = _Layout.horizontal,
-       badge = null;
+       badge = null,
+       titleMaxLines = 1;
 
   /// 带角标的网格卡（章节卡 / 收藏卡等扩展用）。
   const ComicCard.grid({
@@ -57,7 +59,8 @@ class ComicCard extends StatelessWidget {
     this.onTap,
     this.sourceKey,
   }) : _layout = _Layout.grid,
-       tags = null;
+       tags = null,
+       titleMaxLines = 1;
 
   final String title;
   final String? coverUrl;
@@ -69,6 +72,9 @@ class ComicCard extends StatelessWidget {
   final Map<String, dynamic>? headers;
   final VoidCallback? onTap;
   final String? sourceKey;
+
+  /// Poster-only title line count. Detail recommendations use 2.
+  final int titleMaxLines;
   final _Layout _layout;
 
   static const double _kPosterWidth = 132;
@@ -87,6 +93,7 @@ class ComicCard extends StatelessWidget {
           headers: headers,
           onTap: onTap,
           sourceKey: sourceKey,
+          titleMaxLines: titleMaxLines,
         );
       case _Layout.horizontal:
         return _Horizontal(
@@ -130,6 +137,7 @@ class _Poster extends StatelessWidget {
     required this.headers,
     required this.onTap,
     required this.sourceKey,
+    required this.titleMaxLines,
   });
 
   final String title;
@@ -140,9 +148,13 @@ class _Poster extends StatelessWidget {
   final Map<String, dynamic>? headers;
   final VoidCallback? onTap;
   final String? sourceKey;
+  final int titleMaxLines;
 
   @override
   Widget build(BuildContext context) {
+    final lines = titleMaxLines.clamp(1, 3);
+    // Fixed title slot so mixed one/two-line titles keep a stable card height.
+    final titleSlotHeight = lines == 1 ? 18.0 : 36.0;
     return InkWell(
       onTap: onTap,
       borderRadius: AppRadius.brMd,
@@ -163,11 +175,14 @@ class _Poster extends StatelessWidget {
               ],
             ),
             const SizedBox(height: AppSpacing.xs),
-            Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppTypography.cardTitle(context),
+            SizedBox(
+              height: titleSlotHeight,
+              child: Text(
+                title,
+                maxLines: lines,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.cardTitle(context),
+              ),
             ),
             if (subtitle != null) ...[
               const SizedBox(height: 2),

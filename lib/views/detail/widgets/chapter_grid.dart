@@ -9,6 +9,7 @@ import '../../../theme/app_gradients.dart';
 import '../../../theme/app_radius.dart';
 import '../../../theme/app_spacing.dart';
 import '../../../theme/app_typography.dart';
+import '../../reader/utils/source_aware_image.dart';
 import 'chapter_thumbnail.dart';
 
 class ChapterGrid extends StatelessWidget {
@@ -19,15 +20,14 @@ class ChapterGrid extends StatelessWidget {
     required this.loadThumbnail,
     required this.onDownload,
     this.onDownloadAll,
-    this.coverHeaders,
   });
 
   final List<ComicChapter> chapters;
   final ValueChanged<ComicChapter> onSelect;
-  final Future<String?> Function(ComicChapter chapter) loadThumbnail;
+  final Future<SourceAwareImageDescriptor?> Function(ComicChapter chapter)
+  loadThumbnail;
   final ValueChanged<ComicChapter> onDownload;
   final VoidCallback? onDownloadAll;
-  final Map<String, dynamic>? coverHeaders;
 
   @override
   Widget build(BuildContext context) {
@@ -95,7 +95,6 @@ class ChapterGrid extends StatelessWidget {
                       chapter: chapter,
                       isNew: index == chapters.length - 1,
                       thumbnail: loadThumbnail(chapter),
-                      coverHeaders: coverHeaders,
                       onTap: () => onSelect(chapter),
                       onDownload: () => onDownload(chapter),
                     );
@@ -114,15 +113,13 @@ class _ChapterCard extends StatelessWidget {
     required this.chapter,
     required this.isNew,
     required this.thumbnail,
-    required this.coverHeaders,
     required this.onTap,
     required this.onDownload,
   });
 
   final ComicChapter chapter;
   final bool isNew;
-  final Future<String?> thumbnail;
-  final Map<String, dynamic>? coverHeaders;
+  final Future<SourceAwareImageDescriptor?> thumbnail;
   final VoidCallback onTap;
   final VoidCallback onDownload;
 
@@ -140,10 +137,7 @@ class _ChapterCard extends StatelessWidget {
         child: Stack(
           children: [
             Positioned.fill(
-              child: ChapterThumbnail(
-                load: () => thumbnail,
-                headers: coverHeaders,
-              ),
+              child: ChapterThumbnail(load: () => thumbnail),
             ),
             Positioned(
               left: 0,

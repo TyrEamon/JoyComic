@@ -70,8 +70,7 @@ class _DetailChaptersScaffold extends StatelessWidget {
           children: [
             ChapterGrid(
               chapters: vm.chapters,
-              loadThumbnail: vm.loadChapterThumbnail,
-              coverHeaders: vm.coverHeaders,
+              loadThumbnail: vm.loadChapterThumbnailDescriptor,
               onSelect: (chapter) => openDetailReader(context, vm, chapter),
               onDownload: (chapter) => enqueueDetailChapter(
                 context,

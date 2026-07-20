@@ -12,6 +12,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../../../foundation/log.dart';
 import '../utils/reader_image_provider.dart';
 import 'retry_for_image.dart';
 
@@ -32,6 +33,8 @@ class ReaderImage extends StatelessWidget {
     this.cacheWidth,
     this.alignment = Alignment.center,
     this.onImageSizeChanged,
+    this.traceId,
+    this.imageIndex,
   });
 
   final String url;
@@ -44,6 +47,8 @@ class ReaderImage extends StatelessWidget {
   final int? cacheWidth;
   final AlignmentGeometry alignment;
   final void Function(int width, int height)? onImageSizeChanged;
+  final String? traceId;
+  final int? imageIndex;
 
   static const double _fallbackAspectRatio = 3 / 4;
 
@@ -61,6 +66,8 @@ class ReaderImage extends StatelessWidget {
             headers: headers,
             bytesTransformer: bytesTransformer,
             cacheWidth: cacheWidth,
+            traceId: traceId,
+            imageIndex: imageIndex,
           )
         : FileImage(File(url));
     return base is ResizeImage
@@ -85,7 +92,17 @@ class ReaderImage extends StatelessWidget {
     return RetryForImage(
       imageProvider: _buildProvider(),
       onImageResolved: (info) {
-        onImageSizeChanged?.call(info.image.width, info.image.height);
+        final w = info.image.width;
+        final h = info.image.height;
+        if (traceId != null) {
+          Log.i(
+            'Reader first frame',
+            'trace=$traceId idx=${imageIndex ?? '-'} '
+            'size=${w}x$h '
+            'cache=${ReaderDiagnostics.cacheKeySummary(cacheKey ?? url)}',
+          );
+        }
+        onImageSizeChanged?.call(w, h);
       },
       builder: (context, status) {
         if (status.isLoaded) {

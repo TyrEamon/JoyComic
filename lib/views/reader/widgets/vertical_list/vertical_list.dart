@@ -60,6 +60,7 @@ class _VerticalListState extends State<VerticalList> {
       items: reader.images,
       type: reader.readerType,
       maxPreloadCount: ReaderConf.instance.preloadImageCount,
+      traceId: reader.traceId,
     );
     reader.initPreloadController(_preloadController!);
   }
@@ -152,6 +153,8 @@ class _VerticalListState extends State<VerticalList> {
                   fallbackUrls: item.fallbackUrls,
                   bytesTransformer: item.bytesTransformer,
                   cacheWidth: cacheWidth,
+                  traceId: context.reader.traceId,
+                  imageIndex: index,
                 );
               },
             ),

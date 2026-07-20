@@ -30,6 +30,7 @@ class ImagePreloadController implements ImagePreloadControllerRef {
     this.keepWindow = 10,
     this.debounceDuration = const Duration(milliseconds: 50),
     this.cacheWidth,
+    this.traceId,
   });
 
   /// Widget tree 上下文，用于 [precacheImage]。
@@ -54,6 +55,10 @@ class ImagePreloadController implements ImagePreloadControllerRef {
   /// 为 null 时不限制解码尺寸（原始分辨率）。
   @override
   int? cacheWidth;
+
+  /// Active reader load trace for correlated preload failure logs.
+  @override
+  String? traceId;
 
   Timer? _debounceTimer;
 
@@ -127,13 +132,11 @@ class ImagePreloadController implements ImagePreloadControllerRef {
 
         final item = items[i];
         final ImageProvider provider = type == ReaderType.network
-            ? readerImageProvider(
-                url: item.url,
-                cacheKey: item.cacheKey,
-                fallbackUrls: item.fallbackUrls,
-                headers: item.headers,
-                bytesTransformer: item.bytesTransformer,
+            ? buildNetworkProvider(
+                item: item,
                 cacheWidth: cacheWidth,
+                traceId: traceId,
+                imageIndex: i,
               )
             : ResizeImage.resizeIfNeeded(
                 cacheWidth,
@@ -147,15 +150,64 @@ class ImagePreloadController implements ImagePreloadControllerRef {
           provider,
           context,
           onError: (error, stackTrace) {
+            final message = formatPreloadFailure(
+              traceId: traceId,
+              imageIndex: i,
+              cacheKey: item.cacheKey,
+              error: error,
+              candidateUrl: item.url,
+              headers: item.headers,
+            );
+            final redacted = ReaderDiagnostics.redactStackTrace(stackTrace);
             Log.e(
               'Reader image preload failed',
-              error: error,
-              stackTrace: stackTrace,
+              error: message,
+              stackTrace: redacted == null
+                  ? null
+                  : StackTrace.fromString(redacted),
             );
           },
         );
       }
     });
+  }
+
+  /// Shared network provider construction for preload + tests.
+  static ImageProvider buildNetworkProvider({
+    required ReaderImage item,
+    int? cacheWidth,
+    String? traceId,
+    int? imageIndex,
+  }) {
+    return readerImageProvider(
+      url: item.url,
+      cacheKey: item.cacheKey,
+      fallbackUrls: item.fallbackUrls,
+      headers: item.headers,
+      bytesTransformer: item.bytesTransformer,
+      cacheWidth: cacheWidth,
+      traceId: traceId,
+      imageIndex: imageIndex,
+    );
+  }
+
+  /// Redacted preload failure line correlated to the active reader load.
+  static String formatPreloadFailure({
+    required String? traceId,
+    required int imageIndex,
+    required String cacheKey,
+    required Object error,
+    String? candidateUrl,
+    Map<String, String>? headers,
+  }) {
+    final sanitized = ReaderDiagnostics.sanitizeCaughtError(
+      error,
+      candidateUrl: candidateUrl,
+      headers: headers,
+    );
+    final trace = traceId == null || traceId.isEmpty ? 'none' : traceId;
+    return 'trace=$trace idx=$imageIndex '
+        'cache=${ReaderDiagnostics.cacheKeySummary(cacheKey)} $sanitized';
   }
 
   // ============================ 窗口修剪 ============================

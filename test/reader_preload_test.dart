@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -10,6 +11,7 @@ import 'package:joycomic/views/reader/providers/list_state_provider.dart';
 import 'package:joycomic/views/reader/providers/reader_provider.dart';
 import 'package:joycomic/views/reader/state/comic_state.dart';
 import 'package:joycomic/views/reader/utils/image_preload_controller.dart';
+import 'package:joycomic/views/reader/utils/reader_image_provider.dart';
 import 'package:joycomic/views/reader/widgets/horizontal_list/horizontal_list.dart';
 import 'package:joycomic/views/reader/widgets/vertical_list/vertical_list.dart';
 import 'package:provider/provider.dart';
@@ -65,4 +67,75 @@ void main() {
       await tester.pump(const Duration(milliseconds: 2));
     });
   }
+
+  test(
+    'horizontal single-page and double-page paths carry real trace and image indexes',
+    () {
+      final source = File(
+        'lib/views/reader/widgets/horizontal_list/horizontal_list.dart',
+      ).readAsStringSync();
+
+      // Single-page PhotoView path must forward diagnostics context.
+      expect(source, contains('_buildSinglePageOptions('));
+      expect(source, contains('imageIndex: index'));
+      expect(source, contains('traceId: traceId'));
+      // Signature accepts gallery index + trace.
+      expect(
+        RegExp(
+          r'_buildSinglePageOptions\([\s\S]*?required int imageIndex[\s\S]*?\)',
+        ).hasMatch(source),
+        isTrue,
+      );
+      expect(
+        source.contains('readerImageProvider(') &&
+            source.contains('imageIndex: imageIndex'),
+        isTrue,
+      );
+      // Double-page must use absolute gallery indexes, not only 0/1 in-row.
+      expect(source, contains('baseIndex: baseIndex'));
+      expect(
+        source.contains('imageIndex: ordered[visualSlot].\$1') ||
+            source.contains('imageIndex: absoluteIndex') ||
+            source.contains('imageIndex: baseIndex +'),
+        isTrue,
+      );
+    },
+  );
+
+  test('preload failure message includes trace index and redacted cache summary', () {
+    final message = ImagePreloadController.formatPreloadFailure(
+      traceId: 'tr12ab34cd',
+      imageIndex: 3,
+      cacheKey: 'jm|comic-1|ep-1|00003',
+      error: Exception(
+        'DioException uri=https://cdn.example/a.webp?token=secret-token',
+      ),
+    );
+    expect(message, contains('trace=tr12ab34cd'));
+    expect(message, contains('idx=3'));
+    expect(message, contains('cache='));
+    expect(message, isNot(contains('secret-token')));
+    expect(message, isNot(contains('token=secret')));
+  });
+
+  test('preload controller provider builder forwards trace and image index', () {
+    final item = const ReaderImage(
+      url: 'https://cdn.example/a.webp?token=secret',
+      cacheKey: 'ck-1',
+    );
+    final provider = ImagePreloadController.buildNetworkProvider(
+      item: item,
+      cacheWidth: 1080,
+      traceId: 'tracepreload',
+      imageIndex: 4,
+    );
+    ImageProvider network = provider;
+    if (provider is ResizeImage) {
+      network = provider.imageProvider;
+    }
+    expect(network, isA<ReaderNetworkImageProvider>());
+    final net = network as ReaderNetworkImageProvider;
+    expect(net.traceId, 'tracepreload');
+    expect(net.imageIndex, 4);
+  });
 }
