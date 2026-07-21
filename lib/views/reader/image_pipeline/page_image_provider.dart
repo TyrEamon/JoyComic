@@ -14,6 +14,7 @@ import 'package:flutter/painting.dart';
 import '../../../foundation/log.dart';
 import '../utils/reader_image_provider.dart'
     show ReaderDiagnostics, ReaderImageBytesTransformer, jmReaderTransformer;
+import '../utils/reader_pipeline.dart';
 import 'stream_image_provider.dart';
 
 export 'stream_image_provider.dart' show DownloadProgress, StreamImageProvider;
@@ -119,24 +120,36 @@ Stream<DownloadProgress> pageImageDownloadStream({
     if (imageIndex != null) 'idx=$imageIndex',
   ].join(' ');
 
+  final page = imageIndex ?? -1;
   Object? lastError;
   for (final candidate in urls) {
+    final host = Uri.tryParse(candidate)?.host ?? 'invalid';
     try {
+      ReaderPipeline.downloadBegin(page, host: host);
       yield const DownloadProgress(0, 1);
       final raw = await _downloadOne(candidate, headers);
+      ReaderPipeline.downloadOk(
+        page,
+        host: host,
+        len: raw.length,
+        magic: _magic(raw),
+      );
       yield DownloadProgress(raw.length, (raw.length / 0.75).ceil());
 
       var payload = raw;
       if (bytesTransformer != null) {
-        Log.i(
-          'Reader transform begin',
-          '$prefix in=${raw.length} magic=${_magic(raw)}',
-        );
-        payload = await bytesTransformer(raw);
-        Log.i(
-          'Reader transform ok',
-          '$prefix out=${payload.length} magic=${_magic(payload)}',
-        );
+        ReaderPipeline.transformBegin(page, inLen: raw.length);
+        try {
+          payload = await bytesTransformer(raw);
+          ReaderPipeline.transformOk(
+            page,
+            outLen: payload.length,
+            magic: _magic(payload),
+          );
+        } catch (e) {
+          ReaderPipeline.transformFail(page, error: e);
+          rethrow;
+        }
       }
       if (payload.isEmpty || !_looksLikeImage(payload)) {
         throw StateError(
@@ -144,6 +157,11 @@ Stream<DownloadProgress> pageImageDownloadStream({
         );
       }
 
+      ReaderPipeline.bytesReady(
+        page,
+        len: payload.length,
+        magic: _magic(payload),
+      );
       Log.i(
         'Reader bytes ready',
         '$prefix cache=${ReaderDiagnostics.cacheKeySummary(cacheKey)} '
@@ -153,9 +171,11 @@ Stream<DownloadProgress> pageImageDownloadStream({
       return;
     } catch (e) {
       lastError = e;
+      ReaderPipeline.downloadFail(page, error: e);
       Log.w(
         'Reader image candidate failed',
-        error: '$prefix ${ReaderDiagnostics.sanitizeCaughtError(e, candidateUrl: candidate, headers: headers)}',
+        error:
+            '$prefix ${ReaderDiagnostics.sanitizeCaughtError(e, candidateUrl: candidate, headers: headers)}',
       );
     }
   }
@@ -188,6 +208,7 @@ ImageProvider createPageImageProvider({
       imageIndex: imageIndex,
     ),
     cacheKey,
+    pageIndex: imageIndex ?? -1,
   );
 }
 

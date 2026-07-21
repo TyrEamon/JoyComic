@@ -1,7 +1,4 @@
-/// Memory-backed multi-frame [ImageProvider] base (standard Flutter path).
-///
-/// Loads [Uint8List] once, caches in process memory, then hands bytes to
-/// Flutter's [MultiFrameImageStreamCompleter] for decode + paint.
+/// Memory-backed multi-frame [ImageProvider] base.
 library;
 
 import 'dart:async';
@@ -10,9 +7,14 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 
+import '../utils/reader_pipeline.dart';
+
 abstract class BaseImageProvider<T extends BaseImageProvider<T>>
     extends ImageProvider<T> {
   const BaseImageProvider();
+
+  /// 诊断用页码；子类可覆盖。
+  int get diagnosticPageIndex => -1;
 
   @override
   ImageStreamCompleter loadImage(T key, ImageDecoderCallback decode) {
@@ -36,6 +38,7 @@ abstract class BaseImageProvider<T extends BaseImageProvider<T>>
     StreamController<ImageChunkEvent> chunkEvents,
     ImageDecoderCallback decode,
   ) async {
+    final page = key.diagnosticPageIndex;
     try {
       var retryTime = 1;
       var stop = false;
@@ -48,6 +51,11 @@ abstract class BaseImageProvider<T extends BaseImageProvider<T>>
         try {
           if (_cache.containsKey(key.key)) {
             data = _cache[key.key];
+            ReaderPipeline.mark(
+              ReaderStage.bytesReady,
+              pageIndex: page,
+              detail: 'from_mem_cache len=${data!.length}',
+            );
           } else {
             data = await load(chunkEvents);
             _checkCacheSize();
@@ -68,8 +76,21 @@ abstract class BaseImageProvider<T extends BaseImageProvider<T>>
         throw Exception('Empty image data');
       }
 
-      final buffer = await ui.ImmutableBuffer.fromUint8List(data);
-      return await decode(buffer);
+      ReaderPipeline.codecBegin(page, len: data.length);
+      try {
+        final buffer = await ui.ImmutableBuffer.fromUint8List(data);
+        final codec = await decode(buffer);
+        // 尺寸要等 frame；先记 codec 创建成功
+        ReaderPipeline.mark(
+          ReaderStage.codecOk,
+          pageIndex: page,
+          detail: 'codec_created len=${data.length}',
+        );
+        return codec;
+      } catch (e) {
+        ReaderPipeline.codecFail(page, error: e);
+        rethrow;
+      }
     } catch (e) {
       scheduleMicrotask(() {
         PaintingBinding.instance.imageCache.evict(key);

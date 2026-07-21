@@ -20,6 +20,7 @@ import '../state/comic_state.dart';
 import '../state/read_mode.dart';
 import '../utils/reader_utils.dart';
 import '../utils/reader_image_provider.dart';
+import '../utils/reader_pipeline.dart';
 import '../utils/source_aware_image.dart';
 import '../widgets/toast.dart';
 
@@ -252,6 +253,7 @@ class ReaderProvider extends ChangeNotifier {
     final trace = ReaderDiagnostics.newTraceId();
     _traceId = trace;
     _preloadController?.traceId = trace;
+    ReaderPipeline.reset(trace);
 
     _loadingState = ReaderLoadState.loading;
     _loadingErrorMessage = null;
@@ -300,6 +302,7 @@ class ReaderProvider extends ChangeNotifier {
         'Reader API ok',
         'trace=$trace chapter=${chapterSnapshot.id} urls=${urls.length}',
       );
+      ReaderPipeline.chapterApiOk(urlCount: urls.length);
       if (urls.isEmpty) {
         _setLoadError(generation, chapterSnapshot, '该章节暂无图片');
         return;
@@ -317,6 +320,7 @@ class ReaderProvider extends ChangeNotifier {
         'trace=$trace chapter=${chapterSnapshot.id} images=${_images.length} '
         'state=success',
       );
+      ReaderPipeline.chapterReady(imageCount: _images.length);
       _multiPageImagesCache = null;
       if (_pageNo >= _images.length) {
         _pageNo = _images.length - 1;
