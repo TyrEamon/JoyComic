@@ -6,6 +6,10 @@
 ///
 /// 加载中/失败时使用 3:4 占位高度，避免竖直列表 item 高度为 0 时
 /// 整页只剩黑色 canvas（用户感知为“黑屏”）。
+///
+/// 解码成功后按屏宽与像素宽高比给出显式 [SizedBox] 尺寸（对齐 
+/// [ComicImage]），避免 [RawImage] 在竖直列表 / [InteractiveViewer] 下
+/// 内在尺寸为 0 而不上屏。
 library;
 
 import 'dart:io';
@@ -28,7 +32,7 @@ class ReaderImage extends StatelessWidget {
     this.headers,
     this.fallbackUrls = const <String>[],
     this.bytesTransformer,
-    this.fit = BoxFit.contain,
+    this.fit = BoxFit.fitWidth,
     this.filterQuality = FilterQuality.medium,
     this.cacheWidth,
     this.alignment = Alignment.center,
@@ -75,11 +79,28 @@ class ReaderImage extends StatelessWidget {
     return ResizeImage.resizeIfNeeded(cacheWidth, null, file);
   }
 
-  Widget _placeholder(BuildContext context, Widget child) {
+  /// Prefer parent max width (list / FractionallySizedBox); fall back to screen.
+  double _layoutWidth(BuildContext context, BoxConstraints constraints) {
+    if (constraints.hasBoundedWidth && constraints.maxWidth.isFinite) {
+      final w = constraints.maxWidth;
+      if (w > 0) return w;
+    }
+    final mq = MediaQuery.sizeOf(context).width;
+    return mq > 0 ? mq : 390;
+  }
+
+  Widget _placeholder(
+    BuildContext context,
+    BoxConstraints constraints,
+    Widget child,
+  ) {
     // Avoid near-black-on-black: reader canvas is pure black.
     final scheme = Theme.of(context).colorScheme;
-    return AspectRatio(
-      aspectRatio: _fallbackAspectRatio,
+    final width = _layoutWidth(context, constraints);
+    final height = width / _fallbackAspectRatio;
+    return SizedBox(
+      width: width,
+      height: height,
       child: ColoredBox(
         color: scheme.surfaceContainerHigh.withValues(alpha: 0.55),
         child: Center(
@@ -95,95 +116,141 @@ class ReaderImage extends StatelessWidget {
     );
   }
 
+  /// Explicit layout box from decoded pixel size — required for vertical
+  /// continuous lists so [RawImage] never collapses to zero height.
+  Widget _sizedFrame(
+    BuildContext context,
+    BoxConstraints constraints,
+    ImageInfo frame, {
+    required int pixelW,
+    required int pixelH,
+  }) {
+    final width = _layoutWidth(context, constraints);
+    final aspect = pixelW > 0 && pixelH > 0
+        ? pixelW / pixelH
+        : _fallbackAspectRatio;
+    // Match : ceil height so list items never sub-pixel-collapse.
+    final height = (width / aspect).ceilToDouble();
+    final align = alignment is Alignment
+        ? alignment as Alignment
+        : Alignment.center;
+
+    return SizedBox(
+      width: width,
+      height: height,
+      child: RawImage(
+        image: frame.image,
+        scale: frame.scale,
+        width: width,
+        height: height,
+        fit: fit,
+        alignment: align,
+        filterQuality: filterQuality,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return RetryForImage(
-      // Avoid a second blank decode after ImageStream already resolved:
-      // paint the decoded frame immediately with RawImage.
-      fadeDuration: Duration.zero,
-      imageProvider: _buildProvider(),
-      onImageResolved: (info) {
-        final w = info.image.width;
-        final h = info.image.height;
-        if (traceId != null) {
-          Log.i(
-            'Reader first frame',
-            'trace=$traceId idx=${imageIndex ?? '-'} '
-            'size=${w}x$h '
-            'cache=${ReaderDiagnostics.cacheKeySummary(cacheKey ?? url)}',
-          );
-        }
-        onImageSizeChanged?.call(w, h);
-      },
-      builder: (context, status) {
-        final frame = status.imageInfo;
-        if (frame != null) {
-          // Direct paint of the already-decoded ui.Image — no second resolve.
-          return RawImage(
-            image: frame.image,
-            scale: frame.scale,
-            fit: fit,
-            alignment: alignment is Alignment
-                ? alignment as Alignment
-                : Alignment.center,
-            filterQuality: filterQuality,
-          );
-        }
-        if (status.isExhausted) {
-          final detail = _friendlyError(status.error);
-          return _placeholder(
-            context,
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.broken_image_outlined,
-                    size: 40,
-                    color: Theme.of(context).colorScheme.onSurface,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return RetryForImage(
+          // Avoid a second blank decode after ImageStream already resolved:
+          // paint the decoded frame immediately with RawImage.
+          fadeDuration: Duration.zero,
+          imageProvider: _buildProvider(),
+          onImageResolved: (info) {
+            final w = info.image.width;
+            final h = info.image.height;
+            if (traceId != null) {
+              final layoutW = _layoutWidth(context, constraints);
+              final aspect = w > 0 && h > 0 ? w / h : _fallbackAspectRatio;
+              final layoutH = (layoutW / aspect).ceilToDouble();
+              Log.i(
+                'Reader first frame',
+                'trace=$traceId idx=${imageIndex ?? '-'} '
+                'size=${w}x$h layout=${layoutW.toStringAsFixed(1)}x'
+                '${layoutH.toStringAsFixed(1)} '
+                'cache=${ReaderDiagnostics.cacheKeySummary(cacheKey ?? url)}',
+              );
+            }
+            onImageSizeChanged?.call(w, h);
+          },
+          builder: (context, status) {
+            final frame = status.imageInfo;
+            if (frame != null) {
+              // Direct paint of the already-decoded ui.Image — no second resolve.
+              // Always pin width/height so vertical list items cannot paint at 0×0.
+              return _sizedFrame(
+                context,
+                constraints,
+                frame,
+                pixelW: frame.image.width,
+                pixelH: frame.image.height,
+              );
+            }
+            if (status.isExhausted) {
+              final detail = _friendlyError(status.error);
+              return _placeholder(
+                context,
+                constraints,
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.broken_image_outlined,
+                        size: 40,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        '图片加载失败',
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                      if (detail != null) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          detail,
+                          textAlign: TextAlign.center,
+                          maxLines: 4,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                      const SizedBox(height: 8),
+                      FilledButton.tonalIcon(
+                        onPressed: status.retry,
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('重试'),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 10),
-                  Text('图片加载失败', style: Theme.of(context).textTheme.titleSmall),
-                  if (detail != null) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      detail,
-                      textAlign: TextAlign.center,
-                      maxLines: 4,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                  const SizedBox(height: 8),
-                  FilledButton.tonalIcon(
-                    onPressed: status.retry,
-                    icon: const Icon(Icons.refresh_rounded),
-                    label: const Text('重试'),
-                  ),
-                ],
+                ),
+              );
+            }
+            final chunk = status.chunk;
+            double? progress;
+            if (chunk != null) {
+              final total = chunk.expectedTotalBytes;
+              final loaded = chunk.cumulativeBytesLoaded;
+              if (total != null && total > 0) {
+                progress = (loaded / total).clamp(0.0, 1.0);
+              }
+            }
+            return _placeholder(
+              context,
+              constraints,
+              CircularProgressIndicator(
+                value: progress,
+                strokeWidth: 3,
+                color: const Color(0xFFECECEC),
+                constraints: const BoxConstraints(maxWidth: 28, maxHeight: 28),
+                strokeCap: StrokeCap.round,
               ),
-            ),
-          );
-        }
-        final chunk = status.chunk;
-        double? progress;
-        if (chunk != null) {
-          final total = chunk.expectedTotalBytes;
-          final loaded = chunk.cumulativeBytesLoaded;
-          if (total != null && total > 0) {
-            progress = (loaded / total).clamp(0.0, 1.0);
-          }
-        }
-        return _placeholder(
-          context,
-          CircularProgressIndicator(
-            value: progress,
-            strokeWidth: 3,
-            color: const Color(0xFFECECEC),
-            constraints: const BoxConstraints(maxWidth: 28, maxHeight: 28),
-            strokeCap: StrokeCap.round,
-          ),
+            );
+          },
         );
       },
     );
