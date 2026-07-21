@@ -553,7 +553,10 @@ class ReaderProvider extends ChangeNotifier {
   // ============================ 工具栏显隐 ============================
 
   /// 是否显示顶部/底部工具栏。
-  bool showToolbar = false;
+  ///
+  /// 默认展开：黑屏/加载失败时用户必须立刻看到返回与「诊断日志」入口。
+  /// 阅读中滚动仍会自动收起。
+  bool showToolbar = true;
 
   /// 是否显示菜单锁定按钮。
   bool showMenuLock = false;

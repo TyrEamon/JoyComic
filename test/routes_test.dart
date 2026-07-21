@@ -72,17 +72,19 @@ void main() {
     final appBar = File(
       'lib/views/reader/widgets/app_bar.dart',
     ).readAsStringSync();
-    expect(
-      errorPage.contains('查看诊断日志') || reader.contains('查看诊断日志'),
-      isTrue,
-    );
+    final provider = File(
+      'lib/views/reader/providers/reader_provider.dart',
+    ).readAsStringSync();
+    expect(errorPage.contains('查看诊断日志'), isTrue);
+    expect(reader.contains('查看诊断日志'), isTrue);
+    expect(appBar.contains('查看诊断日志'), isTrue);
+    // Toolbar starts expanded so logs are reachable without first tapping the canvas.
+    expect(provider.contains('bool showToolbar = true'), isTrue);
     expect(
       reader.contains("'/logs'") ||
           reader.contains('"/logs"') ||
           appBar.contains("'/logs'") ||
-          appBar.contains('"/logs"') ||
-          errorPage.contains("'/logs'") ||
-          errorPage.contains('"/logs"'),
+          appBar.contains('"/logs"'),
       isTrue,
     );
   });

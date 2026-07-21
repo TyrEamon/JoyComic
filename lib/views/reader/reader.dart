@@ -219,24 +219,40 @@ class _ReaderContent extends StatelessWidget {
                   }
                 },
               ),
-              ReaderLoadState.loading => const _ReaderLoadingView(
+              ReaderLoadState.loading => _ReaderLoadingView(
                 message: '正在加载章节图片…',
+                traceId: context.reader.traceId,
+                onOpenLogs: () {
+                  try {
+                    context.push('/logs');
+                  } catch (_) {}
+                },
               ),
-              ReaderLoadState.idle => const _ReaderLoadingView(
+              ReaderLoadState.idle => _ReaderLoadingView(
                 message: '正在准备阅读器…',
+                traceId: context.reader.traceId,
+                onOpenLogs: () {
+                  try {
+                    context.push('/logs');
+                  } catch (_) {}
+                },
               ),
             },
           ),
 
-          if (showPageNumbers) const ReaderPageNoTag(),
+          // Page chrome is always painted above content so black canvas never
+          // hides back / diagnostics while loading or after a silent failure.
+          if (showPageNumbers && loadingState == ReaderLoadState.success)
+            const ReaderPageNoTag(),
 
-          const ReaderNextChapter(),
-
-          const MenuLock(),
+          if (loadingState == ReaderLoadState.success) ...[
+            const ReaderNextChapter(),
+            const MenuLock(),
+          ],
 
           const ReaderAppBar(),
 
-          const ReaderBottom(),
+          if (loadingState == ReaderLoadState.success) const ReaderBottom(),
         ],
       ),
       drawer: Drawer(
@@ -278,33 +294,63 @@ class _ReaderContent extends StatelessWidget {
 }
 
 class _ReaderLoadingView extends StatelessWidget {
-  const _ReaderLoadingView({required this.message});
+  const _ReaderLoadingView({
+    required this.message,
+    this.traceId,
+    this.onOpenLogs,
+  });
 
   final String message;
+  final String? traceId;
+  final VoidCallback? onOpenLogs;
 
   @override
   Widget build(BuildContext context) {
     // readerCanvas is pure black — force light controls so loading is not
-    // perceived as a frozen black screen.
+    // perceived as a frozen black screen, and always expose diagnostics.
     const onDark = Color(0xFFECECEC);
     return Stack(
       children: [
         Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const CircularProgressIndicator(
-                color: onDark,
-                strokeWidth: 3,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                message,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CircularProgressIndicator(
                   color: onDark,
+                  strokeWidth: 3,
                 ),
-              ),
-            ],
+                const SizedBox(height: 16),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: onDark,
+                  ),
+                ),
+                if (traceId != null && traceId!.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  SelectableText(
+                    'trace $traceId',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: onDark.withValues(alpha: 0.72),
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+                const SizedBox(height: 16),
+                FilledButton.tonalIcon(
+                  style: FilledButton.styleFrom(
+                    foregroundColor: onDark,
+                    backgroundColor: const Color(0x33FFFFFF),
+                  ),
+                  onPressed: onOpenLogs,
+                  icon: const Icon(Icons.bug_report_outlined),
+                  label: const Text('查看诊断日志'),
+                ),
+              ],
+            ),
           ),
         ),
         SafeArea(
