@@ -302,75 +302,108 @@ class ReaderNetworkImageProvider
     );
   }
 
-  Future<ui.Codec> _loadAsync(
+  /// Download + JM recombine into decodable image bytes (JPEG/PNG/…).
+  ///
+  /// Used by the reader UI to paint with [Image.memory] — the same bytes
+  /// Flutter would decode inside [loadImage], without a second ImageStream.
+  Future<Uint8List> fetchBytes({
+    StreamController<ImageChunkEvent>? chunkEvents,
+  }) async {
+    final ownController = chunkEvents == null;
+    final events = chunkEvents ?? StreamController<ImageChunkEvent>();
+    try {
+      return await _fetchTransformedBytes(this, events);
+    } finally {
+      if (ownController) {
+        await events.close();
+      }
+    }
+  }
+
+  static Future<Uint8List> _fetchTransformedBytes(
     ReaderNetworkImageProvider key,
-    ImageDecoderCallback decode,
     StreamController<ImageChunkEvent> chunkEvents,
   ) async {
     Object? lastError;
     StackTrace? lastStack;
     final trace = key.traceId == null ? '' : 'trace=${key.traceId} ';
     final index = key.imageIndex == null ? '' : 'idx=${key.imageIndex} ';
-    try {
-      for (final candidate in key._urls) {
-        try {
-          final bytes = await _downloadCandidate(
-            candidate,
-            key.headers,
-            chunkEvents,
-            traceId: key.traceId,
-          );
-          var payload = bytes;
-          if (key.bytesTransformer != null) {
-            // JM recombine runs in an isolate; never hang the ImageProvider forever.
-            payload = await key.bytesTransformer!(bytes).timeout(
-              const Duration(seconds: 20),
-              onTimeout: () => throw TimeoutException(
-                'image transform timed out after 20s',
-              ),
-            );
-          }
-          if (payload.isEmpty) {
-            throw StateError('empty transformed image');
-          }
-          if (!_looksLikeImage(payload)) {
-            throw StateError(
-              'transformed bytes are not a decodable image '
-              '(len=${payload.length}, magic=${_magic(payload)})',
-            );
-          }
-          final codec = await decode(
-            await ui.ImmutableBuffer.fromUint8List(payload),
-          );
-          Log.i(
-            'Reader codec ok',
-            '$trace$index'
-            'cache=${ReaderDiagnostics.cacheKeySummary(key.cacheKey)} '
-            'len=${payload.length}',
-          );
-          return codec;
-        } catch (error, stackTrace) {
-          final sanitized = ReaderDiagnostics.sanitizeCaughtError(
-            error,
-            candidateUrl: candidate,
-            headers: key.headers,
-          );
-          lastError = StateError(sanitized);
-          lastStack = stackTrace;
-          final redacted = ReaderDiagnostics.redactStackTrace(stackTrace);
-          Log.w(
-            'Reader image candidate failed',
-            error: '$trace$index$sanitized',
-            stackTrace: redacted == null
-                ? null
-                : StackTrace.fromString(redacted),
+    for (final candidate in key._urls) {
+      try {
+        final bytes = await _downloadCandidate(
+          candidate,
+          key.headers,
+          chunkEvents,
+          traceId: key.traceId,
+        );
+        var payload = bytes;
+        if (key.bytesTransformer != null) {
+          payload = await key.bytesTransformer!(bytes).timeout(
+            const Duration(seconds: 20),
+            onTimeout: () => throw TimeoutException(
+              'image transform timed out after 20s',
+            ),
           );
         }
+        if (payload.isEmpty) {
+          throw StateError('empty transformed image');
+        }
+        if (!_looksLikeImage(payload)) {
+          throw StateError(
+            'transformed bytes are not a decodable image '
+            '(len=${payload.length}, magic=${_magic(payload)})',
+          );
+        }
+        Log.i(
+          'Reader bytes ready',
+          '$trace$index'
+          'cache=${ReaderDiagnostics.cacheKeySummary(key.cacheKey)} '
+          'len=${payload.length} magic=${_magic(payload)}',
+        );
+        return payload;
+      } catch (error, stackTrace) {
+        final sanitized = ReaderDiagnostics.sanitizeCaughtError(
+          error,
+          candidateUrl: candidate,
+          headers: key.headers,
+        );
+        lastError = StateError(sanitized);
+        lastStack = stackTrace;
+        final redacted = ReaderDiagnostics.redactStackTrace(stackTrace);
+        Log.w(
+          'Reader image candidate failed',
+          error: '$trace$index$sanitized',
+          stackTrace: redacted == null
+              ? null
+              : StackTrace.fromString(redacted),
+        );
       }
-      Error.throwWithStackTrace(
-        lastError ?? StateError('no image URL'),
-        lastStack ?? StackTrace.current,
+    }
+    Error.throwWithStackTrace(
+      lastError ?? StateError('no image URL'),
+      lastStack ?? StackTrace.current,
+    );
+  }
+
+  Future<ui.Codec> _loadAsync(
+    ReaderNetworkImageProvider key,
+    ImageDecoderCallback decode,
+    StreamController<ImageChunkEvent> chunkEvents,
+  ) async {
+    final trace = key.traceId == null ? '' : 'trace=${key.traceId} ';
+    final index = key.imageIndex == null ? '' : 'idx=${key.imageIndex} ';
+    try {
+      final payload = await _fetchTransformedBytes(key, chunkEvents);
+      final codec = await decode(
+        await ui.ImmutableBuffer.fromUint8List(payload),
       );
+      Log.i(
+        'Reader codec ok',
+        '$trace$index'
+        'cache=${ReaderDiagnostics.cacheKeySummary(key.cacheKey)} '
+        'len=${payload.length}',
+      );
+      return codec;
     } catch (error, stackTrace) {
       final sanitized = ReaderDiagnostics.sanitizeCaughtError(
         error,

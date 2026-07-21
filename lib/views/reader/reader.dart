@@ -22,7 +22,6 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
-import 'package:joycomic/theme/app_theme_context.dart';
 
 import '../../foundation/log_export.dart';
 
@@ -191,8 +190,10 @@ class _ReaderContent extends StatelessWidget {
           : const HorizontalList(),
     );
 
+    // Temporary diagnostic canvas: pure black hid "empty list vs black tiles".
+    // Slate grey makes placeholders and Image.memory underlays visible.
     return Scaffold(
-      backgroundColor: context.semanticColors.readerCanvas,
+      backgroundColor: const Color(0xFF121212),
       body: Stack(
         children: [
           Positioned.fill(

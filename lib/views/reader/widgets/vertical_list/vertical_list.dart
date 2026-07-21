@@ -1,16 +1,8 @@
 /// 竖直连续模式（条漫流）。
 ///
-/// 使用 [ScrollablePositionedList] + [GestureWrapper]（自定义 [InteractiveViewer]）
-/// 实现可缩放、可定位的连续漫画阅读体验。
+/// 使用 [ScrollablePositionedList] + 点击翻页手势，连续竖直阅读。
 ///
-/// 布局结构：
-/// ```
-/// GestureWrapper（三区点击翻页 / 双指缩放 / 双击放大）
-///   └── FractionallySizedBox（宽度比例控制）
-///         └── ScrollablePositionedList.builder
-///               ├── 图片项 × pageCount
-///               └── "本章完" 占位项
-/// ```
+/// 图片上屏走 [ReaderImage] → 下载/JM重组 → [Image.memory]（无自研绘制）。
 library;
 
 import 'package:flutter/material.dart';
