@@ -5,13 +5,13 @@ import 'package:joycomic/views/reader/widgets/reader_image.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('ReaderImage default fit is fitWidth', () {
+  test('ReaderImage default fit is cover for continuous vertical', () {
     const image = ReaderImage(url: 'https://example.com/a.webp');
-    expect(image.fit, BoxFit.fitWidth);
+    expect(image.fit, BoxFit.cover);
   });
 
-  test('ReaderImage is StatefulWidget', () {
+  test('ReaderImage is a StatelessWidget paint shell', () {
     const image = ReaderImage(url: 'https://example.com/a.webp');
-    expect(image, isA<StatefulWidget>());
+    expect(image, isA<StatelessWidget>());
   });
 }

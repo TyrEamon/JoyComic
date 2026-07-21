@@ -15,6 +15,7 @@ import 'package:flutter/widgets.dart';
 import '../../../foundation/log.dart';
 import '../providers/reader_provider.dart';
 import '../state/comic_state.dart';
+import '../image_pipeline/page_image_provider.dart';
 import 'reader_image_provider.dart';
 
 /// 方向感知的图片预加载控制器。
@@ -179,16 +180,16 @@ class ImagePreloadController implements ImagePreloadControllerRef {
     String? traceId,
     int? imageIndex,
   }) {
-    return readerImageProvider(
+    final base = createPageImageProvider(
       url: item.url,
       cacheKey: item.cacheKey,
       fallbackUrls: item.fallbackUrls,
       headers: item.headers,
       bytesTransformer: item.bytesTransformer,
-      cacheWidth: cacheWidth,
       traceId: traceId,
       imageIndex: imageIndex,
     );
+    return ResizeImage.resizeIfNeeded(cacheWidth, null, base);
   }
 
   /// Redacted preload failure line correlated to the active reader load.

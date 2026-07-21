@@ -190,10 +190,8 @@ class _ReaderContent extends StatelessWidget {
           : const HorizontalList(),
     );
 
-    // Slightly lighter than pure black so empty vs painted tiles are visible
-    // while diagnosing reader paint issues.
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: Colors.black,
       body: Stack(
         children: [
           Positioned.fill(
