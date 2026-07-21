@@ -1,0 +1,74 @@
+trigger: none
+pr: none
+
+pool:
+  vmImage: 'macOS-latest'
+
+steps:
+  - checkout: self
+    fetchDepth: 0
+
+  - bash: |
+      set -euo pipefail
+      git clone --depth 1 --branch stable https://github.com/flutter/flutter.git "$(Agent.ToolsDirectory)/flutter"
+      echo "##vso[task.prependpath]$(Agent.ToolsDirectory)/flutter/bin"
+    displayName: 'Install Flutter stable'
+
+  - bash: |
+      set -euo pipefail
+      flutter doctor -v
+      flutter pub get
+    displayName: 'Resolve Flutter dependencies'
+
+  - bash: |
+      set -euo pipefail
+      if [ ! -d ios ]; then
+        flutter create . --platforms=ios
+      fi
+      /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryUsageDescription string 选择漫画图片用于以图搜图" ios/Runner/Info.plist 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :NSPhotoLibraryUsageDescription 选择漫画图片用于以图搜图" ios/Runner/Info.plist
+      /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string 拍摄漫画图片用于以图搜图" ios/Runner/Info.plist 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :NSCameraUsageDescription 拍摄漫画图片用于以图搜图" ios/Runner/Info.plist
+      dart run flutter_launcher_icons
+    displayName: 'Prepare iOS project'
+
+  - bash: |
+      set -euo pipefail
+      VERSION="$(awk '/^version:/ {print $2; exit}' pubspec.yaml)"
+      BUILD_NAME="${VERSION%%+*}"
+      BUILD_NUMBER="$(git rev-list --count HEAD)"
+
+      cat >> ios/Flutter/Release.xcconfig <<'EOF'
+
+      DEVELOPMENT_TEAM=0000000000
+      CODE_SIGN_STYLE=Manual
+      CODE_SIGNING_ALLOWED=NO
+      CODE_SIGNING_REQUIRED=NO
+      EOF
+
+      flutter build ios --release \
+        --build-name="$BUILD_NAME" \
+        --build-number="$BUILD_NUMBER"
+    displayName: 'Build unsigned iOS app'
+
+  - bash: |
+      set -euo pipefail
+      APP_PATH="$(find build/ios -name '*.app' -type d -print -quit)"
+      if [ -z "$APP_PATH" ]; then
+        echo 'No .app bundle was produced.' >&2
+        exit 1
+      fi
+
+      PACKAGE_DIR="$(Build.ArtifactStagingDirectory)/ipa"
+      mkdir -p "$PACKAGE_DIR/Payload"
+      cp -R "$APP_PATH" "$PACKAGE_DIR/Payload/"
+      cd "$PACKAGE_DIR"
+      zip -qry joycomic-unsigned.ipa Payload
+      test -s joycomic-unsigned.ipa
+      rm -rf Payload
+    displayName: 'Package unsigned IPA'
+
+  - task: PublishPipelineArtifact@1
+    displayName: 'Publish unsigned IPA'
+    inputs:
+      targetPath: '$(Build.ArtifactStagingDirectory)/ipa'
+      artifact: 'joycomic-unsigned-ipa'
+      publishLocation: 'pipeline'
