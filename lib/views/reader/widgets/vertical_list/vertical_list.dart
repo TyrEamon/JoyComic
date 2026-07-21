@@ -1,22 +1,17 @@
 /// 竖直连续模式。
 ///
-/// 对齐已验证可用的连续竖读布局：
-/// ScrollablePositionedList + ComicPageImage(width, height=w*1.2, fit: cover)
-/// 图片：StreamImageProvider（下载+JM重组）→ ImageStream → RawImage。
+/// 列表 + 标准 [Image] 组件（与可用阅读器相同），不做自研绘制。
 library;
 
 import 'package:flutter/material.dart';
-import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 import '../../../../foundation/reader_config.dart';
-import '../../image_pipeline/comic_page_image.dart';
-import '../../image_pipeline/page_image_provider.dart';
 import '../../providers/reader_provider.dart' hide ReaderImage;
 import '../../providers/list_state_provider.dart';
 import '../../utils/image_preload_controller.dart';
 import '../../utils/reader_utils.dart';
+import '../reader_image.dart';
 import 'gesture.dart';
-import 'page_index.dart';
 
 /// 竖直连续模式。
 class VerticalList extends StatefulWidget {
@@ -27,8 +22,9 @@ class VerticalList extends StatefulWidget {
 }
 
 class _VerticalListState extends State<VerticalList> {
-  final itemPositionsListener = ItemPositionsListener.create();
+  final ScrollController _scrollController = ScrollController();
   ImagePreloadController? _preloadController;
+  int _lastPage = 0;
 
   @override
   void initState() {
@@ -42,27 +38,29 @@ class _VerticalListState extends State<VerticalList> {
       traceId: reader.traceId,
     );
     reader.initPreloadController(_preloadController!);
-    itemPositionsListener.itemPositions.addListener(_onItemPositionsChanged);
+    _scrollController.addListener(_onScroll);
   }
 
   @override
   void dispose() {
-    itemPositionsListener.itemPositions.removeListener(_onItemPositionsChanged);
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     _preloadController?.dispose();
     super.dispose();
   }
 
-  void _onItemPositionsChanged() {
-    final positions = itemPositionsListener.itemPositions.value;
-    if (positions.isEmpty) return;
-    final visibleIndices = visibleVerticalImageIndices(
-      positions,
-      imageCount: context.reader.images.length,
-    );
-    if (visibleIndices.isEmpty) return;
-    final lastIndex = visibleIndices.last;
-    _preloadController?.onAnchorChanged(visibleIndices);
-    context.reader.onPageNoChanged(lastIndex);
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final count = context.reader.images.length;
+    if (count == 0) return;
+    final w = MediaQuery.sizeOf(context).width;
+    final avgH = w > 0 ? w * 1.2 : 600.0;
+    final index = (_scrollController.offset / avgH).floor().clamp(0, count - 1);
+    if (index != _lastPage) {
+      _lastPage = index;
+      _preloadController?.onAnchorChanged([index]);
+      context.reader.onPageNoChanged(index);
+    }
   }
 
   @override
@@ -70,78 +68,67 @@ class _VerticalListState extends State<VerticalList> {
     final physics = context.stateSelector((p) => p.physics);
     final pageCount = context.selector((p) => p.pageCount);
     final images = context.selector((p) => p.images);
-    final initialPage = context.reader.pageNo;
     final traceId = context.reader.traceId;
+    final screenW = MediaQuery.sizeOf(context).width;
+    final imageWidth = screenW > 1 ? screenW : 390.0;
 
     return GestureWrapper(
       openOrCloseToolbar: context.reader.openOrCloseToolbar,
-      jumpOffset: context.reader.pageTurnForVertical,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          // Proven continuous vertical: full screen width for pages.
-          final width = MediaQuery.sizeOf(context).width;
-          final height = MediaQuery.sizeOf(context).height;
-          var imageWidth = width;
-          if (height / width < 1.2) {
-            final capped = height / 1.2;
-            if (capped < imageWidth) imageWidth = capped;
-          }
-          if (imageWidth <= 0 || !imageWidth.isFinite) {
-            imageWidth = width > 0 ? width : 390;
-          }
+      jumpOffset: (delta) {
+        if (!_scrollController.hasClients) return;
+        final target = (_scrollController.offset + delta).clamp(
+          0.0,
+          _scrollController.position.maxScrollExtent,
+        );
+        _scrollController.animateTo(
+          target,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      },
+      child: ColoredBox(
+        color: Colors.black,
+        child: ListView.builder(
+          controller: _scrollController,
+          physics: physics,
+          // ignore: deprecated_member_use
+          cacheExtent: MediaQuery.sizeOf(context).height * 3,
+          padding: EdgeInsets.zero,
+          itemCount: pageCount + 1,
+          itemBuilder: (context, index) {
+            if (index == pageCount) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Text(
+                  '本章完',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white70,
+                  ),
+                ),
+              );
+            }
 
-          return ColoredBox(
-            color: Colors.black,
-            child: ScrollablePositionedList.builder(
-              initialScrollIndex: initialPage.clamp(0, pageCount),
-              padding: EdgeInsets.zero,
-              physics: physics,
-              itemCount: pageCount + 1,
-              addAutomaticKeepAlives: false,
-              minCacheExtent: screenHeight * 2,
-              itemScrollController: context.reader.itemScrollController,
-              itemPositionsListener: itemPositionsListener,
-              scrollOffsetController: context.reader.scrollOffsetController,
-              itemBuilder: (context, index) {
-                if (index == pageCount) {
-                  return const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 16),
-                    child: Text(
-                      '本章完',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white70,
-                      ),
-                    ),
-                  );
-                }
-
-                final item = images[index];
-                final provider = createPageImageProvider(
-                  url: item.url,
-                  cacheKey: item.cacheKey,
-                  fallbackUrls: item.fallbackUrls,
-                  headers: item.headers,
-                  bytesTransformer: item.bytesTransformer,
-                  traceId: traceId,
-                  imageIndex: index,
-                );
-
-                // Continuous vertical page tile (width + placeholder height).
-                return ComicPageImage(
-                  key: ValueKey(item.cacheKey),
-                  image: provider,
-                  width: imageWidth,
-                  height: imageWidth * 1.2,
-                  fit: BoxFit.cover,
-                  filterQuality: FilterQuality.medium,
-                );
-              },
-            ),
-          );
-        },
+            final item = images[index];
+            // 标准 Image 路径：provider 内部完成下载+JM重组。
+            return ReaderImage(
+              key: ValueKey(item.cacheKey),
+              url: item.url,
+              cacheKey: item.cacheKey,
+              headers: item.headers,
+              fallbackUrls: item.fallbackUrls,
+              bytesTransformer: item.bytesTransformer,
+              width: imageWidth,
+              height: imageWidth * 1.2,
+              fit: BoxFit.fitWidth,
+              filterQuality: FilterQuality.medium,
+              traceId: traceId,
+              imageIndex: index,
+            );
+          },
+        ),
       ),
     );
   }

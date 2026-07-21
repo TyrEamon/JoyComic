@@ -147,7 +147,7 @@ Stream<DownloadProgress> pageImageDownloadStream({
       Log.i(
         'Reader bytes ready',
         '$prefix cache=${ReaderDiagnostics.cacheKeySummary(cacheKey)} '
-        'len=${payload.length} magic=${_magic(payload)}',
+        'len=${payload.length} magic=${_magic(payload)} via=image_widget',
       );
       yield DownloadProgress(payload.length, payload.length, data: payload);
       return;
