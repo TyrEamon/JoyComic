@@ -1,30 +1,25 @@
-/// 漫画单图加载显示的通用组件。
+/// 漫画单图加载显示组件（对齐  [ComicImage] 生命周期）。
 ///
-/// 使用源感知网络图片 provider 或 [FileImage] 加载，以
-/// [ResizeImage.resizeIfNeeded] 包裹保证缓存键与预加载一致。
-/// 集成 [RetryForImage] 提供自动重试、进度指示和容错。
+/// 管道：
+/// 1. 源感知 [ImageProvider]（JM 重组在 provider 内完成）
+/// 2. 本 State 直接订阅 [ImageStream]，持有 [ImageStreamCompleterHandle]
+///    防止缓存驱逐后 ui.Image 被 dispose 导致黑屏
+/// 3. 解码后按屏宽 + 像素宽高比给出显式宽高，再用 [RawImage] 绘制
 ///
-/// 加载中/失败时使用 3:4 占位高度，避免竖直列表 item 高度为 0 时
-/// 整页只剩黑色 canvas（用户感知为“黑屏”）。
-///
-/// 解码成功后按屏宽与像素宽高比给出显式 [SizedBox] 尺寸（对齐 
-/// [ComicImage]），避免 [RawImage] 在竖直列表 / [InteractiveViewer] 下
-/// 内在尺寸为 0 而不上屏。
+/// 加载中/失败时使用非纯黑占位，避免与 [readerCanvas] 融为一体。
 library;
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../../../foundation/log.dart';
 import '../utils/reader_image_provider.dart';
-import 'retry_for_image.dart';
 
 /// 漫画单图加载显示组件。
-///
-/// [url] 可为网络地址（http/https）或本地文件路径。
-/// [onImageSizeChanged] 在图片解码成功时回调（当前仅记录，留阶段4 写 DB）。
-class ReaderImage extends StatelessWidget {
+class ReaderImage extends StatefulWidget {
   const ReaderImage({
     super.key,
     required this.url,
@@ -39,6 +34,8 @@ class ReaderImage extends StatelessWidget {
     this.onImageSizeChanged,
     this.traceId,
     this.imageIndex,
+    this.maxAttempts = 3,
+    this.retryDelay = const Duration(milliseconds: 200),
   });
 
   final String url;
@@ -53,34 +50,235 @@ class ReaderImage extends StatelessWidget {
   final void Function(int width, int height)? onImageSizeChanged;
   final String? traceId;
   final int? imageIndex;
+  final int maxAttempts;
+  final Duration retryDelay;
 
+  @override
+  State<ReaderImage> createState() => _ReaderImageState();
+}
+
+class _ReaderImageState extends State<ReaderImage> {
   static const double _fallbackAspectRatio = 3 / 4;
 
-  bool get _isNetwork {
-    final scheme = Uri.tryParse(url)?.scheme.toLowerCase();
-    return scheme == 'http' || scheme == 'https';
-  }
+  ImageStream? _stream;
+  ImageStreamListener? _listener;
+  ImageStreamCompleterHandle? _completerHandle;
+  ImageInfo? _imageInfo;
+  ImageChunkEvent? _chunk;
+  Object? _error;
+  int _attempt = 0;
+  bool _resolvedLogged = false;
+  Timer? _retryTimer;
 
-  ImageProvider _buildProvider() {
-    // readerImageProvider already applies ResizeImage when cacheWidth is set.
-    if (_isNetwork) {
+  ImageProvider get _provider {
+    final scheme = Uri.tryParse(widget.url)?.scheme.toLowerCase();
+    if (scheme == 'http' || scheme == 'https') {
       return readerImageProvider(
-        url: url,
-        cacheKey: cacheKey ?? url,
-        fallbackUrls: fallbackUrls,
-        headers: headers,
-        bytesTransformer: bytesTransformer,
-        cacheWidth: cacheWidth,
-        traceId: traceId,
-        imageIndex: imageIndex,
+        url: widget.url,
+        cacheKey: widget.cacheKey ?? widget.url,
+        fallbackUrls: widget.fallbackUrls,
+        headers: widget.headers,
+        bytesTransformer: widget.bytesTransformer,
+        cacheWidth: widget.cacheWidth,
+        traceId: widget.traceId,
+        imageIndex: widget.imageIndex,
       );
     }
-    final file = FileImage(File(url));
-    return ResizeImage.resizeIfNeeded(cacheWidth, null, file);
+    return ResizeImage.resizeIfNeeded(
+      widget.cacheWidth,
+      null,
+      FileImage(File(widget.url)),
+    );
   }
 
-  /// Prefer parent max width (list / FractionallySizedBox); fall back to screen.
-  double _layoutWidth(BuildContext context, BoxConstraints constraints) {
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _resolve();
+  }
+
+  @override
+  void didUpdateWidget(covariant ReaderImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final providerChanged =
+        oldWidget.url != widget.url ||
+        oldWidget.cacheKey != widget.cacheKey ||
+        oldWidget.cacheWidth != widget.cacheWidth ||
+        oldWidget.bytesTransformer != widget.bytesTransformer;
+    if (providerChanged) {
+      _attempt = 0;
+      _resolvedLogged = false;
+      _error = null;
+      _chunk = null;
+      _resolve(force: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _retryTimer?.cancel();
+    // Drop our owned clone first, then release stream keepAlive.
+    _replaceImage(null);
+    _stopListening(keepStreamAlive: false);
+    _completerHandle?.dispose();
+    _completerHandle = null;
+    super.dispose();
+  }
+
+  void _resolve({bool force = false}) {
+    final provider = _provider;
+    final config = createLocalImageConfiguration(context);
+    final newStream = provider.resolve(config);
+    if (!force && _stream?.key == newStream.key) {
+      _listen();
+      return;
+    }
+    _stopListening(keepStreamAlive: false);
+    _stream = newStream;
+    _listen();
+  }
+
+  void _listen() {
+    final stream = _stream;
+    if (stream == null) return;
+    if (_listener != null) return;
+
+    final listener = ImageStreamListener(
+      _handleImage,
+      onChunk: _handleChunk,
+      onError: _handleError,
+    );
+    _listener = listener;
+    stream.addListener(listener);
+
+    // Keep the completer (and its decoded frames) alive even if the image
+    // cache tries to evict under memory pressure — critical on iOS.
+    _completerHandle?.dispose();
+    _completerHandle = stream.completer?.keepAlive();
+  }
+
+  void _stopListening({required bool keepStreamAlive}) {
+    final stream = _stream;
+    final listener = _listener;
+    if (stream != null && listener != null) {
+      if (keepStreamAlive &&
+          _completerHandle == null &&
+          stream.completer != null) {
+        _completerHandle = stream.completer!.keepAlive();
+      }
+      stream.removeListener(listener);
+    }
+    _listener = null;
+  }
+
+  void _replaceImage(ImageInfo? next) {
+    final previous = _imageInfo;
+    _imageInfo = next;
+    if (previous != null && !identical(previous, next)) {
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        previous.dispose();
+      });
+    }
+  }
+
+  void _handleImage(ImageInfo info, bool synchronousCall) {
+    if (!mounted) return;
+    // Clone so ImageCache / MultiFrameImageStreamCompleter can dispose the
+    // stream's ImageInfo without zeroing the pixels under RawImage (black tile).
+    // keepAlive keeps the completer resident; the clone owns the painted buffer.
+    final owned = info.clone();
+    setState(() {
+      _replaceImage(owned);
+      _error = null;
+      _chunk = null;
+    });
+    if (!_resolvedLogged) {
+      _resolvedLogged = true;
+      final w = owned.image.width;
+      final h = owned.image.height;
+      final layoutW = _layoutWidth(context);
+      final aspect = w > 0 && h > 0 ? w / h : _fallbackAspectRatio;
+      final layoutH = (layoutW / aspect).ceilToDouble();
+      if (widget.traceId != null) {
+        final debugLabel = owned.image.debugDisposed
+            ? 'DISPOSED'
+            : 'live';
+        Log.i(
+          'Reader first frame',
+          'trace=${widget.traceId} idx=${widget.imageIndex ?? '-'} '
+          'size=${w}x$h layout=${layoutW.toStringAsFixed(1)}x'
+          '${layoutH.toStringAsFixed(1)} img=$debugLabel '
+          'cache=${ReaderDiagnostics.cacheKeySummary(widget.cacheKey ?? widget.url)}',
+        );
+      }
+      widget.onImageSizeChanged?.call(w, h);
+    }
+  }
+
+  void _handleChunk(ImageChunkEvent event) {
+    if (!mounted) return;
+    setState(() => _chunk = event);
+  }
+
+  void _handleError(Object error, StackTrace? stackTrace) {
+    if (!mounted) return;
+    final shouldSchedule =
+        _attempt < widget.maxAttempts && _retryTimer?.isActive != true;
+    setState(() {
+      _error = error;
+      _chunk = null;
+      if (shouldSchedule) _attempt++;
+    });
+    if (shouldSchedule) {
+      _retryTimer = Timer(widget.retryDelay, _autoRetry);
+    } else if (widget.traceId != null) {
+      Log.w(
+        'Reader image exhausted',
+        error:
+            'trace=${widget.traceId} idx=${widget.imageIndex ?? '-'} '
+            'err=${_friendlyError(error) ?? error}',
+      );
+    }
+  }
+
+  Future<void> _autoRetry() async {
+    if (!mounted) return;
+    _stopListening(keepStreamAlive: false);
+    setState(() {
+      _error = null;
+      _chunk = null;
+    });
+    if (!mounted) return;
+    _resolve(force: true);
+  }
+
+  Future<void> _manualRetry() async {
+    _retryTimer?.cancel();
+    _stopListening(keepStreamAlive: false);
+    setState(() {
+      _attempt = 0;
+      _resolvedLogged = false;
+      _error = null;
+      _chunk = null;
+      _replaceImage(null);
+    });
+    await _provider.evict();
+    if (!mounted) return;
+    _resolve(force: true);
+  }
+
+  double _layoutWidth(BuildContext context) {
+    final mq = MediaQuery.sizeOf(context).width;
+    final box = context.findRenderObject();
+    if (box is RenderBox && box.hasSize && box.constraints.hasBoundedWidth) {
+      final w = box.constraints.maxWidth;
+      if (w.isFinite && w > 0) return w;
+    }
+    // Parent list often gives tight width via constraints in build.
+    return mq > 0 ? mq : 390;
+  }
+
+  double _layoutWidthFromConstraints(BoxConstraints constraints) {
     if (constraints.hasBoundedWidth && constraints.maxWidth.isFinite) {
       final w = constraints.maxWidth;
       if (w > 0) return w;
@@ -89,25 +287,19 @@ class ReaderImage extends StatelessWidget {
     return mq > 0 ? mq : 390;
   }
 
-  Widget _placeholder(
-    BuildContext context,
-    BoxConstraints constraints,
-    Widget child,
-  ) {
-    // Avoid near-black-on-black: reader canvas is pure black.
-    final scheme = Theme.of(context).colorScheme;
-    final width = _layoutWidth(context, constraints);
+  Widget _placeholder(double width, Widget child) {
     final height = width / _fallbackAspectRatio;
+    // Distinct from pure-black readerCanvas so loading is never invisible.
     return SizedBox(
       width: width,
       height: height,
       child: ColoredBox(
-        color: scheme.surfaceContainerHigh.withValues(alpha: 0.55),
+        color: const Color(0xFF2A2A2A),
         child: Center(
           child: DefaultTextStyle.merge(
-            style: TextStyle(color: scheme.onSurface),
+            style: const TextStyle(color: Color(0xFFECECEC)),
             child: IconTheme.merge(
-              data: IconThemeData(color: scheme.onSurface),
+              data: const IconThemeData(color: Color(0xFFECECEC)),
               child: child,
             ),
           ),
@@ -116,36 +308,65 @@ class ReaderImage extends StatelessWidget {
     );
   }
 
-  /// Explicit layout box from decoded pixel size — required for vertical
-  /// continuous lists so [RawImage] never collapses to zero height.
-  Widget _sizedFrame(
-    BuildContext context,
-    BoxConstraints constraints,
-    ImageInfo frame, {
-    required int pixelW,
-    required int pixelH,
-  }) {
-    final width = _layoutWidth(context, constraints);
+  Widget _buildFrame(double width) {
+    final info = _imageInfo!;
+    final pixelW = info.image.width;
+    final pixelH = info.image.height;
     final aspect = pixelW > 0 && pixelH > 0
         ? pixelW / pixelH
         : _fallbackAspectRatio;
-    // Match : ceil height so list items never sub-pixel-collapse.
     final height = (width / aspect).ceilToDouble();
-    final align = alignment is Alignment
-        ? alignment as Alignment
+    final align = widget.alignment is Alignment
+        ? widget.alignment as Alignment
         : Alignment.center;
 
+    // Prefer Flutter [Image] for the paint path (same as ). It owns a
+    // proper ImageStreamListener and is known-good on iOS Impeller. We still
+    // keep our own stream + keepAlive so loading/error/retry and size logs
+    // work, and so the cache entry stays live while this item is mounted.
+    // Explicit width/height prevent zero-height list items.
     return SizedBox(
       width: width,
       height: height,
-      child: RawImage(
-        image: frame.image,
-        scale: frame.scale,
-        width: width,
-        height: height,
-        fit: fit,
-        alignment: align,
-        filterQuality: filterQuality,
+      child: ColoredBox(
+        color: const Color(0xFF1A1A1A),
+        child: Image(
+          image: _provider,
+          width: width,
+          height: height,
+          fit: widget.fit,
+          alignment: align,
+          filterQuality: widget.filterQuality,
+          gaplessPlayback: true,
+          // If Image's secondary resolve is still settling, fall back to the
+          // already-decoded frame we hold (avoids a blank flash).
+          frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+            if (frame != null || wasSynchronouslyLoaded) {
+              return child;
+            }
+            return RawImage(
+              image: info.image,
+              scale: info.scale,
+              width: width,
+              height: height,
+              fit: widget.fit,
+              alignment: align,
+              filterQuality: widget.filterQuality,
+            );
+          },
+          errorBuilder: (context, error, stackTrace) {
+            // Stream already decoded once; paint the held frame if Image fails.
+            return RawImage(
+              image: info.image,
+              scale: info.scale,
+              width: width,
+              height: height,
+              fit: widget.fit,
+              alignment: align,
+              filterQuality: widget.filterQuality,
+            );
+          },
+        ),
       ),
     );
   }
@@ -154,103 +375,66 @@ class ReaderImage extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        return RetryForImage(
-          // Avoid a second blank decode after ImageStream already resolved:
-          // paint the decoded frame immediately with RawImage.
-          fadeDuration: Duration.zero,
-          imageProvider: _buildProvider(),
-          onImageResolved: (info) {
-            final w = info.image.width;
-            final h = info.image.height;
-            if (traceId != null) {
-              final layoutW = _layoutWidth(context, constraints);
-              final aspect = w > 0 && h > 0 ? w / h : _fallbackAspectRatio;
-              final layoutH = (layoutW / aspect).ceilToDouble();
-              Log.i(
-                'Reader first frame',
-                'trace=$traceId idx=${imageIndex ?? '-'} '
-                'size=${w}x$h layout=${layoutW.toStringAsFixed(1)}x'
-                '${layoutH.toStringAsFixed(1)} '
-                'cache=${ReaderDiagnostics.cacheKeySummary(cacheKey ?? url)}',
-              );
-            }
-            onImageSizeChanged?.call(w, h);
-          },
-          builder: (context, status) {
-            final frame = status.imageInfo;
-            if (frame != null) {
-              // Direct paint of the already-decoded ui.Image — no second resolve.
-              // Always pin width/height so vertical list items cannot paint at 0×0.
-              return _sizedFrame(
-                context,
-                constraints,
-                frame,
-                pixelW: frame.image.width,
-                pixelH: frame.image.height,
-              );
-            }
-            if (status.isExhausted) {
-              final detail = _friendlyError(status.error);
-              return _placeholder(
-                context,
-                constraints,
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.broken_image_outlined,
-                        size: 40,
-                        color: Theme.of(context).colorScheme.onSurface,
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        '图片加载失败',
-                        style: Theme.of(context).textTheme.titleSmall,
-                      ),
-                      if (detail != null) ...[
-                        const SizedBox(height: 6),
-                        Text(
-                          detail,
-                          textAlign: TextAlign.center,
-                          maxLines: 4,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ],
-                      const SizedBox(height: 8),
-                      FilledButton.tonalIcon(
-                        onPressed: status.retry,
-                        icon: const Icon(Icons.refresh_rounded),
-                        label: const Text('重试'),
-                      ),
-                    ],
+        final width = _layoutWidthFromConstraints(constraints);
+
+        if (_imageInfo != null) {
+          return _buildFrame(width);
+        }
+
+        final exhausted =
+            _error != null && _attempt >= widget.maxAttempts && _imageInfo == null;
+        if (exhausted) {
+          final detail = _friendlyError(_error);
+          return _placeholder(
+            width,
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.broken_image_outlined, size: 40),
+                  const SizedBox(height: 10),
+                  const Text('图片加载失败'),
+                  if (detail != null) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      detail,
+                      textAlign: TextAlign.center,
+                      maxLines: 4,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  FilledButton.tonalIcon(
+                    onPressed: _manualRetry,
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('重试'),
                   ),
-                ),
-              );
-            }
-            final chunk = status.chunk;
-            double? progress;
-            if (chunk != null) {
-              final total = chunk.expectedTotalBytes;
-              final loaded = chunk.cumulativeBytesLoaded;
-              if (total != null && total > 0) {
-                progress = (loaded / total).clamp(0.0, 1.0);
-              }
-            }
-            return _placeholder(
-              context,
-              constraints,
-              CircularProgressIndicator(
-                value: progress,
-                strokeWidth: 3,
-                color: const Color(0xFFECECEC),
-                constraints: const BoxConstraints(maxWidth: 28, maxHeight: 28),
-                strokeCap: StrokeCap.round,
+                ],
               ),
-            );
-          },
+            ),
+          );
+        }
+
+        double? progress;
+        final chunk = _chunk;
+        if (chunk != null) {
+          final total = chunk.expectedTotalBytes;
+          final loaded = chunk.cumulativeBytesLoaded;
+          if (total != null && total > 0) {
+            progress = (loaded / total).clamp(0.0, 1.0);
+          }
+        }
+        return _placeholder(
+          width,
+          CircularProgressIndicator(
+            value: progress,
+            strokeWidth: 3,
+            color: const Color(0xFFECECEC),
+            constraints: const BoxConstraints(maxWidth: 28, maxHeight: 28),
+            strokeCap: StrokeCap.round,
+          ),
         );
       },
     );

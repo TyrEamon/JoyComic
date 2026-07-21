@@ -145,16 +145,21 @@ class _VerticalListState extends State<VerticalList> {
                 }
 
                 final item = images[index];
-                return ReaderImage(
-                  key: ValueKey(item.cacheKey),
-                  url: item.url,
-                  cacheKey: item.cacheKey,
-                  headers: item.headers,
-                  fallbackUrls: item.fallbackUrls,
-                  bytesTransformer: item.bytesTransformer,
-                  cacheWidth: cacheWidth,
-                  traceId: context.reader.traceId,
-                  imageIndex: index,
+                // Explicit width from LayoutBuilder so list items never inherit
+                // unbounded/zero cross-axis constraints from InteractiveViewer.
+                return SizedBox(
+                  width: imageLayoutWidth,
+                  child: ReaderImage(
+                    key: ValueKey(item.cacheKey),
+                    url: item.url,
+                    cacheKey: item.cacheKey,
+                    headers: item.headers,
+                    fallbackUrls: item.fallbackUrls,
+                    bytesTransformer: item.bytesTransformer,
+                    cacheWidth: cacheWidth,
+                    traceId: context.reader.traceId,
+                    imageIndex: index,
+                  ),
                 );
               },
             ),

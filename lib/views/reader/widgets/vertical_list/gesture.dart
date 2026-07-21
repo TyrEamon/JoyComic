@@ -173,10 +173,19 @@ class _GestureWrapperState extends State<GestureWrapper>
         )..addListener(() {
           _transformationController.value = _animation.value;
         });
+    // Rebuild when zoom matrix leaves/returns identity so InteractiveViewer
+    // is only mounted while actually zoomed (see build below).
+    _transformationController.addListener(_onTransformChanged);
+  }
+
+  void _onTransformChanged() {
+    if (!mounted) return;
+    setState(() {});
   }
 
   @override
   void dispose() {
+    _transformationController.removeListener(_onTransformChanged);
     _transformationController.dispose();
     _animationController.dispose();
     super.dispose();
@@ -202,13 +211,23 @@ class _GestureWrapperState extends State<GestureWrapper>
         onTapDown: (details) => _tapDownDetails = details,
         onDoubleTapDown: _handleDoubleTapDown,
         onDoubleTap: _handleDoubleTap,
-        child: InteractiveViewer(
-          transformationController: _transformationController,
-          scaleEnabled: scaleEnabled,
-          minScale: 1.0,
-          maxScale: 3.5,
-          child: widget.child,
-        ),
+        // Only wrap with InteractiveViewer when the user is actively scaling
+        // (two-finger / ctrl) or the transform matrix is non-identity after a
+        // double-tap zoom. A permanent InteractiveViewer around the full
+        // continuous list has been observed to leave decoded frames black on
+        // iOS Impeller even when layout size is non-zero.
+        child: scaleEnabled ||
+                !_transformationController.value.isIdentity()
+            ? InteractiveViewer(
+                transformationController: _transformationController,
+                scaleEnabled: scaleEnabled,
+                constrained: true,
+                clipBehavior: Clip.none,
+                minScale: 1.0,
+                maxScale: 3.5,
+                child: widget.child,
+              )
+            : widget.child,
       ),
     );
   }
