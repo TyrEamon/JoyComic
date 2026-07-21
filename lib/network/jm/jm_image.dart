@@ -17,5 +17,23 @@ String getJmCoverUrl(String id) => '$jmBaseUrl/media/albums/${id}_3x4.jpg';
 String getJmImageUrl(String imageName, String chapterId) =>
     '$jmBaseUrl/media/photos/$chapterId/$imageName';
 
+/// 按页序生成 JM 标准文件名（`00001.webp` …）。
+///
+/// 用于章节接口未返回 images、但已知总页数（如 album.total_photos）时，
+/// 直接按 CDN 约定路径拼出可读页列表，避免未购买精品因空 images 无法阅读。
+List<String> buildJmSequentialPageNames(
+  int count, {
+  String extension = 'webp',
+}) {
+  if (count <= 0) return const <String>[];
+  final ext = extension.startsWith('.')
+      ? extension.substring(1)
+      : (extension.isEmpty ? 'webp' : extension);
+  return List<String>.unmodifiable([
+    for (var i = 1; i <= count; i++)
+      '${i.toString().padLeft(5, '0')}.$ext',
+  ]);
+}
+
 /// 禁漫用户头像 URL。
 String getJmAvatarUrl(String imageName) => '$jmBaseUrl/media/users/$imageName';

@@ -25,6 +25,11 @@ class HomeToolBar extends StatelessWidget {
       onTap: () => context.push('/video'),
     ),
     ToolEntry(
+      label: '精品',
+      icon: Icons.auto_awesome_outlined,
+      onTap: () => context.push('/premium'),
+    ),
+    ToolEntry(
       label: '以图搜图',
       icon: Icons.image_search_outlined,
       onTap: () => context.push('/image-search'),

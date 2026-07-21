@@ -30,6 +30,7 @@ import 'views/settings/source_manager_page.dart';
 import 'views/settings/source_settings_page.dart';
 import 'views/settings/webdav_settings_page.dart';
 import 'views/settings/log_viewer_page.dart';
+import 'views/premium/jm_premium_page.dart';
 import 'views/video/video_page.dart';
 import 'views/video/video_player_page.dart';
 
@@ -101,6 +102,10 @@ final appRouter = GoRouter(
         initialTitle: state.uri.queryParameters['title'] ?? '',
         initialBacklink: state.uri.queryParameters['backlink'] ?? '',
       ),
+    ),
+    GoRoute(
+      path: '/premium',
+      builder: (context, state) => const JmPremiumPage(),
     ),
     GoRoute(
       path: '/download',

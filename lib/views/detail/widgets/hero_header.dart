@@ -54,15 +54,24 @@ class HeroHeader extends StatelessWidget {
                 sectionSpacing: AppSpacing.md,
               );
 
-              // Rating sits just below the cover bottom inside the content
-              // surface; when null, do not reserve empty rating space.
-              final ratingTop = geometry.coverBottom + AppSpacing.sm;
-              final ratingRowHeight = 28.0 * textScale.clamp(1.0, 1.6);
-              // Hero stack must include the rating row when present so it is
-              // not clipped; metadata in the page follows coverBottom spacing.
-              final stackHeight = rating == null
-                  ? geometry.totalHeight
-                  : ratingTop + ratingRowHeight;
+              // Right column bottoms exactly at coverBottom: rating is the baseline;
+              // title/author/tags stack above it. Do not use the clamped title
+              // band height alone — that can end above the cover on tall covers.
+              final stackHeight = geometry.totalHeight;
+              final rightColumnLeft =
+                  AppSpacing.md + geometry.coverWidth + AppSpacing.md;
+              final rightColumnTop = geometry.titleBandTop;
+              final rightColumnHeight =
+                  (geometry.coverBottom - rightColumnTop)
+                      .clamp(56.0, geometry.coverBottom)
+                      .toDouble();
+              final ratingRowHeight =
+                  rating == null ? 0.0 : 28.0 * textScale.clamp(1.0, 1.6);
+              final titleMaxHeight = rating == null
+                  ? rightColumnHeight
+                  : (rightColumnHeight - ratingRowHeight - AppSpacing.sm)
+                        .clamp(40.0, rightColumnHeight)
+                        .toDouble();
 
               return SizedBox(
                 height: stackHeight,
@@ -111,27 +120,33 @@ class HeroHeader extends StatelessWidget {
                     ),
                     Positioned(
                       key: const ValueKey('detail-hero-title-band'),
-                      left: AppSpacing.md + geometry.coverWidth + AppSpacing.md,
+                      left: rightColumnLeft,
                       right: AppSpacing.md,
-                      top: geometry.titleBandTop,
-                      height: geometry.titleBandHeight,
+                      top: rightColumnTop,
+                      height: rightColumnHeight,
                       child: Align(
                         alignment: Alignment.bottomLeft,
-                        child: _HeroTitle(
-                          title: title,
-                          subTitle: subTitle,
-                          tags: tags,
-                          maxHeight: geometry.titleBandHeight,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _HeroTitle(
+                              title: title,
+                              subTitle: subTitle,
+                              tags: tags,
+                              maxHeight: titleMaxHeight,
+                            ),
+                            if (rating != null) ...[
+                              const SizedBox(height: AppSpacing.sm),
+                              KeyedSubtree(
+                                key: const ValueKey('detail-hero-rating'),
+                                child: _HeroRating(rating: rating!),
+                              ),
+                            ],
+                          ],
                         ),
                       ),
                     ),
-                    if (rating != null)
-                      Positioned(
-                        left: AppSpacing.md + geometry.coverWidth + AppSpacing.md,
-                        right: AppSpacing.md,
-                        top: ratingTop,
-                        child: _HeroRating(rating: rating!),
-                      ),
                   ],
                 ),
               );

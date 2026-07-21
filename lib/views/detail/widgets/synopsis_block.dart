@@ -1,8 +1,8 @@
 /// 简介组件（Synopsis Block）。
 ///
 /// - 顶部小标题"简介"
-/// - 多行文本框，默认折叠到 [maxLinesWhenCollapsed]
-/// - 右侧独立"展开/收起"控件，不遮挡正文
+/// - 默认折叠到 [maxLinesWhenCollapsed]
+/// - 折叠态"展开"贴在正文末行右侧，正文占满整行宽度，不单独占宽列
 library;
 
 import 'package:flutter/material.dart';
@@ -21,15 +21,17 @@ class SynopsisBlock extends StatefulWidget {
   final String? text;
   final int maxLinesWhenCollapsed;
 
-  /// Width reserved on the right for the expand/collapse control.
-  static const double toggleLaneWidth = 56;
+  /// Visual width of the expand label (gradient fade covers a bit more).
+  static const double toggleVisualWidth = 36;
+
+  /// Hit-target size for accessibility (does not reserve a full side column).
+  static const double toggleHitSize = 44;
 
   @override
   State<SynopsisBlock> createState() => _SynopsisBlockState();
 }
 
-class _SynopsisBlockState extends State<SynopsisBlock>
-    with SingleTickerProviderStateMixin {
+class _SynopsisBlockState extends State<SynopsisBlock> {
   bool _expanded = false;
   bool? _overflows; // null = 未测量
 
@@ -51,15 +53,14 @@ class _SynopsisBlockState extends State<SynopsisBlock>
   }
 
   Widget _buildBody(BuildContext context, String text, Color accent) {
-    final empty = text.isEmpty;
-    if (empty) {
+    if (text.isEmpty) {
       return Text('暂无简介', style: AppTypography.body(context));
     }
     return LayoutBuilder(
       builder: (context, constraints) {
         _measureOverflowIfNeeded(context, constraints, text);
         final showToggle = _overflows == true;
-        final toggleLane = showToggle ? SynopsisBlock.toggleLaneWidth : 0.0;
+        final surface = context.pageBackground;
 
         if (_expanded) {
           return Column(
@@ -79,30 +80,44 @@ class _SynopsisBlockState extends State<SynopsisBlock>
           );
         }
 
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
+        // Full-width body; expand sits on the last line's trailing edge with a
+        // short fade so prose uses almost the entire row.
+        return Stack(
+          clipBehavior: Clip.none,
           children: [
-            Expanded(
-              child: AnimatedSize(
-                duration: const Duration(milliseconds: 220),
-                curve: Curves.easeOutCubic,
-                alignment: Alignment.topLeft,
-                child: Text(
-                  text,
-                  style: AppTypography.body(context),
-                  maxLines: widget.maxLinesWhenCollapsed,
-                  overflow: TextOverflow.ellipsis,
+            Text(
+              text,
+              style: AppTypography.body(context),
+              maxLines: widget.maxLinesWhenCollapsed,
+              overflow: TextOverflow.ellipsis,
+            ),
+            if (showToggle)
+              Positioned(
+                right: 0,
+                bottom: 0,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                      colors: <Color>[
+                        surface.withValues(alpha: 0),
+                        surface.withValues(alpha: 0.92),
+                        surface,
+                      ],
+                      stops: const <double>[0, 0.35, 0.55],
+                    ),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 20),
+                    child: _ToggleLink(
+                      expanded: false,
+                      accent: accent,
+                      onTap: () => setState(() => _expanded = true),
+                    ),
+                  ),
                 ),
               ),
-            ),
-            if (showToggle) ...[
-              SizedBox(width: toggleLane > 0 ? 4 : 0),
-              _ToggleLink(
-                expanded: false,
-                accent: accent,
-                onTap: () => setState(() => _expanded = true),
-              ),
-            ],
           ],
         );
       },
@@ -115,24 +130,14 @@ class _SynopsisBlockState extends State<SynopsisBlock>
     String text,
   ) {
     if (_overflows != null) return;
-    // Measure against full width first; if it overflows three lines even
-    // without the toggle lane, show the control. Re-measure with lane width
-    // subtracted so short-but-wide text is not mis-flagged.
     final style = AppTypography.body(context);
-    final full = TextPainter(
+    // Full width: toggle overlays the trailing edge and does not carve a column.
+    final painter = TextPainter(
       text: TextSpan(text: text, style: style),
       textDirection: TextDirection.ltr,
       maxLines: widget.maxLinesWhenCollapsed,
     )..layout(maxWidth: constraints.maxWidth);
-    final withLane = TextPainter(
-      text: TextSpan(text: text, style: style),
-      textDirection: TextDirection.ltr,
-      maxLines: widget.maxLinesWhenCollapsed,
-    )..layout(
-      maxWidth: (constraints.maxWidth - SynopsisBlock.toggleLaneWidth)
-          .clamp(0.0, constraints.maxWidth),
-    );
-    final overflow = full.didExceedMaxLines || withLane.didExceedMaxLines;
+    final overflow = painter.didExceedMaxLines;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _overflows == overflow) return;
       setState(() => _overflows = overflow);
@@ -163,18 +168,19 @@ class _ToggleLink extends StatelessWidget {
           onTap: onTap,
           borderRadius: BorderRadius.circular(8),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+            constraints: const BoxConstraints(
+              minWidth: SynopsisBlock.toggleHitSize,
+              minHeight: SynopsisBlock.toggleHitSize,
+            ),
             child: Align(
               alignment: Alignment.centerRight,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                child: Text(
-                  expanded ? '收起' : '展开',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: accent,
-                  ),
+              child: Text(
+                expanded ? '收起' : '展开',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: accent,
+                  height: 1.2,
                 ),
               ),
             ),

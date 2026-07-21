@@ -92,6 +92,28 @@ JmComicInfo? parseJmComicInfoResponse(Object? rawData, {required String id}) {
     related.add(comic);
   }
 
+  final totalPhotos = _positiveJsonInt(
+    data['total_photos'] ?? data['totalPhotos'] ?? data['photo_count'],
+  );
+  final price = _nullableJsonInt(data['price']);
+  final purchasedRaw = data['purchased'];
+  final bool? purchased = purchasedRaw == null
+      ? null
+      : jsonBool(purchasedRaw);
+
+  // Do not invent page names here: empty images is normal for unpaid premium.
+  // Page lists come from /chapter (or sequential CDN fallback in JmNetwork).
+  final effectiveChapters = <JmChapter>[
+    for (final chapter in parsedChapters)
+      JmChapter(
+        order: chapter.order,
+        chapterId: chapter.chapterId,
+        title: chapter.title,
+        pageCount: chapter.pageCount ??
+            (parsedChapters.length == 1 ? totalPhotos : null),
+      ),
+  ];
+
   return JmComicInfo(
     name: jsonString(data['name'], fallback: 'Unknown'),
     id: id,
@@ -113,9 +135,12 @@ JmComicInfo? parseJmComicInfoResponse(Object? rawData, {required String id}) {
     ),
     epNames: epNames,
     seriesId: _nullableJsonInt(data['series_id']),
+    totalPhotos: totalPhotos,
+    price: price,
+    purchased: purchased,
     images: images,
     categories: categories,
-    chapters: parsedChapters,
+    chapters: effectiveChapters,
   );
 }
 

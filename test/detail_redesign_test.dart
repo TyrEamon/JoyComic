@@ -91,8 +91,20 @@ void main() {
     expect(find.byKey(const ValueKey('detail-hero-backdrop')), findsOneWidget);
     expect(find.byKey(const ValueKey('detail-hero-surface')), findsOneWidget);
     expect(find.byKey(const ValueKey('detail-floating-cover')), findsOneWidget);
+    expect(find.byKey(const ValueKey('detail-hero-rating')), findsOneWidget);
     expect(find.text('8.8'), findsOneWidget);
     expect(find.byType(RatingStars), findsOneWidget);
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    final cover = tester.getRect(
+      find.byKey(const ValueKey('detail-floating-cover')),
+    );
+    final rating = tester.getRect(
+      find.byKey(const ValueKey('detail-hero-rating')),
+    );
+    // Rating baseline aligns with the floating cover bottom.
+    expect(rating.bottom, closeTo(cover.bottom, 1.5));
   });
 
   testWidgets(
@@ -143,11 +155,17 @@ void main() {
         final titleBand = tester.getRect(
           find.byKey(const ValueKey('detail-hero-title-band')),
         );
+        final rating = tester.getRect(
+          find.byKey(const ValueKey('detail-hero-rating')),
+        );
         final expectedSurfaceTop = cover.top + cover.height * 2 / 3;
 
         expect(surface.top, closeTo(expectedSurfaceTop, 1.5));
         expect(cover.bottom, greaterThan(surface.top));
-        expect(titleBand.bottom, lessThanOrEqualTo(cover.bottom + 1.5));
+        // Right column bottom-aligns to the cover; rating is the baseline.
+        expect(titleBand.bottom, closeTo(cover.bottom, 1.5));
+        expect(rating.bottom, closeTo(cover.bottom, 1.5));
+        expect(rating.top, greaterThan(titleBand.top));
         expect(tester.takeException(), isNull);
       }
 
@@ -158,7 +176,7 @@ void main() {
   );
 
   testWidgets(
-    'synopsis reserves a right toggle lane so expand does not overlap text',
+    'synopsis uses full width with trailing expand overlay',
     (tester) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -183,15 +201,46 @@ void main() {
 
       final textRect = tester.getRect(find.textContaining('第一行'));
       final toggleRect = tester.getRect(find.text('展开'));
-      // Toggle is a separate right-side control; it must not overlap the body.
-      expect(toggleRect.left, greaterThanOrEqualTo(textRect.right - 1));
-      expect(toggleRect.left, greaterThan(textRect.left + textRect.width * 0.45));
+      // Body spans the content width; expand sits on the trailing edge.
+      expect(textRect.width, greaterThan(200));
+      expect(toggleRect.right, closeTo(textRect.right, 8));
+      expect(toggleRect.bottom, lessThanOrEqualTo(textRect.bottom + 4));
       // Hit target is at least 44 logical px via the control.
       final toggleControl = tester.getRect(
         find.byKey(const ValueKey('synopsis-toggle')),
       );
       expect(toggleControl.height, greaterThanOrEqualTo(44));
       expect(toggleControl.width, greaterThanOrEqualTo(44));
+    },
+  );
+
+  testWidgets(
+    'recent chapter header aligns 全部章节 with the section title baseline',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: Scaffold(
+            body: RecentChapterStrip(
+              chapters: const <ComicChapter>[
+                ComicChapter(id: '1', title: '第1话', order: 1),
+              ],
+              loadThumbnail: (_) async => null,
+              onSelect: (_) {},
+              onShowAll: () {},
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final titleRect = tester.getRect(find.text('最近章节'));
+      final actionRect = tester.getRect(find.text('全部章节'));
+      // Optical vertical alignment: centers should be close (no TextButton drop).
+      expect(
+        (titleRect.center.dy - actionRect.center.dy).abs(),
+        lessThan(6),
+      );
     },
   );
 

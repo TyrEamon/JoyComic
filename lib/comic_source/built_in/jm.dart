@@ -293,8 +293,28 @@ ComicSource buildJmSource({
       return Res(adaptJmSourceCategories(res.data));
     },
     loadSourceContent: (query) async {
+      final category = (query.param ?? query.categoryKey).trim();
+      // Numeric promote ids (e.g. 30 = 禁漫去碼&全彩化) use promote_list.
+      if (RegExp(r'^\d+$').hasMatch(category)) {
+        final res = await client.getPromoteList(category, query.page);
+        if (res.error) return Res(null, errorMessage: res.errorMessage);
+        final total = res.subData is int ? res.subData as int : 0;
+        final maxPage = jmCategoryMaxPage(
+          total: total,
+          currentPage: query.page,
+          itemCount: res.data.length,
+          pageSize: res.data.isNotEmpty ? res.data.length : null,
+        );
+        return Res(
+          SourceContentPage(
+            query: query,
+            comics: <BaseComic>[...res.data],
+            maxPage: maxPage,
+          ),
+        );
+      }
       final res = await client.getCategoryComics(
-        query.param ?? query.categoryKey,
+        category,
         _jmSort(query.sort),
         query.page,
       );
@@ -549,6 +569,7 @@ ComicInfoData jmInfoToComicInfoData(JmComicInfo info) {
         order: 1,
         chapterId: info.id,
         title: info.name.trim().isEmpty ? '第 1 话' : info.name,
+        pageCount: info.totalPhotos,
       ),
     );
   }
@@ -562,9 +583,13 @@ ComicInfoData jmInfoToComicInfoData(JmComicInfo info) {
         id: chapter.chapterId,
         title: chapter.title,
         order: chapter.order,
-        pageCount: chapter.pageCount,
+        pageCount: chapter.pageCount ??
+            (jmChapters.length == 1 ? info.totalPhotos : null),
       ),
   ];
+
+  // Unpaid premium albums often have empty images; reader loads via chapter.
+  final singlePages = info.images.isEmpty ? null : info.images;
 
   return ComicInfoData.snapshot(
     title: info.name,
@@ -592,6 +617,6 @@ ComicInfoData jmInfoToComicInfoData(JmComicInfo info) {
     commentCount: info.comments,
     isLiked: info.liked,
     chapterList: chapterList,
-    singleChapterPages: info.images.isEmpty ? null : info.images,
+    singleChapterPages: singlePages,
   );
 }

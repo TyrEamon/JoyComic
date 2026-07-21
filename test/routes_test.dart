@@ -46,6 +46,12 @@ void main() {
     expect(page.sort, 'dd');
   });
 
+  test('main.dart registers /premium route', () {
+    final main = File('lib/main.dart').readAsStringSync();
+    expect(main.contains("path: '/premium'"), isTrue);
+    expect(main.contains('JmPremiumPage'), isTrue);
+  });
+
   testWidgets('reader rejects a non-ComicState extra with an explicit 404', (
     tester,
   ) async {

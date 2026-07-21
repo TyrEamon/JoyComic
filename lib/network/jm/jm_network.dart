@@ -66,6 +66,15 @@ const jmExpressShuntKey = 0;
 /// 服务端的图片分段阈值对所有作品一致，故此处作为统一常量参与分段数推算。
 const jmScrambleId = '220980';
 
+/// 首页运营分区「禁漫去碼&全彩化」的 promote id。
+///
+/// 来源：`GET /promote?page=0` 中 `title=禁漫去碼&全彩化`、`type=promote` 的条目。
+/// 完整分页列表走 [JmNetwork.getPromoteList]。
+const jmPremiumPromoteId = '30';
+
+/// 与 [jmPremiumPromoteId] 对应的展示标题（繁体与官方首页一致）。
+const jmPremiumPromoteTitle = '禁漫去碼&全彩化';
+
 class JmHomeSection {
   final String key;
   final String title;
@@ -1032,7 +1041,8 @@ class JmNetwork {
       if (comic.id.isEmpty) continue;
       comics.add(comic);
     }
-    return Res(comics);
+    final total = jsonInt(data['total']);
+    return Res(comics, subData: total > 0 ? total : null);
   }
 
   /// 获取一级分类及其子分类。
@@ -1125,12 +1135,47 @@ class JmNetwork {
         JmHomeSection(
           key: key.isEmpty ? title : key,
           title: title,
-          categoryParam: type == 'promote' || key.isEmpty ? null : key,
+          // promote 分区用数字 id 走 promote_list；category_id 用 slug 走 filter。
+          categoryParam: key.isEmpty ? null : key,
           comics: comics,
         ),
       );
     }
     return Res(sections);
+  }
+
+  /// 首页运营分区完整列表（分页）。
+  ///
+  /// [id] 为 `/promote` 返回的分区 id（如 [jmPremiumPromoteId]）。
+  /// [page] 对外使用 1-based；请求时转换为服务端 0-based。
+  /// 成功时 [Res.subData] 为 total（可空）。
+  Future<Res<List<JmComicBrief>>> getPromoteList(String id, int page) async {
+    final promoteId = id.trim();
+    if (promoteId.isEmpty) {
+      return const Res(null, errorMessage: '分区 id 无效');
+    }
+    final apiPage = page < 1 ? 0 : page - 1;
+    final uri = Uri.parse('$baseUrl/promote_list').replace(
+      queryParameters: {'id': promoteId, 'page': apiPage.toString()},
+    );
+    final res = await get(uri.toString());
+    if (res.error) return Res(null, errorMessage: res.errorMessage);
+    if (res.data is! Map) {
+      return const Res(null, errorMessage: '分区列表解析失败');
+    }
+    final data = jsonMap(res.data);
+    if (data['list'] is! List) {
+      return const Res(null, errorMessage: '分区列表解析失败');
+    }
+    final comics = <JmComicBrief>[];
+    for (final rawComic in jsonList(data['list'])) {
+      if (rawComic is! Map) continue;
+      final comic = JmComicBrief.fromJson(jsonMap(rawComic));
+      if (comic.id.isEmpty) continue;
+      comics.add(comic);
+    }
+    final total = jsonInt(data['total']);
+    return Res(comics, subData: total > 0 ? total : null);
   }
 
   /// 专辑（漫画）详情。
@@ -1152,16 +1197,31 @@ class JmNetwork {
   }
 
   /// 章节内文图文件名列表（图片重组用 scrambleId 与 bookId 由调用方推算）。
-  Future<Res<List<String>>> getChapter(String id) async {
+  ///
+  /// 未购买精品专辑时 chapter 仍通常返回完整 images；若为空则用 [pageHint]
+  ///（来自 album.total_photos）按 `00001.webp` 顺序拼 CDN 路径。
+  Future<Res<List<String>>> getChapter(String id, {int? pageHint}) async {
     final res = await get('$baseUrl/chapter?id=$id');
-    if (res.error) return Res(null, errorMessage: res.errorMessage);
+    if (res.error) {
+      final fallback = _cdnSequentialPages(id, pageHint);
+      if (fallback != null) return Res(fallback);
+      return Res(null, errorMessage: res.errorMessage);
+    }
     final rawData = res.data;
     if (rawData is! Map) {
+      final fallback = _cdnSequentialPages(id, pageHint);
+      if (fallback != null) return Res(fallback);
       return const Res(null, errorMessage: '章节内容解析失败');
+    }
+    final names = jsonStringList(jsonMap(rawData)['images']);
+    if (names.isEmpty) {
+      final fallback = _cdnSequentialPages(id, pageHint);
+      if (fallback != null) return Res(fallback);
+      return const Res(null, errorMessage: '章节图片为空');
     }
     return Res(
       _resolveJmPageImages(
-        jsonStringList(jsonMap(rawData)['images']),
+        names,
         id,
         state?.imageBaseUrl ?? jmBaseUrl,
       ),
@@ -1169,23 +1229,35 @@ class JmNetwork {
   }
 
   /// 优先返回详情接口内联页；冷缓存先刷新详情，再按需回退章节端点。
+  ///
+  /// 付费未购精品常见：album.images 为空但 chapter 有图、CDN 可直读。
+  /// 本方法保证只要 chapter 或 total_photos 可用就能返回完整页 URL 列表。
   Future<Res<List<String>>> getComicPages(
     String comicId,
     String? chapterId,
   ) async {
-    if (chapterId != null && chapterId != comicId) {
-      return getChapter(chapterId);
+    final ep = (chapterId == null || chapterId.isEmpty || chapterId == comicId)
+        ? comicId
+        : chapterId;
+
+    // Multi-chapter: go straight to the chapter endpoint for that ep id.
+    if (ep != comicId) {
+      return getChapter(ep);
     }
 
     var inlinePages = _takeCachedInlinePages(comicId);
+    int? totalPhotosHint;
     if (inlinePages == null) {
       final detail = await getComicInfo(comicId);
       if (detail.error) {
-        return Res<List<String>>.fromErrorRes(detail);
+        // Album failed — still try chapter / CDN for this id.
+        return getChapter(comicId);
       }
+      totalPhotosHint = detail.data.totalPhotos;
       inlinePages = _takeCachedInlinePages(comicId);
     }
-    if (inlinePages != null) {
+
+    if (inlinePages != null && inlinePages.isNotEmpty) {
       return Res(
         _resolveJmPageImages(
           inlinePages,
@@ -1194,7 +1266,21 @@ class JmNetwork {
         ),
       );
     }
-    return getChapter(comicId);
+
+    // Empty inline (typical unpaid premium): chapter API + sequential CDN.
+    return getChapter(comicId, pageHint: totalPhotosHint);
+  }
+
+  /// Builds absolute CDN URLs for sequential page names when the API omits
+  /// images. Returns null when [pageHint] is missing or non-positive.
+  List<String>? _cdnSequentialPages(String chapterId, int? pageHint) {
+    final count = pageHint ?? 0;
+    if (count <= 0) return null;
+    return _resolveJmPageImages(
+      buildJmSequentialPageNames(count),
+      chapterId,
+      state?.imageBaseUrl ?? jmBaseUrl,
+    );
   }
 
   void _replaceInlinePages(String comicId, List<String> rawImages) {
