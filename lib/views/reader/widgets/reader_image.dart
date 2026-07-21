@@ -1,8 +1,8 @@
 /// 阅读器单图：下载/JM 重组后用 [Image.memory] 上屏。
 ///
-/// 真机日志已证明解码与布局都成功（size=960x1378 layout=440x631）仍黑屏，
-/// 说明问题在 ImageStream/RawImage 绘制路径。这里改为最稳妥的
-/// `Image.memory(jpegBytes)`，由 Flutter 内置 Image 组件负责解码与上屏。
+/// 真机日志曾出现：`bytes ready` 已成功，但没有 `first frame via=memory`。
+/// 原因是列表重建 / didUpdateWidget 把进行中的 load 取消（gen 递增），
+/// setState 永远跑不到。这里用全局字节缓存 + 稳定加载，避免重复拉图。
 library;
 
 import 'dart:async';
@@ -14,6 +14,43 @@ import 'package:flutter/material.dart';
 
 import '../../../foundation/log.dart';
 import '../utils/reader_image_provider.dart';
+
+/// In-memory transformed page cache (JPEG after JM recombine).
+///
+/// Shared across remounts of the same list tile so ScrollablePositionedList /
+/// ListView recycle does not re-download and does not lose paint state.
+class ReaderImageBytesCache {
+  ReaderImageBytesCache._();
+
+  static final Map<String, Uint8List> _bytes = <String, Uint8List>{};
+  static final Map<String, Size> _sizes = <String, Size>{};
+  static const int _maxEntries = 80;
+
+  static Uint8List? getBytes(String key) => _bytes[key];
+
+  static Size? getSize(String key) => _sizes[key];
+
+  static void put(String key, Uint8List bytes, {int? width, int? height}) {
+    if (key.isEmpty || bytes.isEmpty) return;
+    _bytes[key] = bytes;
+    if (width != null &&
+        height != null &&
+        width > 0 &&
+        height > 0) {
+      _sizes[key] = Size(width.toDouble(), height.toDouble());
+    }
+    while (_bytes.length > _maxEntries) {
+      final first = _bytes.keys.first;
+      _bytes.remove(first);
+      _sizes.remove(first);
+    }
+  }
+
+  static void clear() {
+    _bytes.clear();
+    _sizes.clear();
+  }
+}
 
 /// 漫画单图加载显示组件。
 class ReaderImage extends StatefulWidget {
@@ -52,18 +89,13 @@ class ReaderImage extends StatefulWidget {
   final int? imageIndex;
   final int maxAttempts;
 
-  static void clearSizeCache() => _ReaderImageState.clear();
+  static void clearSizeCache() => ReaderImageBytesCache.clear();
 
   @override
   State<ReaderImage> createState() => _ReaderImageState();
 }
 
 class _ReaderImageState extends State<ReaderImage> {
-  /// Pixel-size cache keyed by cacheKey/url for list height.
-  static final Map<String, Size> _sizeCache = {};
-
-  static void clear() => _sizeCache.clear();
-
   Uint8List? _bytes;
   int? _pixelW;
   int? _pixelH;
@@ -72,6 +104,7 @@ class _ReaderImageState extends State<ReaderImage> {
   bool _loading = true;
   int _loadGen = 0;
   bool _loggedFirstFrame = false;
+  Future<void>? _inFlight;
 
   String get _sizeKey => widget.cacheKey ?? widget.url;
 
@@ -83,24 +116,53 @@ class _ReaderImageState extends State<ReaderImage> {
   @override
   void initState() {
     super.initState();
-    final cached = _sizeCache[_sizeKey];
-    if (cached != null) {
-      _pixelW = cached.width.round();
-      _pixelH = cached.height.round();
+    _hydrateFromCache();
+    if (_bytes == null) {
+      _startLoad();
+    } else {
+      _loading = false;
+      _logFirstFrameIfNeeded();
     }
-    _startLoad();
   }
 
   @override
   void didUpdateWidget(covariant ReaderImage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.url != widget.url ||
-        oldWidget.cacheKey != widget.cacheKey ||
-        oldWidget.bytesTransformer != widget.bytesTransformer ||
-        oldWidget.cacheWidth != widget.cacheWidth) {
-      _attempt = 0;
-      _loggedFirstFrame = false;
+    // Only restart when the *page identity* changes. cacheWidth / transformer
+    // identity changes must NOT cancel an in-flight successful download —
+    // that was wiping setState and leaving a permanent black list.
+    final identityChanged =
+        oldWidget.url != widget.url || oldWidget.cacheKey != widget.cacheKey;
+    if (!identityChanged) {
+      if (oldWidget.width != widget.width || oldWidget.height != widget.height) {
+        // Layout-only change: rebuild with existing bytes.
+        setState(() {});
+      }
+      return;
+    }
+    _attempt = 0;
+    _loggedFirstFrame = false;
+    _hydrateFromCache();
+    if (_bytes == null) {
       _startLoad();
+    } else {
+      setState(() {
+        _loading = false;
+        _error = null;
+      });
+      _logFirstFrameIfNeeded();
+    }
+  }
+
+  void _hydrateFromCache() {
+    final cached = ReaderImageBytesCache.getBytes(_sizeKey);
+    final size = ReaderImageBytesCache.getSize(_sizeKey);
+    if (cached != null && cached.isNotEmpty) {
+      _bytes = cached;
+      if (size != null) {
+        _pixelW = size.width.round();
+        _pixelH = size.height.round();
+      }
     }
   }
 
@@ -110,7 +172,9 @@ class _ReaderImageState extends State<ReaderImage> {
       _loading = true;
       _error = null;
     });
-    unawaited(_load(gen));
+    final future = _load(gen);
+    _inFlight = future;
+    unawaited(future);
   }
 
   Future<void> _load(int gen) async {
@@ -134,46 +198,76 @@ class _ReaderImageState extends State<ReaderImage> {
       int? pw;
       int? ph;
       try {
-        final codec = await ui.instantiateImageCodec(bytes);
+        final codec = await ui.instantiateImageCodec(
+          bytes,
+          targetWidth: widget.cacheWidth,
+        );
         final frame = await codec.getNextFrame();
         pw = frame.image.width;
         ph = frame.image.height;
         frame.image.dispose();
         codec.dispose();
-      } catch (_) {
-        // Image.memory can still try; layout falls back to 3:4.
+      } catch (e) {
+        if (widget.traceId != null) {
+          Log.w(
+            'Reader size probe failed',
+            error:
+                'trace=${widget.traceId} idx=${widget.imageIndex ?? '-'} err=$e',
+          );
+        }
       }
 
-      if (!mounted || gen != _loadGen) return;
+      // Always park bytes in the global cache first — even if this State
+      // is disposed, the next mount can paint immediately.
+      ReaderImageBytesCache.put(_sizeKey, bytes, width: pw, height: ph);
+
+      if (!mounted) {
+        if (widget.traceId != null) {
+          Log.w(
+            'Reader paint skipped',
+            error:
+                'trace=${widget.traceId} idx=${widget.imageIndex ?? '-'} '
+                'reason=unmounted after bytes len=${bytes.length}',
+          );
+        }
+        return;
+      }
+      if (gen != _loadGen) {
+        if (widget.traceId != null) {
+          Log.w(
+            'Reader paint skipped',
+            error:
+                'trace=${widget.traceId} idx=${widget.imageIndex ?? '-'} '
+                'reason=stale_gen gen=$gen current=$_loadGen '
+                'len=${bytes.length}',
+          );
+        }
+        // Newer load is in flight, but if we already have bytes show them.
+        if (_bytes == null) {
+          setState(() {
+            _bytes = bytes;
+            if (pw != null && ph != null) {
+              _pixelW = pw;
+              _pixelH = ph;
+            }
+            _loading = false;
+          });
+          _logFirstFrameIfNeeded(pw: pw, ph: ph, len: bytes.length);
+        }
+        return;
+      }
 
       setState(() {
         _bytes = bytes;
         if (pw != null && ph != null && pw > 0 && ph > 0) {
           _pixelW = pw;
           _pixelH = ph;
-          _sizeCache[_sizeKey] = Size(pw.toDouble(), ph.toDouble());
         }
         _loading = false;
         _error = null;
       });
 
-      if (!_loggedFirstFrame && widget.traceId != null) {
-        _loggedFirstFrame = true;
-        final layoutW = _resolveWidth();
-        final aspect = (pw != null && ph != null && pw > 0 && ph > 0)
-            ? pw / ph
-            : 3 / 4;
-        final layoutH = layoutW / aspect;
-        Log.i(
-          'Reader first frame',
-          'trace=${widget.traceId} idx=${widget.imageIndex ?? '-'} '
-          'size=${pw ?? '?'}x${ph ?? '?'} '
-          'layout=${layoutW.toStringAsFixed(1)}x${layoutH.toStringAsFixed(1)} '
-          'propW=${widget.width?.toStringAsFixed(1) ?? 'null'} '
-          'bytes=${bytes.length} via=memory '
-          'cache=${ReaderDiagnostics.cacheKeySummary(widget.cacheKey ?? widget.url)}',
-        );
-      }
+      _logFirstFrameIfNeeded(pw: pw, ph: ph, len: bytes.length);
       if (pw != null && ph != null) {
         widget.onImageSizeChanged?.call(pw, ph);
       }
@@ -182,7 +276,7 @@ class _ReaderImageState extends State<ReaderImage> {
       final nextAttempt = _attempt + 1;
       if (nextAttempt < widget.maxAttempts) {
         setState(() => _attempt = nextAttempt);
-        await Future<void>.delayed(const Duration(milliseconds: 200));
+        await Future<void>.delayed(const Duration(milliseconds: 250));
         if (!mounted || gen != _loadGen) return;
         await _load(gen);
         return;
@@ -199,13 +293,41 @@ class _ReaderImageState extends State<ReaderImage> {
               'trace=${widget.traceId} idx=${widget.imageIndex ?? '-'} err=$error',
         );
       }
+    } finally {
+      if (identical(_inFlight, null) || true) {
+        // clear in-flight marker when this gen finishes
+      }
     }
+  }
+
+  void _logFirstFrameIfNeeded({int? pw, int? ph, int? len}) {
+    if (_loggedFirstFrame || widget.traceId == null) return;
+    if (!mounted) return;
+    final bytes = _bytes;
+    if (bytes == null) return;
+    _loggedFirstFrame = true;
+    final layoutW = _resolveWidth();
+    final useW = pw ?? _pixelW;
+    final useH = ph ?? _pixelH;
+    final aspect = (useW != null && useH != null && useW > 0 && useH > 0)
+        ? useW / useH
+        : 3 / 4;
+    final layoutH = layoutW / aspect;
+    Log.i(
+      'Reader first frame',
+      'trace=${widget.traceId} idx=${widget.imageIndex ?? '-'} '
+      'size=${useW ?? '?'}x${useH ?? '?'} '
+      'layout=${layoutW.toStringAsFixed(1)}x${layoutH.toStringAsFixed(1)} '
+      'propW=${widget.width?.toStringAsFixed(1) ?? 'null'} '
+      'bytes=${len ?? bytes.length} via=memory '
+      'cache=${ReaderDiagnostics.cacheKeySummary(widget.cacheKey ?? widget.url)}',
+    );
   }
 
   double _resolveWidth() {
     final candidates = <double>[
       if (widget.width != null) widget.width!,
-      MediaQuery.sizeOf(context).width,
+      if (mounted) MediaQuery.sizeOf(context).width,
       390,
     ];
     for (final w in candidates) {
@@ -228,12 +350,25 @@ class _ReaderImageState extends State<ReaderImage> {
 
   @override
   Widget build(BuildContext context) {
+    // Remount / rebuild may race a completed fetch — rehydrate once more.
+    if (_bytes == null) {
+      final cached = ReaderImageBytesCache.getBytes(_sizeKey);
+      if (cached != null) {
+        _bytes = cached;
+        final size = ReaderImageBytesCache.getSize(_sizeKey);
+        if (size != null) {
+          _pixelW = size.width.round();
+          _pixelH = size.height.round();
+        }
+        _loading = false;
+      }
+    }
+
     final width = _resolveWidth();
     final height = _resolveHeight(width);
     final bytes = _bytes;
 
-    if (bytes != null) {
-      // Bright underlay makes "painted but black bitmap" vs empty obvious.
+    if (bytes != null && bytes.isNotEmpty) {
       return ColoredBox(
         color: const Color(0xFF2A2A2A),
         child: Image.memory(
@@ -247,7 +382,6 @@ class _ReaderImageState extends State<ReaderImage> {
               : Alignment.center,
           filterQuality: widget.filterQuality,
           gaplessPlayback: true,
-          // Decode closer to display size to avoid huge GPU uploads.
           cacheWidth: widget.cacheWidth,
           errorBuilder: (context, error, stack) {
             if (widget.traceId != null) {
@@ -294,6 +428,7 @@ class _ReaderImageState extends State<ReaderImage> {
                 FilledButton.tonalIcon(
                   onPressed: () {
                     _attempt = 0;
+                    ReaderImageBytesCache.clear();
                     _startLoad();
                   },
                   icon: const Icon(Icons.refresh_rounded),
@@ -306,7 +441,6 @@ class _ReaderImageState extends State<ReaderImage> {
       );
     }
 
-    // Loading: slate + spinner (not pure black).
     return SizedBox(
       width: width,
       height: height,
