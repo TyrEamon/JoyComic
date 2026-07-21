@@ -222,13 +222,16 @@ class _ReaderImageState extends State<ReaderImage> with WidgetsBindingObserver {
 
     if (!_loggedFirstFrame && widget.traceId != null) {
       _loggedFirstFrame = true;
-      final layoutW = widget.width ?? MediaQuery.sizeOf(context).width;
+      // Use the same safe width path as build() — never log raw widget.width
+      // when it is 0 (that was the black-screen smoking gun).
+      final layoutW = _resolveWidth(const BoxConstraints());
       final layoutH = h * (layoutW / w);
       Log.i(
         'Reader first frame',
         'trace=${widget.traceId} idx=${widget.imageIndex ?? '-'} '
         'size=${w}x$h '
         'layout=${layoutW.toStringAsFixed(1)}x${layoutH.toStringAsFixed(1)} '
+        'propW=${widget.width?.toStringAsFixed(1) ?? 'null'} '
         'via=stream '
         'cache=${ReaderDiagnostics.cacheKeySummary(widget.cacheKey ?? widget.url)}',
       );
@@ -304,15 +307,18 @@ class _ReaderImageState extends State<ReaderImage> with WidgetsBindingObserver {
     _isListeningToStream = false;
   }
 
+  /// Never return 0 / NaN / Infinity — that paints a black zero-size RawImage.
   double _resolveWidth(BoxConstraints constraints) {
-    if (widget.width != null && widget.width! > 0) return widget.width!;
-    if (constraints.hasBoundedWidth &&
-        constraints.maxWidth.isFinite &&
-        constraints.maxWidth > 0) {
-      return constraints.maxWidth;
+    final candidates = <double>[
+      if (widget.width != null) widget.width!,
+      if (constraints.hasBoundedWidth) constraints.maxWidth,
+      MediaQuery.sizeOf(context).width,
+      390,
+    ];
+    for (final w in candidates) {
+      if (w.isFinite && w > 1) return w;
     }
-    final mq = MediaQuery.sizeOf(context).width;
-    return mq > 0 ? mq : 390;
+    return 390;
   }
 
   @override
@@ -368,21 +374,27 @@ class _ReaderImageState extends State<ReaderImage> with WidgetsBindingObserver {
         }
 
         if (_imageInfo != null) {
-          _cache[widget.image.hashCode] = Size(
-            _imageInfo!.image.width.toDouble(),
-            _imageInfo!.image.height.toDouble(),
-          );
-          height =
-              _imageInfo!.image.height * (width / _imageInfo!.image.width);
-          height = height.ceilToDouble();
+          final pxW = _imageInfo!.image.width.toDouble();
+          final pxH = _imageInfo!.image.height.toDouble();
+          _cache[widget.image.hashCode] = Size(pxW, pxH);
+          // Guard divide-by-zero if decode reports bad dimensions.
+          if (pxW > 0) {
+            height = (pxH * (width / pxW)).ceilToDouble();
+          } else {
+            height = width / (3 / 4);
+          }
+          if (height <= 0 || !height.isFinite) {
+            height = width * 1.2;
+          }
 
+          // fitWidth + explicit box so the bitmap always fills the list slot.
           Widget result = RawImage(
             image: _imageInfo?.image,
             debugImageLabel: _imageInfo?.debugLabel,
             width: width,
             height: height,
             scale: _imageInfo?.scale ?? 1.0,
-            fit: widget.fit,
+            fit: BoxFit.fitWidth,
             alignment: widget.alignment,
             isAntiAlias: false,
             filterQuality: widget.filterQuality,
@@ -392,7 +404,7 @@ class _ReaderImageState extends State<ReaderImage> with WidgetsBindingObserver {
           result = SizedBox(
             width: width,
             height: height,
-            child: Center(child: result),
+            child: result,
           );
           return result;
         }
