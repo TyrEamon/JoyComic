@@ -78,6 +78,29 @@ void main() {
       expect(data.tags.containsKey('收藏'), isFalse);
     });
 
+    test('unpaid premium album keeps empty images but exposes totalPhotos', () {
+      final info = parseJmComicInfoResponse(<String, dynamic>{
+        'name': 'Premium unpaid',
+        'series_id': 0,
+        'series': <dynamic>[],
+        'images': <dynamic>[],
+        'total_photos': '21',
+        'price': '100',
+        'purchased': false,
+      }, id: '1454181')!;
+
+      expect(info.images, isEmpty);
+      expect(info.totalPhotos, 21);
+      expect(info.price, 100);
+      expect(info.purchased, isFalse);
+
+      final data = jmInfoToComicInfoData(info);
+      expect(data.chapterList, hasLength(1));
+      expect(data.chapterList.single.id, '1454181');
+      expect(data.chapterList.single.pageCount, 21);
+      expect(data.singleChapterPages, isNull);
+    });
+
     test('synthesizes exactly one chapter for all single-volume markers', () {
       final cases = <(String, Map<String, dynamic>)>[
         ('integer zero', <String, dynamic>{'series_id': 0}),
@@ -386,7 +409,7 @@ void main() {
     );
 
     test(
-      'cold cache propagates album errors without calling chapter',
+      'album error still falls back to chapter for unpaid-read resilience',
       () async {
         var chapterCalls = 0;
         final network = JmNetwork(
@@ -407,9 +430,11 @@ void main() {
 
         final pages = await network.getComicPages('error-comic', 'error-comic');
 
-        expect(pages.error, isTrue);
-        expect(pages.errorMessage, 'album failed');
-        expect(chapterCalls, 0);
+        expect(pages.error, isFalse);
+        expect(pages.data, <String>[
+          getJmImageUrl('hidden.webp', 'error-comic'),
+        ]);
+        expect(chapterCalls, 1);
       },
     );
 
@@ -448,6 +473,103 @@ void main() {
         expect(chapterCalls, 1);
       },
     );
+
+    test(
+      'unpaid premium empty album images still loads chapter pages',
+      () async {
+        final network = JmNetwork(
+          getRequest: (url) async {
+            final uri = Uri.parse(url);
+            if (uri.path.endsWith('/album')) {
+              return const Res<dynamic>(<String, dynamic>{
+                'name': 'Premium unpaid',
+                'series_id': 0,
+                'series': <dynamic>[],
+                'images': <dynamic>[],
+                'total_photos': 21,
+                'price': 100,
+                'purchased': false,
+              });
+            }
+            if (uri.path.endsWith('/chapter')) {
+              return const Res<dynamic>(<String, dynamic>{
+                'images': <String>['00001.webp', '00002.webp', '00003.webp'],
+              });
+            }
+            return const Res<dynamic>.error('unexpected GET');
+          },
+        );
+        network.state = _TestJmState(
+          imageBaseUrl: 'https://cdn.example',
+        );
+
+        final pages = await network.getComicPages('1454181', '1454181');
+
+        expect(pages.error, isFalse);
+        expect(pages.data, <String>[
+          'https://cdn.example/media/photos/1454181/00001.webp',
+          'https://cdn.example/media/photos/1454181/00002.webp',
+          'https://cdn.example/media/photos/1454181/00003.webp',
+        ]);
+      },
+    );
+
+    test(
+      'empty chapter images fall back to sequential CDN names via total_photos',
+      () async {
+        final network = JmNetwork(
+          getRequest: (url) async {
+            final uri = Uri.parse(url);
+            if (uri.path.endsWith('/album')) {
+              return const Res<dynamic>(<String, dynamic>{
+                'name': 'CDN only',
+                'series_id': 0,
+                'series': <dynamic>[],
+                'images': <dynamic>[],
+                'total_photos': 3,
+                'price': 100,
+                'purchased': false,
+              });
+            }
+            if (uri.path.endsWith('/chapter')) {
+              return const Res<dynamic>(<String, dynamic>{
+                'images': <dynamic>[],
+              });
+            }
+            return const Res<dynamic>.error('unexpected GET');
+          },
+        );
+        network.state = _TestJmState(imageBaseUrl: 'https://cdn.example');
+
+        final pages = await network.getComicPages('cdn-comic', null);
+
+        expect(pages.error, isFalse);
+        expect(pages.data, <String>[
+          'https://cdn.example/media/photos/cdn-comic/00001.webp',
+          'https://cdn.example/media/photos/cdn-comic/00002.webp',
+          'https://cdn.example/media/photos/cdn-comic/00003.webp',
+        ]);
+      },
+    );
+
+    test('buildJmSequentialPageNames pads five-digit webp names', () {
+      expect(buildJmSequentialPageNames(3), <String>[
+        '00001.webp',
+        '00002.webp',
+        '00003.webp',
+      ]);
+      expect(buildJmSequentialPageNames(0), isEmpty);
+    });
+
+    test('resolveJmImageBaseUrl rejects empty or invalid hosts', () {
+      expect(resolveJmImageBaseUrl(''), isNotEmpty);
+      expect(resolveJmImageBaseUrl('   '), isNotEmpty);
+      expect(resolveJmImageBaseUrl('not-a-url'), startsWith('https://'));
+      expect(
+        resolveJmImageBaseUrl('https://cdn-msp3.jmapiproxy1.cc/'),
+        'https://cdn-msp3.jmapiproxy1.cc',
+      );
+    });
 
     test(
       'cached raw keys follow the current host and replace or clear safely',

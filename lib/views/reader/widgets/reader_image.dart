@@ -58,31 +58,39 @@ class ReaderImage extends StatelessWidget {
   }
 
   ImageProvider _buildProvider() {
-    final ImageProvider base = _isNetwork
-        ? readerImageProvider(
-            url: url,
-            cacheKey: cacheKey ?? url,
-            fallbackUrls: fallbackUrls,
-            headers: headers,
-            bytesTransformer: bytesTransformer,
-            cacheWidth: cacheWidth,
-            traceId: traceId,
-            imageIndex: imageIndex,
-          )
-        : FileImage(File(url));
-    return base is ResizeImage
-        ? base
-        : ResizeImage.resizeIfNeeded(cacheWidth, null, base);
+    // readerImageProvider already applies ResizeImage when cacheWidth is set.
+    if (_isNetwork) {
+      return readerImageProvider(
+        url: url,
+        cacheKey: cacheKey ?? url,
+        fallbackUrls: fallbackUrls,
+        headers: headers,
+        bytesTransformer: bytesTransformer,
+        cacheWidth: cacheWidth,
+        traceId: traceId,
+        imageIndex: imageIndex,
+      );
+    }
+    final file = FileImage(File(url));
+    return ResizeImage.resizeIfNeeded(cacheWidth, null, file);
   }
 
   Widget _placeholder(BuildContext context, Widget child) {
+    // Avoid near-black-on-black: reader canvas is pure black.
+    final scheme = Theme.of(context).colorScheme;
     return AspectRatio(
       aspectRatio: _fallbackAspectRatio,
       child: ColoredBox(
-        color: Theme.of(
-          context,
-        ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-        child: Center(child: child),
+        color: scheme.surfaceContainerHigh.withValues(alpha: 0.55),
+        child: Center(
+          child: DefaultTextStyle.merge(
+            style: TextStyle(color: scheme.onSurface),
+            child: IconTheme.merge(
+              data: IconThemeData(color: scheme.onSurface),
+              child: child,
+            ),
+          ),
+        ),
       ),
     );
   }

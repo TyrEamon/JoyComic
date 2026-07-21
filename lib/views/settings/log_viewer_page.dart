@@ -1,15 +1,12 @@
 /// 诊断日志查看页。
 ///
 /// 展示 Log 系统持久化的日志条目，按时间倒序排列。
-/// 支持：按级别筛选、单条复制、全部导出为 TXT。
+/// 支持：按级别筛选、单条复制、一键导出为 TXT 并分享。
 library;
 
-import 'dart:io';
-
 import 'package:flutter/material.dart';
-import 'package:joycomic/theme/app_theme_context.dart';
 import 'package:flutter/services.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:joycomic/theme/app_theme_context.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../foundation/log.dart';
@@ -51,83 +48,77 @@ class _LogViewerPageState extends State<LogViewerPage> {
   }
 
   Future<void> _clear() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('清除日志'),
+        content: const Text('确定删除全部诊断日志？此操作不可撤销。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('清除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
     await Log.clear();
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('日志已清除')));
+    _showMessage('日志已清除');
     await _loadLogs();
   }
 
-  /// 复制单条日志到剪贴板。
   Future<void> _copyLog(JoyLogEntry log) async {
     await Clipboard.setData(ClipboardData(text: log.toString()));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('已复制'), duration: Duration(seconds: 1)),
-    );
+    _showMessage('已复制');
   }
 
-  /// 导出全部日志为 TXT 文件并分享。
+  /// 一键导出当前列表（尊重级别筛选）为 TXT 并打开系统分享。
   Future<void> _exportLogs() async {
     if (_exporting) return;
-    if (_logs.isEmpty) {
+    final source = _filtered;
+    if (source.isEmpty) {
       _showMessage('暂无日志可导出');
       return;
     }
 
-    final renderObject = context.findRenderObject();
-    final shareOrigin = renderObject is RenderBox && renderObject.hasSize
-        ? renderObject.localToGlobal(Offset.zero) & renderObject.size
-        : null;
     setState(() => _exporting = true);
-
     try {
-      final buffer = StringBuffer();
-      buffer.writeln('JoyComic 诊断日志');
-      buffer.writeln('导出时间：${DateTime.now().toIso8601String()}');
-      buffer.writeln('条目数：${_logs.length}');
-      buffer.writeln('=' * 60);
-      buffer.writeln();
-
-      for (final log in _logs.reversed) {
-        buffer.writeln('[${log.time}][${log.level.toUpperCase()}]');
-        buffer.writeln(log.message);
-        if (log.error != null && log.error!.isNotEmpty) {
-          buffer.writeln('Error: ${log.error}');
-        }
-        if (log.stackTrace != null && log.stackTrace!.isNotEmpty) {
-          buffer.writeln('Stack: ${log.stackTrace}');
-        }
-        buffer.writeln();
-        buffer.writeln('-' * 40);
-        buffer.writeln();
-      }
-
-      final dir = await getTemporaryDirectory();
-      final fileName =
-          'joycomic_logs_${DateTime.now().millisecondsSinceEpoch}.txt';
-      final file = File('${dir.path}/$fileName');
-      await file.writeAsString(buffer.toString(), flush: true);
-      if (!mounted) return;
-
-      final result = await Share.shareXFiles(
-        [XFile(file.path, mimeType: 'text/plain')],
-        subject: 'JoyComic 诊断日志',
-        text: 'JoyComic 诊断日志',
-        sharePositionOrigin: shareOrigin,
-        fileNameOverrides: [fileName],
+      // List is newest-first; TXT is chronological for easier reading.
+      final chronological = source.reversed.toList(growable: false);
+      final note = _levelFilter == null ? null : '筛选级别：$_levelFilter';
+      final file = await Log.writeExportTxtFile(
+        logs: chronological,
+        note: note,
       );
       if (!mounted) return;
-
-      switch (result.status) {
-        case ShareResultStatus.success:
-          _showMessage('日志导出成功');
-        case ShareResultStatus.dismissed:
-          _showMessage('已取消日志导出');
-        case ShareResultStatus.unavailable:
-          _showMessage('日志已生成并交给系统分享');
+      if (file == null) {
+        _showMessage('暂无日志可导出');
+        return;
       }
+
+      final box = context.findRenderObject();
+      final origin = box is RenderBox && box.hasSize
+          ? box.localToGlobal(Offset.zero) & box.size
+          : null;
+      final name = file.uri.pathSegments.isNotEmpty
+          ? file.uri.pathSegments.last
+          : 'joycomic_logs.txt';
+
+      await Share.shareXFiles(
+        [XFile(file.path, mimeType: 'text/plain', name: name)],
+        subject: 'JoyComic 诊断日志',
+        text: 'JoyComic 诊断日志（TXT）',
+        sharePositionOrigin: origin,
+        fileNameOverrides: [name],
+      );
+      if (!mounted) return;
+      _showMessage('已生成 TXT，请选择微信/文件等发出');
     } catch (error, stackTrace) {
       Log.e('Log export failed', error: error, stackTrace: stackTrace);
       if (mounted) {
@@ -169,19 +160,6 @@ class _LogViewerPageState extends State<LogViewerPage> {
         backgroundColor: context.pageBackground,
         actions: [
           IconButton(
-            icon: _exporting
-                ? const SizedBox.square(
-                    dimension: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Icon(
-                    Icons.file_upload_outlined,
-                    color: context.secondaryTextColor,
-                  ),
-            onPressed: _exporting ? null : _exportLogs,
-            tooltip: _exporting ? '正在导出日志' : '导出日志',
-          ),
-          IconButton(
             icon: Icon(
               Icons.refresh_rounded,
               color: context.secondaryTextColor,
@@ -201,6 +179,36 @@ class _LogViewerPageState extends State<LogViewerPage> {
       ),
       body: Column(
         children: [
+          // 一键导出条：比右上角图标更醒目，避免找不到。
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.md,
+              AppSpacing.sm,
+              AppSpacing.md,
+              AppSpacing.xs,
+            ),
+            child: SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                key: const Key('log-export-txt-button'),
+                onPressed: _exporting || filtered.isEmpty ? null : _exportLogs,
+                icon: _exporting
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.ios_share_rounded),
+                label: Text(
+                  _exporting
+                      ? '正在导出…'
+                      : '一键导出为 TXT（${filtered.length} 条）',
+                ),
+              ),
+            ),
+          ),
           // 级别筛选栏
           Padding(
             padding: const EdgeInsets.symmetric(
@@ -236,7 +244,6 @@ class _LogViewerPageState extends State<LogViewerPage> {
             ),
           ),
           Divider(height: 1, color: context.borderColor),
-          // 日志列表
           Expanded(
             child: _loading
                 ? Center(

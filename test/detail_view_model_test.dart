@@ -248,39 +248,77 @@ void main() {
   );
 
   test(
-    'page requests are deduplicated and inline single chapter pages bypass the source',
+    'page requests are deduplicated; absolute inline pages bypass the source',
     () async {
       var remoteCalls = 0;
       final gate = Completer<void>();
-      final source = ComicSource.named(
-        name: 'Page cache',
-        key: 'page-cache',
+      final absoluteSource = ComicSource.named(
+        name: 'Page cache absolute',
+        key: 'page-cache-abs',
         filePath: 'test',
         loadComicInfo: (_) async => Res<ComicInfoData>(
           _detailInfo(
             chapters: const <ComicChapter>[
               ComicChapter(id: 'single', title: '全本', order: 1),
             ],
-            singlePages: const <String>['inline-1', 'inline-2'],
+            singlePages: const <String>[
+              'https://cdn.example/1.webp',
+              'https://cdn.example/2.webp',
+            ],
+          ),
+        ),
+        loadComicPages: (_, __) async {
+          remoteCalls++;
+          return const Res<List<String>>(<String>['remote']);
+        },
+      );
+      final absoluteVm = _mount(absoluteSource);
+      await absoluteVm.load();
+      final absoluteChapter = absoluteVm.chapters.single;
+      final absoluteFirst = absoluteVm.loadChapterPages(absoluteChapter);
+      final absoluteSecond = absoluteVm.loadChapterPages(absoluteChapter);
+      expect(identical(absoluteFirst, absoluteSecond), isTrue);
+      expect((await absoluteFirst).data, <String>[
+        'https://cdn.example/1.webp',
+        'https://cdn.example/2.webp',
+      ]);
+      expect(remoteCalls, 0);
+
+      // Relative names (JM unpaid premium style) must hit the source loader.
+      remoteCalls = 0;
+      final relativeSource = ComicSource.named(
+        name: 'Page cache relative',
+        key: 'page-cache-rel',
+        filePath: 'test',
+        loadComicInfo: (_) async => Res<ComicInfoData>(
+          _detailInfo(
+            chapters: const <ComicChapter>[
+              ComicChapter(id: 'single', title: '全本', order: 1),
+            ],
+            singlePages: const <String>['00001.webp', '00002.webp'],
           ),
         ),
         loadComicPages: (_, __) async {
           remoteCalls++;
           await gate.future;
-          return const Res<List<String>>(<String>['remote']);
+          return const Res<List<String>>(<String>[
+            'https://cdn.example/media/photos/x/00001.webp',
+            'https://cdn.example/media/photos/x/00002.webp',
+          ]);
         },
       );
-      final viewModel = _mount(source);
-      await viewModel.load();
-      final chapter = viewModel.chapters.single;
-
-      final first = viewModel.loadChapterPages(chapter);
-      final second = viewModel.loadChapterPages(chapter);
+      final relativeVm = _mount(relativeSource);
+      await relativeVm.load();
+      final relativeChapter = relativeVm.chapters.single;
+      final relativeFirst = relativeVm.loadChapterPages(relativeChapter);
+      final relativeSecond = relativeVm.loadChapterPages(relativeChapter);
       gate.complete();
-
-      expect(identical(first, second), isTrue);
-      expect((await first).data, <String>['inline-1', 'inline-2']);
-      expect(remoteCalls, 0);
+      expect(identical(relativeFirst, relativeSecond), isTrue);
+      expect((await relativeFirst).data, <String>[
+        'https://cdn.example/media/photos/x/00001.webp',
+        'https://cdn.example/media/photos/x/00002.webp',
+      ]);
+      expect(remoteCalls, 1);
     },
   );
 

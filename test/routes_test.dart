@@ -46,6 +46,12 @@ void main() {
     expect(page.sort, 'dd');
   });
 
+  test('main.dart registers /premium route', () {
+    final main = File('lib/main.dart').readAsStringSync();
+    expect(main.contains("path: '/premium'"), isTrue);
+    expect(main.contains('JmPremiumPage'), isTrue);
+  });
+
   testWidgets('reader rejects a non-ComicState extra with an explicit 404', (
     tester,
   ) async {
@@ -66,17 +72,19 @@ void main() {
     final appBar = File(
       'lib/views/reader/widgets/app_bar.dart',
     ).readAsStringSync();
-    expect(
-      errorPage.contains('查看诊断日志') || reader.contains('查看诊断日志'),
-      isTrue,
-    );
+    final provider = File(
+      'lib/views/reader/providers/reader_provider.dart',
+    ).readAsStringSync();
+    expect(errorPage.contains('导出 TXT') || errorPage.contains('打开日志页'), isTrue);
+    expect(reader.contains('导出 TXT') || reader.contains('打开日志页'), isTrue);
+    expect(appBar.contains('查看诊断日志'), isTrue);
+    // Toolbar starts expanded so logs are reachable without first tapping the canvas.
+    expect(provider.contains('bool showToolbar = true'), isTrue);
     expect(
       reader.contains("'/logs'") ||
           reader.contains('"/logs"') ||
           appBar.contains("'/logs'") ||
-          appBar.contains('"/logs"') ||
-          errorPage.contains("'/logs'") ||
-          errorPage.contains('"/logs"'),
+          appBar.contains('"/logs"'),
       isTrue,
     );
   });

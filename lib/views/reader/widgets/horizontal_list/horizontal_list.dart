@@ -196,8 +196,8 @@ class _HorizontalListState extends State<HorizontalList> {
             });
 
             return PhotoViewGallery(
-              backgroundDecoration: BoxDecoration(
-                color: context.colorScheme.surfaceContainerLowest,
+              backgroundDecoration: const BoxDecoration(
+                color: Color(0xFF000000),
               ),
               scrollPhysics: const BouncingScrollPhysics(),
               pageController: context.reader.pageController,
@@ -211,15 +211,20 @@ class _HorizontalListState extends State<HorizontalList> {
                 if (total != null && total > 0) {
                   value = (bytes / total).clamp(0.0, 1.0);
                 }
-                return Center(
-                  child: CircularProgressIndicator(
-                    value: value,
-                    strokeWidth: 3,
-                    constraints: const BoxConstraints(
-                      maxWidth: 28,
-                      maxHeight: 28,
+                // High-contrast spinner on black canvas.
+                return ColoredBox(
+                  color: const Color(0xFF000000),
+                  child: Center(
+                    child: SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: CircularProgressIndicator(
+                        value: value,
+                        strokeWidth: 3,
+                        color: const Color(0xFFECECEC),
+                        strokeCap: StrokeCap.round,
+                      ),
                     ),
-                    strokeCap: StrokeCap.round,
                   ),
                 );
               },

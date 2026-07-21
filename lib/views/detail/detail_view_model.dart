@@ -360,19 +360,40 @@ class DetailViewModel extends ChangeNotifier {
   Future<Res<List<String>>> loadChapterPages(ComicChapter chapter) {
     return _chapterPageRequests.putIfAbsent(chapter.id, () {
       final inlinePages = _data?.info.singleChapterPages;
-      if (inlinePages != null) {
+      // Absolute inline URLs can skip the source. Relative JM names (00001.webp)
+      // must go through loadComicPages so hosts + unpaid chapter/CDN apply.
+      if (inlinePages != null &&
+          inlinePages.isNotEmpty &&
+          _allAbsoluteHttpUrls(inlinePages)) {
         return Future<Res<List<String>>>.value(
           Res<List<String>>(List<String>.unmodifiable(inlinePages)),
         );
       }
       final loader = ComicSource.find(sourceKey)?.loadComicPages;
       if (loader == null) {
+        if (inlinePages != null && inlinePages.isNotEmpty) {
+          return Future<Res<List<String>>>.value(
+            Res<List<String>>(List<String>.unmodifiable(inlinePages)),
+          );
+        }
         return Future<Res<List<String>>>.value(
           const Res<List<String>>(null, errorMessage: '当前漫画源不支持章节阅读'),
         );
       }
       return _loadRemoteChapterPages(loader, chapter);
     });
+  }
+
+  bool _allAbsoluteHttpUrls(List<String> pages) {
+    for (final page in pages) {
+      final uri = Uri.tryParse(page.trim());
+      if (uri == null ||
+          !(uri.scheme == 'http' || uri.scheme == 'https') ||
+          uri.host.isEmpty) {
+        return false;
+      }
+    }
+    return true;
   }
 
   Future<Res<List<String>>> _loadRemoteChapterPages(

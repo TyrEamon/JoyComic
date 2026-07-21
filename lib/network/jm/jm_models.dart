@@ -108,6 +108,15 @@ class JmComicInfo extends BaseComic {
   /// 专辑系列标识；单行本通常为 0 或缺失。
   final int? seriesId;
 
+  /// 专辑声明的总页数（`total_photos`）。未购买时 images 可能为空，此字段仍可用。
+  final int? totalPhotos;
+
+  /// 金币标价；null/0 表示非付费条目。仅作展示，不参与是否允许阅读的判断。
+  final int? price;
+
+  /// 当前账号是否已购买。阅读链路不依赖此字段（CDN/chapter 可直读）。
+  final bool? purchased;
+
   /// 详情响应内联的原始图片 key 或绝对 URL。
   final List<String> images;
 
@@ -145,6 +154,9 @@ class JmComicInfo extends BaseComic {
     required this.comments,
     required List<String> epNames,
     this.seriesId,
+    this.totalPhotos,
+    this.price,
+    this.purchased,
     List<String> images = const <String>[],
     List<String> categories = const <String>[],
     List<JmChapter> chapters = const <JmChapter>[],

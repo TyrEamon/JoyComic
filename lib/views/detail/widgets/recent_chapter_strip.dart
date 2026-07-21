@@ -42,6 +42,7 @@ class RecentChapterStrip extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Text('最近章节', style: AppTypography.section(context)),
               const SizedBox(width: AppSpacing.xs),
@@ -59,9 +60,24 @@ class RecentChapterStrip extends StatelessWidget {
               Semantics(
                 button: true,
                 label: '全部章节',
-                child: TextButton(
-                  onPressed: onShowAll,
-                  child: const Text('全部章节'),
+                child: InkWell(
+                  onTap: onShowAll,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    // Match section title optical baseline; avoid TextButton
+                    // default 8+ padding that drops the action below the row.
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 2,
+                    ),
+                    child: Text(
+                      '全部章节',
+                      style: AppTypography.sectionAction(context).copyWith(
+                        color: context.colorScheme.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ],
