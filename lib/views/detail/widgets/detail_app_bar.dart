@@ -1,4 +1,4 @@
-/// Detail page navigation bar with collapse title and share action.
+/// Detail page navigation bar: back + more only.
 library;
 
 import 'package:flutter/material.dart';
@@ -13,14 +13,12 @@ class DetailAppBar extends StatelessWidget {
     this.title,
     this.scrolledUnder = false,
     this.onBack,
-    this.onShare,
     this.onMore,
   });
 
   final String? title;
   final bool scrolledUnder;
   final VoidCallback? onBack;
-  final VoidCallback? onShare;
   final VoidCallback? onMore;
 
   @override
@@ -35,7 +33,6 @@ class DetailAppBar extends StatelessWidget {
           title: title,
           scrolledUnder: scrolledUnder,
           onBack: onBack,
-          onShare: onShare,
           onMore: onMore,
         ),
       ),
@@ -48,14 +45,12 @@ class _Bar extends StatelessWidget {
     required this.title,
     required this.scrolledUnder,
     required this.onBack,
-    required this.onShare,
     required this.onMore,
   });
 
   final String? title;
   final bool scrolledUnder;
   final VoidCallback? onBack;
-  final VoidCallback? onShare;
   final VoidCallback? onMore;
 
   @override
@@ -99,13 +94,6 @@ class _Bar extends StatelessWidget {
             )
           else
             const Spacer(),
-          _IconBtn(
-            icon: Icons.ios_share_rounded,
-            tooltip: '分享',
-            foreground: foreground,
-            softBackground: !scrolledUnder,
-            onTap: onShare,
-          ),
           _IconBtn(
             icon: Icons.more_horiz_rounded,
             tooltip: '更多',

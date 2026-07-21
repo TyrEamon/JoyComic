@@ -85,7 +85,6 @@ class _DetailScaffoldState extends State<_DetailScaffold> {
             title: ready ? vm.data!.info.title : null,
             scrolledUnder: _scrolledUnder,
             onBack: () => Navigator.of(context).maybePop(),
-            onShare: ready ? () => _share(vm) : null,
             onMore: ready ? () => _showMore(context, vm) : null,
           ),
         ],

@@ -244,10 +244,10 @@ void main() {
     },
   );
 
-  testWidgets('collapsed detail app bar shows the title and share action', (
+  testWidgets('collapsed detail app bar shows title with back and more only', (
     tester,
   ) async {
-    var shares = 0;
+    var more = 0;
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.light(),
@@ -257,7 +257,7 @@ void main() {
               DetailAppBar(
                 title: 'Comic',
                 scrolledUnder: true,
-                onShare: () => shares++,
+                onMore: () => more++,
               ),
             ],
           ),
@@ -266,8 +266,10 @@ void main() {
     );
 
     expect(find.text('Comic'), findsOneWidget);
-    await tester.tap(find.byIcon(Icons.ios_share_rounded));
-    expect(shares, 1);
+    expect(find.byIcon(Icons.arrow_back_ios_new_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.ios_share_rounded), findsNothing);
+    await tester.tap(find.byIcon(Icons.more_horiz_rounded));
+    expect(more, 1);
   });
 
   testWidgets('metadata keeps metrics and hides no approved fields', (

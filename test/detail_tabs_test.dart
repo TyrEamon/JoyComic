@@ -28,7 +28,7 @@ void main() {
       expect(source, contains('CommentPreview('));
       expect(source, isNot(contains('DetailTabBar')));
       expect(source, isNot(contains('StickyActionBar')));
-      expect(source, contains('onShare: ready ?'));
+      expect(source, isNot(contains('onShare:')));
       expect(source, contains('onMore: ready ?'));
     },
   );
@@ -103,8 +103,7 @@ void main() {
     expect(calls, 1);
   });
 
-  testWidgets('toolbar share and more actions are wired', (tester) async {
-    var shares = 0;
+  testWidgets('toolbar exposes only back and more actions', (tester) async {
     var more = 0;
     await tester.pumpWidget(
       MaterialApp(
@@ -114,7 +113,6 @@ void main() {
             children: [
               DetailAppBar(
                 title: 'Comic',
-                onShare: () => shares++,
                 onMore: () => more++,
               ),
             ],
@@ -123,9 +121,9 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byIcon(Icons.ios_share_rounded));
+    expect(find.byIcon(Icons.arrow_back_ios_new_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.ios_share_rounded), findsNothing);
     await tester.tap(find.byIcon(Icons.more_horiz_rounded));
-    expect(shares, 1);
     expect(more, 1);
   });
 }
