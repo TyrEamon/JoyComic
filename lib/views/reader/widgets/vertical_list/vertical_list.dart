@@ -1,8 +1,8 @@
 /// 竖直连续模式（条漫流）。
 ///
-/// 使用 [ScrollablePositionedList] + 点击翻页手势，连续竖直阅读。
-///
-/// 图片上屏走 [ReaderImage] → 下载/JM重组 → [Image.memory]（无自研绘制）。
+/// 对齐  `image_view.dart` buildType4：
+/// ScrollablePositionedList + ComicImage(width, height=width*1.2, fit: cover)
+/// 图片上屏走移植的  ComicImage 路径（RawImage + size cache）。
 library;
 
 import 'package:flutter/material.dart';
@@ -98,26 +98,36 @@ class _VerticalListState extends State<VerticalList> {
       jumpOffset: context.reader.pageTurnForVertical,
       child: LayoutBuilder(
         builder: (context, constraints) {
+          //  continuous vertical: full list width, image width
+          // optionally capped for landscape (height/width < 1.2).
+          final screenW = constraints.maxWidth;
+          final screenH = constraints.maxHeight;
           final widthFactor = widthRatio.clamp(0.0, 1.0);
-          final imageLayoutWidth = constraints.maxWidth * widthFactor;
+          var imageWidth = screenW * widthFactor;
+          if (imageWidth <= 0) imageWidth = screenW;
+          if (screenH / screenW < 1.2) {
+            // Match  landscape clamp when enabled via width ratio.
+            final capped = screenH / 1.2;
+            if (capped < imageWidth) imageWidth = capped;
+          }
+
           final dpr = MediaQuery.devicePixelRatioOf(context);
           final cacheWidth = computeImageCacheWidth(
-            layoutWidth: imageLayoutWidth,
+            layoutWidth: imageWidth,
             devicePixelRatio: dpr,
           );
           // 预加载使用同一个 cacheWidth，保证 ImageCache 命中。
           context.reader.updatePreloadCacheWidth(cacheWidth);
 
-          // Center + fixed width keeps the list under a tight height constraint
-          // from LayoutBuilder (Positioned.fill). Avoid FractionallySizedBox
-          // alone, which can leave the scroll view with ambiguous height.
+          //  initial placeholder height = imageWidth * 1.2;
+          // ComicImage then rewrites height from decoded size cache.
+          final placeholderHeight = imageWidth * 1.2;
+
           return Align(
             alignment: Alignment.topCenter,
             child: SizedBox(
-              width: imageLayoutWidth > 0
-                  ? imageLayoutWidth
-                  : constraints.maxWidth,
-              height: constraints.maxHeight,
+              width: imageWidth,
+              height: screenH,
               child: ScrollablePositionedList.builder(
                 initialScrollIndex: initialPage,
                 padding: EdgeInsets.zero,
@@ -145,6 +155,9 @@ class _VerticalListState extends State<VerticalList> {
                   }
 
                   final item = images[index];
+                  //  continuous: ComicImage(width, height: w*1.2,
+                  // fit: cover). ComicImage itself then drives height from
+                  // decoded size cache (constructor height is config only).
                   return ReaderImage(
                     key: ValueKey(item.cacheKey),
                     url: item.url,
@@ -153,6 +166,10 @@ class _VerticalListState extends State<VerticalList> {
                     fallbackUrls: item.fallbackUrls,
                     bytesTransformer: item.bytesTransformer,
                     cacheWidth: cacheWidth,
+                    width: imageWidth,
+                    height: placeholderHeight,
+                    fit: BoxFit.cover,
+                    filterQuality: FilterQuality.medium,
                     traceId: context.reader.traceId,
                     imageIndex: index,
                   );

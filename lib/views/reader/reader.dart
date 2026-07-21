@@ -190,10 +190,10 @@ class _ReaderContent extends StatelessWidget {
           : const HorizontalList(),
     );
 
-    // Temporary diagnostic canvas: pure black hid "empty list vs black tiles".
-    // Slate grey makes placeholders and Image.memory underlays visible.
+    //  continuous reader uses a dark surface; keep pure black for
+    // manga contrast once ComicImage paints frames.
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: Colors.black,
       body: Stack(
         children: [
           Positioned.fill(

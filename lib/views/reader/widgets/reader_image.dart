@@ -1,23 +1,21 @@
-/// 阅读器单图：用已验证的「字节 → Image.memory」路径上屏。
+/// 阅读器单图：直接移植  的 ComicImage 上屏路径。
 ///
-/// 不再走 RetryForImage + Image(provider) 二次 resolve（真机日志显示
-/// first frame / codec 已成功但仍黑屏）。JM 重组后的 JPEG 字节直接交给
-/// [Image.memory]，与 Flutter 最基础用法一致。
+/// 下载 / JM 重组仍用 [ReaderNetworkImageProvider]；显示侧不再自研
+/// Image.memory / 双订阅，而是按  `pages/reader/image.dart`：
+/// ImageProvider → ImageStream → RawImage + 尺寸缓存。
 library;
-
-import 'dart:async';
-import 'dart:io';
-import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:flutter/semantics.dart';
 
 import '../../../foundation/log.dart';
 import '../utils/reader_image_provider.dart';
 
-/// 漫画单图加载显示组件。
+/// 漫画单图加载显示组件（ ComicImage 同构实现）。
 class ReaderImage extends StatefulWidget {
-  const ReaderImage({
+  ReaderImage({
     super.key,
     required this.url,
     this.cacheKey,
@@ -28,12 +26,45 @@ class ReaderImage extends StatefulWidget {
     this.filterQuality = FilterQuality.medium,
     this.cacheWidth,
     this.alignment = Alignment.center,
+    this.width,
+    this.height,
     this.onImageSizeChanged,
     this.traceId,
     this.imageIndex,
-    this.maxAttempts = 3,
+    this.gaplessPlayback = false,
+  }) : image = readerImageProvider(
+         url: url,
+         cacheKey: cacheKey ?? url,
+         fallbackUrls: fallbackUrls,
+         headers: headers,
+         bytesTransformer: bytesTransformer,
+         cacheWidth: cacheWidth,
+         traceId: traceId,
+         imageIndex: imageIndex,
+       );
+
+  /// 直接喂 ImageProvider（水平 PhotoView / 测试用）。
+  const ReaderImage.fromProvider({
+    super.key,
+    required this.image,
+    this.url = '',
+    this.cacheKey,
+    this.headers,
+    this.fallbackUrls = const <String>[],
+    this.bytesTransformer,
+    this.fit = BoxFit.fitWidth,
+    this.filterQuality = FilterQuality.medium,
+    this.cacheWidth,
+    this.alignment = Alignment.center,
+    this.width,
+    this.height,
+    this.onImageSizeChanged,
+    this.traceId,
+    this.imageIndex,
+    this.gaplessPlayback = false,
   });
 
+  final ImageProvider image;
   final String url;
   final String? cacheKey;
   final Map<String, String>? headers;
@@ -43,247 +74,372 @@ class ReaderImage extends StatefulWidget {
   final FilterQuality filterQuality;
   final int? cacheWidth;
   final AlignmentGeometry alignment;
+  final double? width;
+  final double? height;
   final void Function(int width, int height)? onImageSizeChanged;
   final String? traceId;
   final int? imageIndex;
-  final int maxAttempts;
+  final bool gaplessPlayback;
+
+  static void clearSizeCache() => _ReaderImageState.clear();
 
   @override
   State<ReaderImage> createState() => _ReaderImageState();
 }
 
-class _ReaderImageState extends State<ReaderImage> {
-  static const double _fallbackAspect = 3 / 4;
+class _ReaderImageState extends State<ReaderImage> with WidgetsBindingObserver {
+  ImageStream? _imageStream;
+  ImageInfo? _imageInfo;
+  ImageChunkEvent? _loadingProgress;
+  bool _isListeningToStream = false;
+  late bool _invertColors;
+  int? _frameNumber;
+  bool _wasSynchronouslyLoaded = false;
+  late DisposableBuildContext<State<ReaderImage>> _scrollAwareContext;
+  Object? _lastException;
+  ImageStreamCompleterHandle? _completerHandle;
+  bool _loggedFirstFrame = false;
 
-  Uint8List? _bytes;
-  int? _pixelW;
-  int? _pixelH;
-  Object? _error;
-  int _attempt = 0;
-  bool _loading = true;
-  int _loadGen = 0;
+  /// : cache decoded pixel size by image hash for list layout.
+  static final Map<int, Size> _cache = {};
 
-  bool get _isNetwork {
-    final scheme = Uri.tryParse(widget.url)?.scheme.toLowerCase();
-    return scheme == 'http' || scheme == 'https';
-  }
+  static void clear() => _cache.clear();
 
   @override
   void initState() {
     super.initState();
-    _startLoad();
+    WidgetsBinding.instance.addObserver(this);
+    _scrollAwareContext = DisposableBuildContext<State<ReaderImage>>(this);
   }
 
   @override
-  void didUpdateWidget(covariant ReaderImage oldWidget) {
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _stopListeningToStream();
+    _completerHandle?.dispose();
+    _scrollAwareContext.dispose();
+    _replaceImage(info: null);
+    super.dispose();
+  }
+
+  @override
+  void didChangeDependencies() {
+    _updateInvertColors();
+    _resolveImage();
+
+    // ignore: deprecated_member_use — same gate as  ComicImage
+    if (TickerMode.of(context)) {
+      _listenToStream();
+    } else {
+      _stopListeningToStream(keepStreamAlive: true);
+    }
+
+    super.didChangeDependencies();
+  }
+
+  @override
+  void didUpdateWidget(ReaderImage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.url != widget.url ||
-        oldWidget.cacheKey != widget.cacheKey ||
-        oldWidget.bytesTransformer != widget.bytesTransformer ||
-        oldWidget.cacheWidth != widget.cacheWidth) {
-      _attempt = 0;
-      _startLoad();
+    if (widget.image != oldWidget.image) {
+      _loggedFirstFrame = false;
+      _resolveImage();
     }
   }
 
-  void _startLoad() {
-    final gen = ++_loadGen;
+  @override
+  void didChangeAccessibilityFeatures() {
+    super.didChangeAccessibilityFeatures();
     setState(() {
-      _loading = true;
-      _error = null;
-      // Keep previous bytes until new ones arrive (gapless).
+      _updateInvertColors();
     });
-    unawaited(_load(gen));
   }
 
-  Future<void> _load(int gen) async {
-    try {
-      final Uint8List bytes;
-      if (_isNetwork) {
-        final provider = ReaderNetworkImageProvider(
-          url: widget.url,
-          cacheKey: widget.cacheKey ?? widget.url,
-          fallbackUrls: widget.fallbackUrls,
-          headers: widget.headers,
-          bytesTransformer: widget.bytesTransformer,
-          traceId: widget.traceId,
-          imageIndex: widget.imageIndex,
-        );
-        bytes = await provider.fetchBytes();
-      } else {
-        bytes = await File(widget.url).readAsBytes();
-      }
+  @override
+  void reassemble() {
+    _resolveImage();
+    super.reassemble();
+  }
 
-      // Read pixel size once for list layout ( ComicImage pattern).
-      int? pw;
-      int? ph;
-      try {
-        final codec = await ui.instantiateImageCodec(bytes);
-        final frame = await codec.getNextFrame();
-        pw = frame.image.width;
-        ph = frame.image.height;
-        frame.image.dispose();
-      } catch (_) {
-        // Image.memory can still decode; layout falls back to 3:4.
-      }
+  void _updateInvertColors() {
+    _invertColors =
+        MediaQuery.maybeInvertColorsOf(context) ??
+        SemanticsBinding.instance.accessibilityFeatures.invertColors;
+  }
 
-      if (!mounted || gen != _loadGen) return;
+  void _resolveImage() {
+    // : ScrollAwareImageProvider defers loads off-screen.
+    final ScrollAwareImageProvider provider = ScrollAwareImageProvider<Object>(
+      context: _scrollAwareContext,
+      imageProvider: widget.image,
+    );
+    final ImageStream newStream = provider.resolve(
+      createLocalImageConfiguration(
+        context,
+        size: widget.width != null && widget.height != null
+            ? Size(widget.width!, widget.height!)
+            : null,
+      ),
+    );
+    _updateSourceStream(newStream);
+  }
 
-      setState(() {
-        _bytes = bytes;
-        _pixelW = pw;
-        _pixelH = ph;
-        _loading = false;
-        _error = null;
-      });
+  ImageStreamListener? _imageStreamListener;
+  ImageStreamListener _getListener({bool recreateListener = false}) {
+    if (_imageStreamListener == null || recreateListener) {
+      _lastException = null;
+      _imageStreamListener = ImageStreamListener(
+        _handleImageFrame,
+        onChunk: _handleImageChunk,
+        onError: (Object error, StackTrace? stackTrace) {
+          setState(() {
+            _lastException = error;
+          });
+          if (widget.traceId != null) {
+            Log.w(
+              'Reader image stream error',
+              error:
+                  'trace=${widget.traceId} idx=${widget.imageIndex ?? '-'} '
+                  'via= err=$error',
+            );
+          }
+        },
+      );
+    }
+    return _imageStreamListener!;
+  }
 
-      if (widget.traceId != null) {
-        final layoutW = MediaQuery.sizeOf(context).width;
-        final aspect = (pw != null && ph != null && pw > 0 && ph > 0)
-            ? pw / ph
-            : _fallbackAspect;
-        final layoutH = (layoutW / aspect).ceilToDouble();
-        Log.i(
-          'Reader first frame',
-          'trace=${widget.traceId} idx=${widget.imageIndex ?? '-'} '
-          'size=${pw ?? '?'}x${ph ?? '?'} '
-          'layout=${layoutW.toStringAsFixed(1)}x${layoutH.toStringAsFixed(1)} '
-          'bytes=${bytes.length} via=memory '
-          'cache=${ReaderDiagnostics.cacheKeySummary(widget.cacheKey ?? widget.url)}',
-        );
-      }
-      if (pw != null && ph != null) {
-        widget.onImageSizeChanged?.call(pw, ph);
-      }
-    } catch (error) {
-      if (!mounted || gen != _loadGen) return;
-      final nextAttempt = _attempt + 1;
-      if (nextAttempt < widget.maxAttempts) {
-        setState(() => _attempt = nextAttempt);
-        await Future<void>.delayed(const Duration(milliseconds: 200));
-        if (!mounted || gen != _loadGen) return;
-        await _load(gen);
-        return;
-      }
-      setState(() {
-        _loading = false;
-        _error = error;
-        _attempt = nextAttempt;
-      });
-      if (widget.traceId != null) {
-        Log.w(
-          'Reader image exhausted',
-          error:
-              'trace=${widget.traceId} idx=${widget.imageIndex ?? '-'} err=$error',
-        );
-      }
+  void _handleImageFrame(ImageInfo imageInfo, bool synchronousCall) {
+    setState(() {
+      _replaceImage(info: imageInfo);
+      _loadingProgress = null;
+      _lastException = null;
+      _frameNumber = _frameNumber == null ? 0 : _frameNumber! + 1;
+      _wasSynchronouslyLoaded = _wasSynchronouslyLoaded | synchronousCall;
+    });
+
+    final w = imageInfo.image.width;
+    final h = imageInfo.image.height;
+    widget.onImageSizeChanged?.call(w, h);
+
+    if (!_loggedFirstFrame && widget.traceId != null) {
+      _loggedFirstFrame = true;
+      final layoutW = widget.width ?? MediaQuery.sizeOf(context).width;
+      final layoutH = h * (layoutW / w);
+      Log.i(
+        'Reader first frame',
+        'trace=${widget.traceId} idx=${widget.imageIndex ?? '-'} '
+        'size=${w}x$h '
+        'layout=${layoutW.toStringAsFixed(1)}x${layoutH.toStringAsFixed(1)} '
+        'via= '
+        'cache=${ReaderDiagnostics.cacheKeySummary(widget.cacheKey ?? widget.url)}',
+      );
     }
   }
 
-  double _width(BoxConstraints c) {
-    if (c.hasBoundedWidth && c.maxWidth.isFinite && c.maxWidth > 0) {
-      return c.maxWidth;
+  void _handleImageChunk(ImageChunkEvent event) {
+    setState(() {
+      _loadingProgress = event;
+      _lastException = null;
+    });
+  }
+
+  void _replaceImage({required ImageInfo? info}) {
+    final ImageInfo? oldImageInfo = _imageInfo;
+    SchedulerBinding.instance.addPostFrameCallback(
+      (_) => oldImageInfo?.dispose(),
+    );
+    _imageInfo = info;
+  }
+
+  void _updateSourceStream(ImageStream newStream) {
+    if (_imageStream?.key == newStream.key) {
+      return;
+    }
+
+    if (_isListeningToStream) {
+      _imageStream!.removeListener(_getListener());
+    }
+
+    if (!widget.gaplessPlayback) {
+      setState(() {
+        _replaceImage(info: null);
+      });
+    }
+
+    setState(() {
+      _loadingProgress = null;
+      _frameNumber = null;
+      _wasSynchronouslyLoaded = false;
+    });
+
+    _imageStream = newStream;
+    if (_isListeningToStream) {
+      _imageStream!.addListener(_getListener());
+    }
+  }
+
+  void _listenToStream() {
+    if (_isListeningToStream) {
+      return;
+    }
+
+    _imageStream!.addListener(_getListener());
+    _completerHandle?.dispose();
+    _completerHandle = null;
+
+    _isListeningToStream = true;
+  }
+
+  void _stopListeningToStream({bool keepStreamAlive = false}) {
+    if (!_isListeningToStream) {
+      return;
+    }
+
+    if (keepStreamAlive &&
+        _completerHandle == null &&
+        _imageStream?.completer != null) {
+      _completerHandle = _imageStream!.completer!.keepAlive();
+    }
+
+    _imageStream!.removeListener(_getListener());
+    _isListeningToStream = false;
+  }
+
+  double _resolveWidth(BoxConstraints constraints) {
+    if (widget.width != null && widget.width! > 0) return widget.width!;
+    if (constraints.hasBoundedWidth &&
+        constraints.maxWidth.isFinite &&
+        constraints.maxWidth > 0) {
+      return constraints.maxWidth;
     }
     final mq = MediaQuery.sizeOf(context).width;
     return mq > 0 ? mq : 390;
-  }
-
-  double _height(double width) {
-    final w = _pixelW;
-    final h = _pixelH;
-    if (w != null && h != null && w > 0 && h > 0) {
-      return (width * h / w).ceilToDouble();
-    }
-    return width / _fallbackAspect;
   }
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final width = _width(constraints);
-        final height = _height(width);
-        final bytes = _bytes;
+        final width = _resolveWidth(constraints);
 
-        if (bytes != null) {
-          // Flutter stock path: paint decoded file bytes. No ImageProvider
-          // re-resolve, no RawImage lifecycle, no custom completer.
-          return ColoredBox(
-            color: const Color(0xFF1A1A1A),
-            child: Image.memory(
-              bytes,
-              key: ValueKey(
-                '${widget.cacheKey ?? widget.url}:${bytes.length}',
-              ),
-              width: width,
-              height: height,
-              fit: widget.fit,
-              alignment: widget.alignment is Alignment
-                  ? widget.alignment as Alignment
-                  : Alignment.center,
-              filterQuality: widget.filterQuality,
-              gaplessPlayback: true,
-              // cacheWidth reduces GPU upload on large JM JPEGs.
-              cacheWidth: widget.cacheWidth,
-            ),
-          );
-        }
-
-        if (_error != null && !_loading) {
+        if (_lastException != null) {
           return SizedBox(
             width: width,
-            height: height,
-            child: ColoredBox(
-              color: const Color(0xFF2A2A2A),
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.broken_image_outlined,
-                      color: Color(0xFFECECEC),
-                      size: 40,
+            height: widget.height ?? 300,
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.broken_image_outlined,
+                    color: Color(0xFFECECEC),
+                    size: 40,
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '图片加载失败',
+                    style: TextStyle(color: Color(0xFFECECEC)),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: () {
+                      setState(() {
+                        _lastException = null;
+                      });
+                      _resolveImage();
+                    },
+                    child: const Text(
+                      'Retry',
+                      style: TextStyle(color: Colors.blue),
                     ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      '图片加载失败',
-                      style: TextStyle(color: Color(0xFFECECEC)),
-                    ),
-                    const SizedBox(height: 8),
-                    FilledButton.tonalIcon(
-                      onPressed: () {
-                        _attempt = 0;
-                        _startLoad();
-                      },
-                      icon: const Icon(Icons.refresh_rounded),
-                      label: const Text('重试'),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           );
         }
 
-        // Loading: visible slate + spinner (not pure black).
+        //  ComicImage layout: width from prop/constraints;
+        // height from size cache only (constructor height not for paint).
+        double? height;
+
+        final Size? cacheSize = _cache[widget.image.hashCode];
+        if (cacheSize != null) {
+          height = cacheSize.height * (width / cacheSize.width);
+          height = height.ceilToDouble();
+        }
+
+        if (_imageInfo != null) {
+          _cache[widget.image.hashCode] = Size(
+            _imageInfo!.image.width.toDouble(),
+            _imageInfo!.image.height.toDouble(),
+          );
+          height =
+              _imageInfo!.image.height * (width / _imageInfo!.image.width);
+          height = height.ceilToDouble();
+
+          //  paint path: RawImage + explicit size box.
+          Widget result = RawImage(
+            image: _imageInfo?.image,
+            debugImageLabel: _imageInfo?.debugLabel,
+            width: width,
+            height: height,
+            scale: _imageInfo?.scale ?? 1.0,
+            fit: widget.fit,
+            alignment: widget.alignment,
+            isAntiAlias: false,
+            filterQuality: widget.filterQuality,
+            invertColors: _invertColors,
+          );
+
+          result = SizedBox(
+            width: width,
+            height: height,
+            child: Center(child: result),
+          );
+          return result;
+        }
+
+        // Loading placeholder (: width x height??300 + spinner).
         return SizedBox(
           width: width,
-          height: height,
-          child: const ColoredBox(
-            color: Color(0xFF2A2A2A),
-            child: Center(
-              child: SizedBox(
-                width: 28,
-                height: 28,
-                child: CircularProgressIndicator(
-                  strokeWidth: 3,
-                  color: Color(0xFFECECEC),
-                ),
+          height: height ?? 300,
+          child: Center(
+            child: SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(
+                backgroundColor: Colors.white24,
+                strokeWidth: 3,
+                value:
+                    (_loadingProgress != null &&
+                        _loadingProgress!.expectedTotalBytes != null &&
+                        _loadingProgress!.expectedTotalBytes! != 0)
+                    ? _loadingProgress!.cumulativeBytesLoaded /
+                          _loadingProgress!.expectedTotalBytes!
+                    : null,
               ),
             ),
           ),
         );
       },
+    );
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(DiagnosticsProperty<ImageStream>('stream', _imageStream));
+    description.add(DiagnosticsProperty<ImageInfo>('pixels', _imageInfo));
+    description.add(
+      DiagnosticsProperty<ImageChunkEvent>('loadingProgress', _loadingProgress),
+    );
+    description.add(DiagnosticsProperty<int>('frameNumber', _frameNumber));
+    description.add(
+      DiagnosticsProperty<bool>(
+        'wasSynchronouslyLoaded',
+        _wasSynchronouslyLoaded,
+      ),
     );
   }
 }
