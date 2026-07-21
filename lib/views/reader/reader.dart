@@ -24,6 +24,8 @@ import 'package:provider/provider.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:joycomic/theme/app_theme_context.dart';
 
+import '../../foundation/log_export.dart';
+
 import '../../comic_source/comic_source.dart';
 import '../../database/read_record_helper.dart';
 import '../../network/res.dart';
@@ -293,7 +295,7 @@ class _ReaderContent extends StatelessWidget {
   }
 }
 
-class _ReaderLoadingView extends StatelessWidget {
+class _ReaderLoadingView extends StatefulWidget {
   const _ReaderLoadingView({
     required this.message,
     this.traceId,
@@ -303,6 +305,37 @@ class _ReaderLoadingView extends StatelessWidget {
   final String message;
   final String? traceId;
   final VoidCallback? onOpenLogs;
+
+  @override
+  State<_ReaderLoadingView> createState() => _ReaderLoadingViewState();
+}
+
+class _ReaderLoadingViewState extends State<_ReaderLoadingView> {
+  bool _exporting = false;
+
+  Future<void> _exportTxt() async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
+    try {
+      final note = widget.traceId == null || widget.traceId!.isEmpty
+          ? 'from reader loading view'
+          : 'from reader loading view; trace=${widget.traceId}';
+      final ok = await exportJoyComicLogsTxt(context: context, note: note);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(ok ? '已生成 TXT，请选择发送方式' : '暂无日志可导出'),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('导出失败：$error')));
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -323,16 +356,16 @@ class _ReaderLoadingView extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  message,
+                  widget.message,
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: onDark,
                   ),
                 ),
-                if (traceId != null && traceId!.isNotEmpty) ...[
+                if (widget.traceId != null && widget.traceId!.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   SelectableText(
-                    'trace $traceId',
+                    'trace ${widget.traceId}',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: onDark.withValues(alpha: 0.72),
                     ),
@@ -340,14 +373,35 @@ class _ReaderLoadingView extends StatelessWidget {
                   ),
                 ],
                 const SizedBox(height: 16),
-                FilledButton.tonalIcon(
-                  style: FilledButton.styleFrom(
-                    foregroundColor: onDark,
-                    backgroundColor: const Color(0x33FFFFFF),
-                  ),
-                  onPressed: onOpenLogs,
-                  icon: const Icon(Icons.bug_report_outlined),
-                  label: const Text('查看诊断日志'),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  alignment: WrapAlignment.center,
+                  children: [
+                    FilledButton.tonalIcon(
+                      style: FilledButton.styleFrom(
+                        foregroundColor: onDark,
+                        backgroundColor: const Color(0x33FFFFFF),
+                      ),
+                      onPressed: widget.onOpenLogs,
+                      icon: const Icon(Icons.bug_report_outlined),
+                      label: const Text('打开日志页'),
+                    ),
+                    FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        foregroundColor: const Color(0xFF111111),
+                        backgroundColor: onDark,
+                      ),
+                      onPressed: _exporting ? null : _exportTxt,
+                      icon: _exporting
+                          ? const SizedBox.square(
+                              dimension: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.ios_share_rounded),
+                      label: Text(_exporting ? '导出中…' : '导出 TXT'),
+                    ),
+                  ],
                 ),
               ],
             ),

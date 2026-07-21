@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../foundation/log_export.dart';
 import '../utils/reader_utils.dart';
 
 /// 通用错误+重试页（阅读器章节加载失败、网络异常等场景）。
@@ -31,6 +32,31 @@ class ErrorPage extends StatefulWidget {
 
 class _ErrorPageState extends State<ErrorPage> {
   static const Color _onDark = Color(0xFFECECEC);
+  bool _exporting = false;
+
+  Future<void> _exportTxt() async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
+    try {
+      final note = widget.traceId == null || widget.traceId!.isEmpty
+          ? 'from reader error page'
+          : 'from reader error page; trace=${widget.traceId}';
+      final ok = await exportJoyComicLogsTxt(context: context, note: note);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(ok ? '已生成 TXT，请选择发送方式' : '暂无日志可导出'),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('导出失败：$error')),
+      );
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -70,7 +96,8 @@ class _ErrorPageState extends State<ErrorPage> {
                         color: _onDark,
                       ),
                     ),
-                    if (widget.traceId != null && widget.traceId!.isNotEmpty) ...[
+                    if (widget.traceId != null &&
+                        widget.traceId!.isNotEmpty) ...[
                       const SizedBox(height: 8),
                       SelectableText(
                         'trace ${widget.traceId}',
@@ -118,7 +145,23 @@ class _ErrorPageState extends State<ErrorPage> {
                             Clipboard.setData(ClipboardData(text: id));
                           },
                           icon: const Icon(Icons.bug_report_outlined),
-                          label: const Text('查看诊断日志'),
+                          label: const Text('打开日志页'),
+                        ),
+                        FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            foregroundColor: const Color(0xFF111111),
+                            backgroundColor: _onDark,
+                          ),
+                          onPressed: _exporting ? null : _exportTxt,
+                          icon: _exporting
+                              ? const SizedBox.square(
+                                  dimension: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.ios_share_rounded),
+                          label: Text(_exporting ? '导出中…' : '导出 TXT'),
                         ),
                         if (widget.extraButton != null) widget.extraButton!,
                       ],

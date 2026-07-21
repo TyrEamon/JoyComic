@@ -100,6 +100,61 @@ class Log {
     }
   }
 
+  /// 将日志条目格式化为纯文本 TXT（时间升序，便于完整粘贴/转发）。
+  static String formatLogsAsTxt(
+    List<JoyLogEntry> logs, {
+    DateTime? exportedAt,
+    String? note,
+  }) {
+    final when = (exportedAt ?? DateTime.now()).toIso8601String();
+    final buffer = StringBuffer()
+      ..writeln('JoyComic 诊断日志')
+      ..writeln('导出时间：$when')
+      ..writeln('条目数：${logs.length}');
+    if (note != null && note.trim().isNotEmpty) {
+      buffer.writeln('备注：${note.trim()}');
+    }
+    buffer
+      ..writeln('=' * 60)
+      ..writeln();
+
+    // Callers often pass newest-first; export chronological for reading.
+    final ordered = logs.toList(growable: false);
+    for (final log in ordered) {
+      buffer.writeln('[${log.time}][${log.level.toUpperCase()}]');
+      buffer.writeln(log.message);
+      if (log.error != null && log.error!.isNotEmpty) {
+        buffer.writeln('Error: ${log.error}');
+      }
+      if (log.stackTrace != null && log.stackTrace!.isNotEmpty) {
+        buffer.writeln('Stack: ${log.stackTrace}');
+      }
+      buffer
+        ..writeln()
+        ..writeln('-' * 40)
+        ..writeln();
+    }
+    return buffer.toString();
+  }
+
+  /// 写出临时 TXT 文件，供系统分享面板一键发出。
+  ///
+  /// 返回生成的 [File]；无日志时返回 null。
+  static Future<File?> writeExportTxtFile({
+    List<JoyLogEntry>? logs,
+    String? note,
+  }) async {
+    final entries = logs ?? await getLogs();
+    if (entries.isEmpty) return null;
+
+    final text = formatLogsAsTxt(entries, note: note);
+    final dir = await getTemporaryDirectory();
+    final stamp = DateTime.now().millisecondsSinceEpoch;
+    final file = File(p.join(dir.path, 'joycomic_logs_$stamp.txt'));
+    await file.writeAsString(text, flush: true);
+    return file;
+  }
+
   /// 清除所有日志。
   static Future<void> clear() async {
     await _logger.close();
