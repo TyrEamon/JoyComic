@@ -98,6 +98,9 @@ class ReaderImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return RetryForImage(
+      // Avoid a second blank decode after ImageStream already resolved:
+      // paint the decoded frame immediately with RawImage.
+      fadeDuration: Duration.zero,
       imageProvider: _buildProvider(),
       onImageResolved: (info) {
         final w = info.image.width;
@@ -113,12 +116,17 @@ class ReaderImage extends StatelessWidget {
         onImageSizeChanged?.call(w, h);
       },
       builder: (context, status) {
-        if (status.isLoaded) {
-          return Image(
-            image: status.provider,
+        final frame = status.imageInfo;
+        if (frame != null) {
+          // Direct paint of the already-decoded ui.Image — no second resolve.
+          return RawImage(
+            image: frame.image,
+            scale: frame.scale,
             fit: fit,
+            alignment: alignment is Alignment
+                ? alignment as Alignment
+                : Alignment.center,
             filterQuality: filterQuality,
-            alignment: alignment,
           );
         }
         if (status.isExhausted) {
@@ -172,6 +180,7 @@ class ReaderImage extends StatelessWidget {
           CircularProgressIndicator(
             value: progress,
             strokeWidth: 3,
+            color: const Color(0xFFECECEC),
             constraints: const BoxConstraints(maxWidth: 28, maxHeight: 28),
             strokeCap: StrokeCap.round,
           ),
