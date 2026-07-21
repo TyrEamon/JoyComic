@@ -34,6 +34,7 @@ import 'state/comic_state.dart';
 import 'state/read_mode.dart';
 import 'widgets/error_page.dart';
 import 'widgets/horizontal_list/horizontal_list.dart';
+import 'widgets/reader_debug_overlay.dart';
 import 'widgets/vertical_list/vertical_list.dart';
 
 /// Returns only a network loader suitable for route injection.
@@ -181,101 +182,117 @@ class _ReaderContent extends StatelessWidget {
           : const HorizontalList(),
     );
 
-    // Diagnostic reader shell: bright colors so pure-black = widget not built.
-    return Scaffold(
-      backgroundColor: const Color(0xFF4A148C),
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: switch (loadingState) {
-              ReaderLoadState.success => listWidget,
-              ReaderLoadState.error => ErrorPage(
-                errorMessage: loadingErrorMessage ?? '加载失败',
-                onRetry: context.reader.retry,
-                canPop: true,
-                traceId: context.reader.traceId,
-                onOpenLogs: () {
-                  try {
-                    context.push('/logs');
-                  } catch (_) {}
-                },
-              ),
-              ReaderLoadState.loading => _ReaderLoadingView(
-                message: '正在加载章节图片…',
-                traceId: context.reader.traceId,
-                onOpenLogs: () {
-                  try {
-                    context.push('/logs');
-                  } catch (_) {}
-                },
-              ),
-              ReaderLoadState.idle => _ReaderLoadingView(
-                message: '正在准备阅读器…',
-                traceId: context.reader.traceId,
-                onOpenLogs: () {
-                  try {
-                    context.push('/logs');
-                  } catch (_) {}
-                },
-              ),
-            },
-          ),
+    void goBack() {
+      try {
+        context.reader.stopPageTurn();
+      } catch (_) {}
+      context.pop();
+    }
 
-          // Always-on back so user is never trapped on black.
-          Positioned(
-            top: 0,
-            left: 0,
-            child: SafeArea(
-              child: IconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.white, size: 28),
-                style: IconButton.styleFrom(
-                  backgroundColor: Colors.black54,
-                ),
-                onPressed: () {
-                  try {
-                    context.reader.stopPageTurn();
-                  } catch (_) {}
-                  context.pop();
+    // Diagnostic shell + root-overlay debug ball (always above black content).
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Scaffold(
+          backgroundColor: const Color(0xFF4A148C),
+          body: Stack(
+            children: [
+              Positioned.fill(
+                child: switch (loadingState) {
+                  ReaderLoadState.success => listWidget,
+                  ReaderLoadState.error => ErrorPage(
+                    errorMessage: loadingErrorMessage ?? '加载失败',
+                    onRetry: context.reader.retry,
+                    canPop: true,
+                    traceId: context.reader.traceId,
+                    onOpenLogs: () {
+                      try {
+                        context.push('/logs');
+                      } catch (_) {}
+                    },
+                  ),
+                  ReaderLoadState.loading => _ReaderLoadingView(
+                    message: '正在加载章节图片…',
+                    traceId: context.reader.traceId,
+                    onOpenLogs: () {
+                      try {
+                        context.push('/logs');
+                      } catch (_) {}
+                    },
+                  ),
+                  ReaderLoadState.idle => _ReaderLoadingView(
+                    message: '正在准备阅读器…',
+                    traceId: context.reader.traceId,
+                    onOpenLogs: () {
+                      try {
+                        context.push('/logs');
+                      } catch (_) {}
+                    },
+                  ),
                 },
               ),
-            ),
-          ),
-        ],
-      ),
-      drawer: Drawer(
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-        child: SafeArea(
-          child: Column(
-            children: [
-              Container(
-                padding: const EdgeInsets.fromLTRB(0, 20, 0, 10),
-                child: Text(
-                  '章节列表',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-              ),
-              Expanded(
-                child: ScrollablePositionedList.builder(
-                  initialScrollIndex: chapterIndex,
-                  itemBuilder: (context, index) {
-                    final chapter = chapters[index];
-                    return ListTile(
-                      enabled: index != chapterIndex,
-                      title: Text(chapter.name),
-                      onTap: () {
-                        context.pop();
-                        context.reader.go(chapter);
-                      },
-                    );
-                  },
-                  itemCount: chapters.length,
+              Positioned(
+                top: 0,
+                left: 0,
+                child: SafeArea(
+                  child: IconButton(
+                    icon: const Icon(
+                      Icons.arrow_back,
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.black54,
+                    ),
+                    onPressed: goBack,
+                  ),
                 ),
               ),
             ],
           ),
+          drawer: Drawer(
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.zero,
+            ),
+            child: SafeArea(
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(0, 20, 0, 10),
+                    child: Text(
+                      '章节列表',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                  ),
+                  Expanded(
+                    child: ScrollablePositionedList.builder(
+                      initialScrollIndex: chapterIndex,
+                      itemBuilder: (context, index) {
+                        final chapter = chapters[index];
+                        return ListTile(
+                          enabled: index != chapterIndex,
+                          title: Text(chapter.name),
+                          onTap: () {
+                            context.pop();
+                            context.reader.go(chapter);
+                          },
+                        );
+                      },
+                      itemCount: chapters.length,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
-      ),
+        // 最高层：根 Overlay 悬浮球（黑屏也盖不住）
+        ReaderDebugOverlayHost(
+          traceId: context.reader.traceId,
+          onBack: goBack,
+        ),
+      ],
     );
   }
 }
