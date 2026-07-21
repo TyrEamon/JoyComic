@@ -105,13 +105,15 @@ class JmStateImpl implements JmState {
   }
 
   @override
-  String get imageBaseUrl =>
-      jsonString(source.data['imageBaseUrl'], fallback: jmBuiltInImgUrls.first);
+  String get imageBaseUrl => resolveJmImageBaseUrl(
+    jsonString(source.data['imageBaseUrl'], fallback: jmBuiltInImgUrls.first),
+  );
 
   @override
   void setImageBaseUrl(String url) {
-    source.data['imageBaseUrl'] = url;
-    jmBaseUrl = url;
+    final resolved = resolveJmImageBaseUrl(url);
+    source.data['imageBaseUrl'] = resolved;
+    jmBaseUrl = resolved;
     source.saveData();
   }
 

@@ -561,6 +561,16 @@ void main() {
       expect(buildJmSequentialPageNames(0), isEmpty);
     });
 
+    test('resolveJmImageBaseUrl rejects empty or invalid hosts', () {
+      expect(resolveJmImageBaseUrl(''), isNotEmpty);
+      expect(resolveJmImageBaseUrl('   '), isNotEmpty);
+      expect(resolveJmImageBaseUrl('not-a-url'), startsWith('https://'));
+      expect(
+        resolveJmImageBaseUrl('https://cdn-msp3.jmapiproxy1.cc/'),
+        'https://cdn-msp3.jmapiproxy1.cc',
+      );
+    });
+
     test(
       'cached raw keys follow the current host and replace or clear safely',
       () async {

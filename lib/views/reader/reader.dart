@@ -284,15 +284,26 @@ class _ReaderLoadingView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // readerCanvas is pure black — force light controls so loading is not
+    // perceived as a frozen black screen.
+    const onDark = Color(0xFFECECEC);
     return Stack(
       children: [
         Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const CircularProgressIndicator(),
+              const CircularProgressIndicator(
+                color: onDark,
+                strokeWidth: 3,
+              ),
               const SizedBox(height: 16),
-              Text(message, style: Theme.of(context).textTheme.bodyMedium),
+              Text(
+                message,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: onDark,
+                ),
+              ),
             ],
           ),
         ),
@@ -301,6 +312,7 @@ class _ReaderLoadingView extends StatelessWidget {
             alignment: Alignment.topLeft,
             child: IconButton(
               tooltip: '返回',
+              color: onDark,
               onPressed: context.canPop() ? () => context.pop() : null,
               icon: const Icon(Icons.arrow_back_rounded),
             ),

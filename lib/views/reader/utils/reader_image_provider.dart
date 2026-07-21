@@ -322,7 +322,13 @@ class ReaderNetworkImageProvider
           );
           var payload = bytes;
           if (key.bytesTransformer != null) {
-            payload = await key.bytesTransformer!(bytes);
+            // JM recombine runs in an isolate; never hang the ImageProvider forever.
+            payload = await key.bytesTransformer!(bytes).timeout(
+              const Duration(seconds: 20),
+              onTimeout: () => throw TimeoutException(
+                'image transform timed out after 20s',
+              ),
+            );
           }
           if (payload.isEmpty) {
             throw StateError('empty transformed image');

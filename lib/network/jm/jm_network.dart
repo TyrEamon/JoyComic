@@ -1223,7 +1223,7 @@ class JmNetwork {
       _resolveJmPageImages(
         names,
         id,
-        state?.imageBaseUrl ?? jmBaseUrl,
+        _effectiveImageBaseUrl(),
       ),
     );
   }
@@ -1262,7 +1262,7 @@ class JmNetwork {
         _resolveJmPageImages(
           inlinePages,
           comicId,
-          state?.imageBaseUrl ?? jmBaseUrl,
+          _effectiveImageBaseUrl(),
         ),
       );
     }
@@ -1270,6 +1270,9 @@ class JmNetwork {
     // Empty inline (typical unpaid premium): chapter API + sequential CDN.
     return getChapter(comicId, pageHint: totalPhotosHint);
   }
+
+  String _effectiveImageBaseUrl() =>
+      resolveJmImageBaseUrl(state?.imageBaseUrl ?? jmBaseUrl);
 
   /// Builds absolute CDN URLs for sequential page names when the API omits
   /// images. Returns null when [pageHint] is missing or non-positive.
@@ -1279,7 +1282,7 @@ class JmNetwork {
     return _resolveJmPageImages(
       buildJmSequentialPageNames(count),
       chapterId,
-      state?.imageBaseUrl ?? jmBaseUrl,
+      _effectiveImageBaseUrl(),
     );
   }
 
@@ -1303,9 +1306,7 @@ class JmNetwork {
     String comicId,
     String imageBaseUrl,
   ) {
-    final normalizedBaseUrl = imageBaseUrl.endsWith('/')
-        ? imageBaseUrl.substring(0, imageBaseUrl.length - 1)
-        : imageBaseUrl;
+    final normalizedBaseUrl = resolveJmImageBaseUrl(imageBaseUrl);
     // Prefer the live image base; keep absolute URLs that already target a host.
     return List<String>.unmodifiable([
       for (final image in rawImages)
