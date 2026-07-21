@@ -54,8 +54,9 @@ class HeroHeader extends StatelessWidget {
                 sectionSpacing: AppSpacing.md,
               );
 
-              // Right info column shares the cover's vertical bounds exactly:
-              // same top, same height, rating sits on the cover bottom edge.
+              // Right column matches cover height. Upper 2/3 holds title/author/tags
+              // (bottom-aligned toward the seam). Lower 1/3 is the content-
+              // surface overlap: score + stars are vertically centered there.
               final stackHeight = geometry.totalHeight;
               final rightColumnLeft =
                   AppSpacing.md + geometry.coverWidth + AppSpacing.md;
@@ -115,11 +116,9 @@ class HeroHeader extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(
+                            flex: 2,
                             child: LayoutBuilder(
                               builder: (context, titleConstraints) {
-                                // Bottom-align title stack inside the residual
-                                // cover height above the rating; clip overflow
-                                // instead of flex-erroring under large text.
                                 return SizedBox(
                                   width: double.infinity,
                                   height: titleConstraints.maxHeight,
@@ -139,16 +138,18 @@ class HeroHeader extends StatelessWidget {
                               },
                             ),
                           ),
-                          if (rating != null)
-                            Padding(
-                              padding: const EdgeInsets.only(
-                                top: AppSpacing.xs,
-                              ),
-                              child: KeyedSubtree(
-                                key: const ValueKey('detail-hero-rating'),
-                                child: _HeroRating(rating: rating!),
-                              ),
+                          Expanded(
+                            flex: 1,
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: rating == null
+                                  ? const SizedBox.shrink()
+                                  : KeyedSubtree(
+                                      key: const ValueKey('detail-hero-rating'),
+                                      child: _HeroRating(rating: rating!),
+                                    ),
                             ),
+                          ),
                         ],
                       ),
                     ),

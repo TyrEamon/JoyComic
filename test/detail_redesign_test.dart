@@ -106,10 +106,14 @@ void main() {
     final rating = tester.getRect(
       find.byKey(const ValueKey('detail-hero-rating')),
     );
-    // Right column matches cover height; rating is the bottom baseline.
+    // Right column matches cover height; rating is centered in lower 1/3.
     expect(titleBand.top, closeTo(cover.top, 1.5));
     expect(titleBand.bottom, closeTo(cover.bottom, 1.5));
-    expect(rating.bottom, closeTo(cover.bottom, 1.5));
+    final lowerThirdTop = cover.top + cover.height * 2 / 3;
+    final lowerThirdCenter = (lowerThirdTop + cover.bottom) / 2;
+    expect(rating.center.dy, closeTo(lowerThirdCenter, 6));
+    expect(rating.top, greaterThanOrEqualTo(lowerThirdTop - 2));
+    expect(rating.bottom, lessThanOrEqualTo(cover.bottom + 2));
   });
 
   testWidgets(
@@ -167,11 +171,14 @@ void main() {
 
         expect(surface.top, closeTo(expectedSurfaceTop, 1.5));
         expect(cover.bottom, greaterThan(surface.top));
-        // Right column shares cover vertical bounds; rating sits on cover bottom.
+        // Right column shares cover vertical bounds; rating centers in lower 1/3.
         expect(titleBand.top, closeTo(cover.top, 1.5));
         expect(titleBand.bottom, closeTo(cover.bottom, 1.5));
-        expect(rating.bottom, closeTo(cover.bottom, 1.5));
-        expect(rating.top, greaterThan(titleBand.top));
+        final lowerThirdTop = cover.top + cover.height * 2 / 3;
+        final lowerThirdCenter = (lowerThirdTop + cover.bottom) / 2;
+        expect(rating.center.dy, closeTo(lowerThirdCenter, 6));
+        expect(rating.top, greaterThanOrEqualTo(lowerThirdTop - 2));
+        expect(rating.bottom, lessThanOrEqualTo(cover.bottom + 2));
         expect(tester.takeException(), isNull);
       }
 
