@@ -190,9 +190,10 @@ class _ReaderContent extends StatelessWidget {
           : const HorizontalList(),
     );
 
-    // Pure black canvas for manga contrast once frames paint.
+    // Slightly lighter than pure black so empty vs painted tiles are visible
+    // while diagnosing reader paint issues.
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: const Color(0xFF121212),
       body: Stack(
         children: [
           Positioned.fill(
