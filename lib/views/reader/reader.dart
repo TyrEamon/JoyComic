@@ -190,8 +190,7 @@ class _ReaderContent extends StatelessWidget {
           : const HorizontalList(),
     );
 
-    //  continuous reader uses a dark surface; keep pure black for
-    // manga contrast once ComicImage paints frames.
+    // Pure black canvas for manga contrast once frames paint.
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(

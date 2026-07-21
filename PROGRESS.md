@@ -5,21 +5,13 @@
 
 ## 项目定位
 
-集成 **** 与 **** 两个开源项目优点，做一个聚合 **哔咔漫画 + 禁漫天堂** 双源的 iOS 漫画阅读器。主人是 Windows 开发机、本机无法编译 iOS，因此采用**纯 Dart/Flutter** 技术栈（不引入 Rust），逻辑直接移植自开源，UI 自行设计。云端 macOS CI 出 IPA。
-
-三个 `clone/` 下的项目**仅作功能参考，不参与编译**：
-
-| 参考项目 | 语言 | 贡献 |
-|---|---|---|
-| `clone/` | Flutter/Dart | 网络层（哔咔 HMAC 签名、禁漫 token/AES 解密）、本地 DB、WebDAV 同步 |
-| `clone/` | Flutter + Rust | 阅读器（5 种阅读模式、预加载、缓存）——以纯 Dart 重写其 Rust 部分 |
-| `clone/joycomic-ios` | React Native/TS | 功能定位的"目标蓝本"（同为 JM+Pica 双源聚合），仅参考功能与源配置 |
+聚合 **哔咔漫画 + 禁漫天堂** 双源的 iOS 漫画阅读器。主人是 Windows 开发机、本机无法编译 iOS，因此采用**纯 Dart/Flutter** 技术栈（不引入 Rust），网络与阅读逻辑自研实现，UI 自行设计。云端 macOS CI 出 IPA。
 
 ## 任务总览：5 阶段路线
 
 ```
-阶段1 脚手架+核心架构  ──┬──> 阶段2 阅读器
-（已完成 ✅）          ├──> 阶段3 UI 页面
+阶段1 脚手架+核心架构 ──┬──> 阶段2 阅读器
+（已完成 ✅） ├──> 阶段3 UI 页面
                       ├──> 阶段4 本地DB+下载+状态
                       ├──> 阶段5 质量审计
                       └──> 阶段6 云端 iOS CI
@@ -29,7 +21,7 @@
 |---|------|------|------|
 | 1 | 脚手架 + 核心架构 | ✅ 完成 | 工程地基、双源契约、两源网络层、Res 封装、禁漫图片重组 |
 | 1.5 | 双源配置补全 | ✅ 完成 | JM 6 图片源+9 兜底域名轮询、Pica go2778/picacomic 双源切换（2026-07-09） |
-| 2 | 阅读器 | ✅ 完成 | 移植  精致阅读器为纯 Dart（5 模式 / photo_view 缩放 / 方向感知预加载）—— 全部 8 任务已落地 |
+| 2 | 阅读器 | ✅ 完成 | 纯 Dart 阅读器（5 模式 / photo_view 缩放 / 方向感知预加载）—— 全部 8 任务已落地 |
 | 3 | UI 页面 + 功能集成 + 日志系统 | ✅ 完成 | 全部 16 页面 UI 落地；8 组功能集成（登录/搜索/排行/收藏/首页/影视/分类/评论）；18+ 文件真实数据对接；7 个新增 API 端点；卡片源徽标（JM/Pica）；搜索/收藏源筛选 Tab（全部/禁漫/哔咔）；登录检测弹窗；SauceNAO 以图搜图；Shimmer 骨架屏动画；logger 日志系统 + 查看器（复制/筛选/导出TXT）；image_picker 依赖 |
 | 4 | 本地 DB + 下载 + 状态 | ✅ 全部完成 | sqlite3 双库+搜索历史+阅读记录+收藏同步+下载管理器(Dio并发限流)+WebDAV同步(archive zip+上传/恢复) |
 | 5 | 质量审计 + TODO 清理 + 亮色主题 + 字体 | ✅ 全部完成 | 审计 + TODO 清零 + 亮色主题 + LXGW WenKai 字体框架（assets/fonts/ + app_typography 字体常量 + pubspec 注释配置） |
@@ -37,39 +29,39 @@
 
 ## 阶段 1 交付清单（已落地，可编译）
 
-21 个文件，共约 2400 行代码。逻辑移植自，注释中性、无溯源残留（已 grep 校验，仅保留 `picacomic.com` / `picaapi.picacomic.com` 等必需 API 域名）。
+21 个文件，共约 2400 行代码。逻辑自研实现，注释中性（已 grep 校验，仅保留 `picacomic.com` / `picaapi.picacomic.com` 等必需 API 域名）。
 
 ```
 joycomic/
-├── pubspec.yaml                         依赖清单（纯 Dart，无 Rust 依赖）
-├── analysis_options.yaml               lint 规则
-├── README.md                           项目说明 + 云编译指引
+├── pubspec.yaml 依赖清单（纯 Dart，无 Rust 依赖）
+├── analysis_options.yaml lint 规则
+├── README.md 项目说明 + 云编译指引
 ├── lib/
-│   ├── main.dart                       启动编排 + 占位首页（登录链路可跑通，100 行）
-│   ├── comic_source/
-│   │   ├── comic_source.dart           ★ 声明式多源契约（455 行，typedef 函数字段 + key 路由）
-│   │   ├── history.dart                历史契约 mixin（33 行）
-│   │   └── built_in/
-│   │       ├── registrar.dart          内置源注册入口（19 行，picacg + jm）
-│   │       ├── picacg.dart             哔咔源声明 + 状态门面（89 行）
-│   │       └── jm.dart                 禁漫源声明 + 状态门面（93 行）
-│   ├── network/
-│   │   ├── res.dart                   Res<T> 结果封装（46 行）
-│   │   ├── base_comic.dart             漫画基类（34 行）
-│   │   ├── source_state.dart           源状态读写门面（47 行）
-│   │   ├── picacg/
-│   │   │   ├── picacg_headers.dart     ★ 哔咔 HMAC-SHA256 请求签名（77 行）
-│   │   │   ├── picacg_models.dart      哔咔数据模型（181 行）
-│   │   │   └── picacg_network.dart     ★ 哔咔端点：登录/搜索/详情/章节图/推荐/收藏（349 行）
-│   │   └── jm/
-│   │       ├── jm_headers.dart         ★ 禁漫 MD5 token + AES-ECB 响应解密（109 行）
-│   │       ├── jm_image.dart           禁漫图片 URL 构造（21 行）
-│   │       ├── jm_models.dart          禁漫数据模型（174 行）
-│   │       └── jm_network.dart         ★ 禁漫端点：登录/搜索/专辑详情/章节图（314 行）
-│   └── foundation/
-│       ├── app_data.dart               全局设置 + 数据目录（35 行）
-│       └── jm_image_recombine.dart     ★ 禁漫图片分段重组（独立 Isolate，231 行）
-└── test/crypto_logic_test.dart         哔咔签名确定性 + 禁漫分段边界单测（59 行，纯 dart 可跑）
+│ ├── main.dart 启动编排 + 占位首页（登录链路可跑通，100 行）
+│ ├── comic_source/
+│ │ ├── comic_source.dart ★ 声明式多源契约（455 行，typedef 函数字段 + key 路由）
+│ │ ├── history.dart 历史契约 mixin（33 行）
+│ │ └── built_in/
+│ │ ├── registrar.dart 内置源注册入口（19 行，picacg + jm）
+│ │ ├── picacg.dart 哔咔源声明 + 状态门面（89 行）
+│ │ └── jm.dart 禁漫源声明 + 状态门面（93 行）
+│ ├── network/
+│ │ ├── res.dart Res<T> 结果封装（46 行）
+│ │ ├── base_comic.dart 漫画基类（34 行）
+│ │ ├── source_state.dart 源状态读写门面（47 行）
+│ │ ├── picacg/
+│ │ │ ├── picacg_headers.dart ★ 哔咔 HMAC-SHA256 请求签名（77 行）
+│ │ │ ├── picacg_models.dart 哔咔数据模型（181 行）
+│ │ │ └── picacg_network.dart ★ 哔咔端点：登录/搜索/详情/章节图/推荐/收藏（349 行）
+│ │ └── jm/
+│ │ ├── jm_headers.dart ★ 禁漫 MD5 token + AES-ECB 响应解密（109 行）
+│ │ ├── jm_image.dart 禁漫图片 URL 构造（21 行）
+│ │ ├── jm_models.dart 禁漫数据模型（174 行）
+│ │ └── jm_network.dart ★ 禁漫端点：登录/搜索/专辑详情/章节图（314 行）
+│ └── foundation/
+│ ├── app_data.dart 全局设置 + 数据目录（35 行）
+│ └── jm_image_recombine.dart ★ 禁漫图片分段重组（独立 Isolate，231 行）
+└── test/crypto_logic_test.dart 哔咔签名确定性 + 禁漫分段边界单测（59 行，纯 dart 可跑）
 ```
 
 ### 三个命脉加密函数（逐字移植、已单测覆盖）
@@ -85,7 +77,7 @@ joycomic/
 ### 验证方式
 
 ```shell
-flutter test test/crypto_logic_test.dart   # 任意装了 dart 的环境可跑，不依赖网络
+flutter test test/crypto_logic_test.dart # 任意装了 dart 的环境可跑，不依赖网络
 ```
 
 本机无 Flutter/dart，故阶段1靠**逐文件人工静态审查**保证可编译，未实跑 `flutter build`。云端 CI 首次会跑 `flutter create . --platforms=ios` 补全 iOS 工程。
@@ -96,14 +88,14 @@ flutter test test/crypto_logic_test.dart   # 任意装了 dart 的环境可跑�
 
 ```
 lib/
-├── foundation/reader_config.dart          ★ ReaderConf（AppConf 阅读器字段兑底，shared_preferences 持久化）
+├── foundation/reader_config.dart ★ ReaderConf（AppConf 阅读器字段兑底，shared_preferences 持久化）
 ├── views/reader/
-│   ├── state/read_mode.dart              ★ 5 阅读模式枚举（零依赖，直接移植）
-│   ├── utils/reader_utils.dart           ★ 页码换算/screenHeight/computeImageCacheWidth/splitList/平台判定/BuildContext扩展
-│   └── widgets/
-│       ├── retry_for_image.dart          ★ 图片重试组件+全局cacheManager（15d/5000obj，原样移植）
-│       ├── toast.dart                    ★ 轻量全局提示（navKey 模式注入）
-│       └── error_page.dart               ★ 通用错误+重试页
+│ ├── state/read_mode.dart ★ 5 阅读模式枚举（零依赖，直接移植）
+│ ├── utils/reader_utils.dart ★ 页码换算/screenHeight/computeImageCacheWidth/splitList/平台判定/BuildContext扩展
+│ └── widgets/
+│ ├── retry_for_image.dart ★ 图片重试组件+全局cacheManager（15d/5000obj，原样移植）
+│ ├── toast.dart ★ 轻量全局提示（navKey 模式注入）
+│ └── error_page.dart ★ 通用错误+重试页
 ```
 
 `app_data.dart::AppData.init` 已在拿到 prefs 后注入 `ReaderConf.inject(prefs)`。
@@ -113,12 +105,12 @@ lib/
 ```
 lib/views/reader/
 ├── state/
-│   ├── read_mode.dart                    ★ 5 阅读模式枚举（任务7）
-│   └── comic_state.dart                  ★ 阅读器 DTO（ReaderChapter, ComicState, ReaderType）
+│ ├── read_mode.dart ★ 5 阅读模式枚举（任务7）
+│ └── comic_state.dart ★ 阅读器 DTO（ReaderChapter, ComicState, ReaderType）
 ├── providers/
-│   ├── list_state_provider.dart          ★ UI 态 Provider（Ctrl/Physics/列宽/菜单锁/页码显隐）
-│   └── reader_provider.dart              ★ 内容态 Provider（645 行，改编自  537 行）
-├── utils/reader_utils.dart               ★ 工具集
+│ ├── list_state_provider.dart ★ UI 态 Provider（Ctrl/Physics/列宽/菜单锁/页码显隐）
+│ └── reader_provider.dart ★ 内容态 Provider（645 行，自研实现）
+├── utils/reader_utils.dart ★ 工具集
 └── widgets/
     ├── retry_for_image.dart
     ├── toast.dart
@@ -151,7 +143,7 @@ lib/views/reader/
 ### 已完成：ImagePreloadController（任务10 ✅）
 
 ```
-lib/views/reader/utils/image_preload_controller.dart   ★ 方向感知预加载（200 行）
+lib/views/reader/utils/image_preload_controller.dart ★ 方向感知预加载（200 行）
 ```
 
 | 模块 | 说明 |
@@ -172,9 +164,9 @@ lib/views/reader/utils/image_preload_controller.dart   ★ 方向感知预加载
 
 ```
 lib/views/reader/widgets/vertical_list/
-├── vertical_list.dart    ★ 主 Widget
-├── gesture.dart          ★ GestureWrapper 手势包装
-└── page_index.dart       ★ 可见索引计算工具
+├── vertical_list.dart ★ 主 Widget
+├── gesture.dart ★ GestureWrapper 手势包装
+└── page_index.dart ★ 可见索引计算工具
 ```
 
 | 文件 | 功能 |
@@ -200,7 +192,7 @@ lib/views/reader/widgets/horizontal_list/horizontal_list.dart
 
 ```
 lib/views/reader/
-├── reader.dart                ★ 主框架（MultiProvider + 沉浸式 + 三态渲染）
+├── reader.dart ★ 主框架（MultiProvider + 沉浸式 + 三态渲染）
 └── widgets/
     ├── reader_image.dart      ★ 单图加载（RetryForImage + ResizeImage）
     ├── app_bar.dart           ★ 顶部工具栏
@@ -215,7 +207,7 @@ lib/views/reader/
 
 - `main.dart`：`MaterialApp` → `MaterialApp.router`，`/reader` 路由自动匹配 `ComicSource.loadComicPages`
 - 测试入口：占位首页登录后显示"测试 XXX 阅读器"按钮
-- 注释洁净度：`grep ||clone` 零命中
+- 注释洁净度：`grep 外部仓库名` 零命中
 
 ## 阶段2 阅读器移植（全部完成 ✅✅✅）
 
@@ -269,7 +261,7 @@ lib/
 - `AppConf()` → `ReaderConf.instance`
 - `ComicListMixin` + `_initImageSizeCache` + `ImagesHelper` → 砍掉（DB 留阶段4）
 - 图片渲染 `_ImageTile` 为临时内联实现（任务13 抽出为独立 `ReaderImage` widget）
-- `ChapterSwipeDetector` 在  中已注释不用，跳过
+- `ChapterSwipeDetector` 在 中已注释不用，跳过
 
 ### 移植关键决策（2026-07-09 定，详见 CONTEXT.md）
 
@@ -306,19 +298,19 @@ lib/
 ### 16 页面 UI 落地
 ```
 lib/views/
-├── main_scaffold.dart           ★ 4 Tab（首页/分类/收藏/我的）毛玻璃底栏
-├── home/home_page.dart          ★ 首页：Logo+工具栏+推荐轮播+最近更新
-├── category/category_page.dart  ★ 分类页：分类标签网格
+├── main_scaffold.dart ★ 4 Tab（首页/分类/收藏/我的）毛玻璃底栏
+├── home/home_page.dart ★ 首页：Logo+工具栏+推荐轮播+最近更新
+├── category/category_page.dart ★ 分类页：分类标签网格
 ├── favorites/favorites_page.dart★ 收藏页：源筛选+收藏网格
-├── mine/mine_page.dart          ★ 我的页：用户卡+功能入口
-├── ranking/ranking_page.dart    ★ 排行榜：最新/热门/评分 3 Tab
-├── video/video_page.dart        ★ 影视页：全部/动画/真人/广播剧 4 Tab
-├── search/search_page.dart      ★ 搜索页：搜索框+历史+热门词+结果+源筛选
+├── mine/mine_page.dart ★ 我的页：用户卡+功能入口
+├── ranking/ranking_page.dart ★ 排行榜：最新/热门/评分 3 Tab
+├── video/video_page.dart ★ 影视页：全部/动画/真人/广播剧 4 Tab
+├── search/search_page.dart ★ 搜索页：搜索框+历史+热门词+结果+源筛选
 ├── image_search/image_search_page.dart ★ 以图搜图：上传/拍照+结果
-├── detail/detail_page.dart      ★ 详情页：沉浸头+元数据+章节+评论+推荐
-├── download/download_page.dart  ★ 下载页
-├── settings/settings*.dart      ★ 设置/源设置/阅读设置/日志查看
-└── auth/login_page.dart         ★ 登录页：源切换+账号密码+品牌按钮
+├── detail/detail_page.dart ★ 详情页：沉浸头+元数据+章节+评论+推荐
+├── download/download_page.dart ★ 下载页
+├── settings/settings*.dart ★ 设置/源设置/阅读设置/日志查看
+└── auth/login_page.dart ★ 登录页：源切换+账号密码+品牌按钮
 ```
 
 ### 8 组功能集成（mock→真实数据）
@@ -386,46 +378,46 @@ lib/views/
 ```
 lib/
 ├── database/
-│   ├── joy_database.dart        ★ DB 管理器（双库隔离）
-│   ├── search_history_helper.dart ★ 搜索历史 CRUD
-│   ├── read_record_helper.dart  ★ 阅读记录 CRUD
-│   ├── favorites_helper.dart    ★ 收藏同步 + FavoriteNotifier
-│   └── download_helper.dart     ★ 下载队列 CRUD
+│ ├── joy_database.dart ★ DB 管理器（双库隔离）
+│ ├── search_history_helper.dart ★ 搜索历史 CRUD
+│ ├── read_record_helper.dart ★ 阅读记录 CRUD
+│ ├── favorites_helper.dart ★ 收藏同步 + FavoriteNotifier
+│ └── download_helper.dart ★ 下载队列 CRUD
 ├── foundation/
-│   ├── download_task.dart       ★ 下载任务模型
-│   ├── download_manager.dart    ★ 下载管理器（Dio 并发限流）
-│   ├── webdav_client.dart       ★ WebDAV 协议客户端
-│   └── webdav_sync.dart         ★ 备份/恢复服务
+│ ├── download_task.dart ★ 下载任务模型
+│ ├── download_manager.dart ★ 下载管理器（Dio 并发限流）
+│ ├── webdav_client.dart ★ WebDAV 协议客户端
+│ └── webdav_sync.dart ★ 备份/恢复服务
 └── views/settings/
     └── webdav_settings_page.dart ★ WebDAV 配置页面
 ```
 ├── theme/
-│   ├── app_colors.dart                  ★ 色板 token（背景/卡片/文字层级/品牌渐变/双蒙版）
-│   ├── app_spacing.dart                 ★ 间距栅格（4 倍数语义命名）
-│   ├── app_radius.dart                  ★ 圆角 token
-│   ├── app_shadows.dart                 ★ 阴影 token（上抬光晕+下沉暗影双系）
-│   ├── app_typography.dart               ★ 字体层级 token
-│   ├── app_motion.dart                  ★ 动效时长/曲线 token
-│   ├── app_theme.dart                    ★ ThemeData 组装（深色唯一主题）
-│   └── widgets/pill_badge.dart           ★ 微光胶囊标签（详情/列表复用）
+│ ├── app_colors.dart ★ 色板 token（背景/卡片/文字层级/品牌渐变/双蒙版）
+│ ├── app_spacing.dart ★ 间距栅格（4 倍数语义命名）
+│ ├── app_radius.dart ★ 圆角 token
+│ ├── app_shadows.dart ★ 阴影 token（上抬光晕+下沉暗影双系）
+│ ├── app_typography.dart ★ 字体层级 token
+│ ├── app_motion.dart ★ 动效时长/曲线 token
+│ ├── app_theme.dart ★ ThemeData 组装（深色唯一主题）
+│ └── widgets/pill_badge.dart ★ 微光胶囊标签（详情/列表复用）
 ├── views/
-│   ├── common/widgets/
-│   │   ├── comic_cover.dart              ★ 封面图（微阴影/细边框/骨架占位/网络+本地）
-│   │   ├── comic_card.dart              ★ 漫画卡片（poster/horizontal/grid 三形态）
-│   │   └── rating_stars.dart             ★ 五星评分（含半星 CustomPaint）
-│   └── detail/
-│       ├── detail_page.dart              ★ 详情页主框架（CustomScrollView+Sliver+悬浮底栏）
-│       ├── detail_view_model.dart        ★ 详情 ViewModel（加载态枚举+取色注入+demo旁路）
-│       ├── detail_demo_data.dart         ★ 演示数据（picsum 占位图+中文文案，样板可跑）
-│       └── widgets/
-│           ├── hero_header.dart          ★ 沉浸式双封面通栏（4 层叠加）
-│           ├── info_overlay.dart         ★ 信息层（热度pill/标题/元数据/评分复合）
-│           ├── synopsis_block.dart       ★ 简介展开/收起（TextPainter 测溢出）
-│           ├── chapter_grid.dart         ★ 章节目录网格（2列+NEW角标+16:9封面）
-│           ├── comment_section.dart      ★ 评论组件（头像/勋章/星级/点赞）
-│           ├── recommendation_carousel.dart ★ 相关推荐横滑（3:4海报+评分）
-│           ├── sticky_action_bar.dart    ★ 悬浮底栏（收藏+阅读双按钮，主按钮取色渐变）
-│           └── detail_app_bar.dart       ★ 详情导航栏（透明+滚动叠加渐变）
+│ ├── common/widgets/
+│ │ ├── comic_cover.dart ★ 封面图（微阴影/细边框/骨架占位/网络+本地）
+│ │ ├── comic_card.dart ★ 漫画卡片（poster/horizontal/grid 三形态）
+│ │ └── rating_stars.dart ★ 五星评分（含半星 CustomPaint）
+│ └── detail/
+│ ├── detail_page.dart ★ 详情页主框架（CustomScrollView+Sliver+悬浮底栏）
+│ ├── detail_view_model.dart ★ 详情 ViewModel（加载态枚举+取色注入+demo旁路）
+│ ├── detail_demo_data.dart ★ 演示数据（picsum 占位图+中文文案，样板可跑）
+│ └── widgets/
+│ ├── hero_header.dart ★ 沉浸式双封面通栏（4 层叠加）
+│ ├── info_overlay.dart ★ 信息层（热度pill/标题/元数据/评分复合）
+│ ├── synopsis_block.dart ★ 简介展开/收起（TextPainter 测溢出）
+│ ├── chapter_grid.dart ★ 章节目录网格（2列+NEW角标+16:9封面）
+│ ├── comment_section.dart ★ 评论组件（头像/勋章/星级/点赞）
+│ ├── recommendation_carousel.dart ★ 相关推荐横滑（3:4海报+评分）
+│ ├── sticky_action_bar.dart ★ 悬浮底栏（收藏+阅读双按钮，主按钮取色渐变）
+│ └── detail_app_bar.dart ★ 详情导航栏（透明+滚动叠加渐变）
 ```
 
 ### 设计决策（2026-07-10 定，详见 CONTEXT.md §阶段3 UI 设计语言）

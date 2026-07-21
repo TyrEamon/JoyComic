@@ -1,10 +1,7 @@
 /// Browser User-Agent for Picacg **media CDN** requests.
 ///
-/// Parity with  `ImageManager.getImage` / `webUA`
-/// (`clone//lib/foundation/image_manager.dart` L80–81 and
-/// `clone//lib/foundation/def.dart` L19–20): every normal image
-/// download injects a desktop Chrome UA before Dio. API requests still use
-/// `okhttp/3.8.1` via [buildHeaders]; media must not reuse API signature
+/// Media downloads inject a desktop Chrome UA before Dio. API requests still
+/// use `okhttp/3.8.1` via [buildHeaders]; media must not reuse API signature
 /// headers. No `Connection` hop-by-hop header (HttpClient manages that).
 const picacgMediaUserAgent =
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '

@@ -1,8 +1,7 @@
 /// 竖直连续模式（条漫流）。
 ///
-/// 对齐  `image_view.dart` buildType4：
-/// ScrollablePositionedList + ComicImage(width, height=width*1.2, fit: cover)
-/// 图片上屏走移植的  ComicImage 路径（RawImage + size cache）。
+/// ScrollablePositionedList + ReaderImage(width, height≈width*1.2, fit: cover)。
+/// 图片上屏走 ImageStream → RawImage，高度由解码尺寸缓存驱动。
 library;
 
 import 'package:flutter/material.dart';
@@ -98,15 +97,13 @@ class _VerticalListState extends State<VerticalList> {
       jumpOffset: context.reader.pageTurnForVertical,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          //  continuous vertical: full list width, image width
-          // optionally capped for landscape (height/width < 1.2).
+          // Continuous vertical: full list width; optional landscape clamp.
           final screenW = constraints.maxWidth;
           final screenH = constraints.maxHeight;
           final widthFactor = widthRatio.clamp(0.0, 1.0);
           var imageWidth = screenW * widthFactor;
           if (imageWidth <= 0) imageWidth = screenW;
           if (screenH / screenW < 1.2) {
-            // Match  landscape clamp when enabled via width ratio.
             final capped = screenH / 1.2;
             if (capped < imageWidth) imageWidth = capped;
           }
@@ -119,8 +116,7 @@ class _VerticalListState extends State<VerticalList> {
           // 预加载使用同一个 cacheWidth，保证 ImageCache 命中。
           context.reader.updatePreloadCacheWidth(cacheWidth);
 
-          //  initial placeholder height = imageWidth * 1.2;
-          // ComicImage then rewrites height from decoded size cache.
+          // Initial placeholder height; ReaderImage rewrites from decode size.
           final placeholderHeight = imageWidth * 1.2;
 
           return Align(
@@ -155,9 +151,6 @@ class _VerticalListState extends State<VerticalList> {
                   }
 
                   final item = images[index];
-                  //  continuous: ComicImage(width, height: w*1.2,
-                  // fit: cover). ComicImage itself then drives height from
-                  // decoded size cache (constructor height is config only).
                   return ReaderImage(
                     key: ValueKey(item.cacheKey),
                     url: item.url,

@@ -7,8 +7,8 @@
 ## 1. 先读这三份文件接上下文
 
 ```
-CONTEXT.md        — 关键技术决策与约束（必读，含两源加密命脉、Rust 不引入等红线）
-PROGRESS.md       — 进度全貌（阶段1~3 已落地清单；阶段3 UI 已由另一个会话做好）
+CONTEXT.md — 关键技术决策与约束（必读，含两源加密命脉、Rust 不引入等红线）
+PROGRESS.md — 进度全貌（阶段1~3 已落地清单；阶段3 UI 已由另一个会话做好）
 docs/stage3-ui-deliverables.md — 阶段3 全套页面文件清单 + 路由表 + 集成约定
 ```
 
@@ -70,11 +70,9 @@ docs/stage3-ui-deliverables.md — 阶段3 全套页面文件清单 + 路由表 
    禁漫图片分段重组（`jm_image_recombine.dart`，你阶段2 已对接）。**不要改这些算法。**
 3. **依赖锁版本勿升 major**：dio 5.7 / pointycastle 3.9.1 / image 4.3 /
    cached_network_image_ce 4.9 / go_router 16 / provider 6.1.5 等（见 `pubspec.yaml`）。
-4. **注释中性、无溯源残留**：不复制（`clone/`）的源码注释/作者名/溯源表述，
-   移植逻辑中性重写。仅保留 `picacomic.com`/`jmcomic1~4.cc` 等必需 API 域名。
-5. **`clone/` 三仓只读参考，不参与编译**：（网络层/DB）、
-   （阅读器，你阶段2 已移植）、joycomic-ios（功能蓝本，RN/TS 仅参考功能）。
-6. **Windows 开发机无法编译 iOS**，本机无 dart 未能实跑 `dart analyze`，
+4. **注释中性**：不写外部仓库名、作者名或溯源表述。仅保留
+   `picacomic.com`/`jmcomic1~4.cc` 等必需 API 域名。
+5. **Windows 开发机无法编译 iOS**，本机无 dart 未能实跑 `dart analyze`，
    靠静态审查 + 云端 macOS CI 首次 build 验证。
 
 ## 6. 推荐集成顺序
@@ -94,9 +92,9 @@ docs/stage3-ui-deliverables.md — 阶段3 全套页面文件清单 + 路由表 
 
 ```shell
 flutter pub get
-flutter analyze          # 静态检查
-flutter run              # 真机/模拟器
-flutter test test/crypto_logic_test.dart   # 加密命脉单测
+flutter analyze # 静态检查
+flutter run # 真机/模拟器
+flutter test test/crypto_logic_test.dart # 加密命脉单测
 ```
 
 云端 CI（阶段5）：GitHub Actions `macos-latest` 出 IPA。
@@ -107,6 +105,6 @@ flutter test test/crypto_logic_test.dart   # 加密命脉单测
 - **禁漫阅读器图片重组**：详情页点"开始阅读"后，禁漫图是否经
   `jm_image_recombine` 重组再渲染，需在 `reader_image.dart` 核实/补全
   （你阶段2 移植阅读器时已知此点，CONTEXT.md §阅读器看图链路有详述）。
-- 哔咔 `favoriteData`/`categoryComicsData` 网络层方法存在性需核实（部分可能  原版才有）。
+- 哔咔 `favoriteData`/`categoryComicsData` 网络层方法存在性需核实（部分可能 原版才有）。
 - 阶段3 UI 是另一个会话做的，若发现某页面布局与你阶段2 的阅读器衔接不顺（如详情页→阅读器
-  的 ComicState 透传），以你的阶段2 实现为准调整 UI 侧调用即可。
+ ComicState 透传），以你的阶段2 实现为准调整 UI 侧调用即可。

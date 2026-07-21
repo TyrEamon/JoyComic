@@ -315,7 +315,7 @@ ComicSource buildPicacgSource({
       if (res.error) return Res(null, errorMessage: res.errorMessage);
       return Res(res.data);
     },
-    // 哔咔媒体：go2778 优先 + picacomic fallback；浏览器 UA（对齐  webUA）。
+    // 哔咔媒体：go2778 优先 + picacomic fallback；浏览器 UA。
     // 不注入 API 签名头或 Connection；cacheKey 按 path 去 host。
     getImageLoadingConfig: (imageKey, comicId, epId) {
       final primary = normalizePicacgMediaUrl(imageKey);

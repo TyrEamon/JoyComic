@@ -32,7 +32,7 @@ class RankingData {
 哔咔的 `options` 即时间窗口（如 H24=24小时/D7=7天/D30=30天），`load(option, page)` 返回排行列表。
 
 > ⚠️ 当前 `built_in/picacg.dart` 未声明 `categoryComicsData`，需补 `RankingData` 声明。
-> 哔咔排行端点路径需参考  原版（`/comics/...`），集成时核实。
+> 哔咔排行端点路径需参考 原版（`/comics/...`），集成时核实。
 
 ## 时间窗口映射
 

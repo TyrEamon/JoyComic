@@ -4,7 +4,7 @@
 
 **Goal:** 修复用户报告的 11 项登录、源管理、详情、分类、阅读器与日志导出回归。
 
-**Architecture:** 分离源启用管理与账号登录；保留双源抽象。阅读器引入统一图片请求配置并让显示与预加载共享。UI 按用户指定和  分类参考做定向修复，不做无关重构。
+**Architecture:** 分离源启用管理与账号登录；保留双源抽象。阅读器引入统一图片请求配置并让显示与预加载共享。UI 按用户指定和 分类参考做定向修复，不做无关重构。
 
 **Tech Stack:** Flutter、Dart、Provider、GoRouter、cached_network_image_ce、share_plus。
 

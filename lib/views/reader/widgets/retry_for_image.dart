@@ -54,7 +54,7 @@ class RetryImageStatus {
 typedef RetryForImageBuilder =
     Widget Function(BuildContext context, RetryImageStatus status);
 
-/// 只负责重试逻辑的图片包装（对齐 ）。
+/// 只负责重试逻辑的图片包装。
 ///
 /// - 订阅 [imageProvider]，监听错误 / 进度 / 解码完成
 /// - 解码成功后设 [RetryImageStatus.isLoaded]，builder 用 [Image] 上屏

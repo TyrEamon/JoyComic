@@ -99,7 +99,7 @@ BaseOptions buildApiOptions(
   );
 }
 
-/// 图片请求头（对齐  `getImgHeaders` / 官方 App 图片拉取）。
+/// 图片请求头（对齐官方 App 图片拉取）。
 ///
 /// 不包含 `Accept-Encoding`：由 HttpClient 自行协商解压，避免手动声明
 /// 压缩编码后拿到未解码字节导致图片解码失败。

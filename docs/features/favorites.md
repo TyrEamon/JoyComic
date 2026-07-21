@@ -23,7 +23,7 @@ fetchFavoriteFolders()
   → encryptedGet('favorite_folder')
 
 // 添加/取消收藏
-fetchFavoriteAlbum({ aid })  // 切换收藏态
+fetchFavoriteAlbum({ aid }) // 切换收藏态
 // 创建/删除/重命名文件夹
 fetchFavoriteFolderCreate({ name })
 fetchFavoriteFolderDel({ folder_id })
@@ -40,7 +40,7 @@ fetchFavoriteMove({ folder_id, aid })
 
 ```dart
 // picacg_network.dart
-favouriteOrUnfavourite(id)  // 切换收藏
+favouriteOrUnfavourite(id) // 切换收藏
 // 收藏列表需补 load 方法
 ```
 

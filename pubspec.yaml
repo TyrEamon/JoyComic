@@ -44,14 +44,12 @@ dependencies:
   # 图片加载与显示（阅读器缩放）
   # 用社区版 cached_network_image_ce：官方 cached_network_image 自 2024-08 起停止维护
   # （3.4.1 为末版、300+ issue 未修，含内存泄漏/滚动卡顿），ce 版活跃维护（4.9.0/2026-06）、
-  # 99% API 兼容官方、缓存引擎 SQLite→Hive 性能更优。 同样用 ce 版，移植零适配。
+  # 99% API 兼容官方、缓存引擎 SQLite→Hive 性能更优。
   cached_network_image_ce: ^4.9.0
   photo_view: ^0.15.0
 
-  # 阅读器竖直连续模式的可定位滚动列表（竖直流定位 + 自定义 InteractiveViewer）。
-  # 注意： 用的是自 fork 版（raoxwup/scrollable_positioned_list ref 193c9c0），
-  # 先用 pub 官方 0.3.8（Google google/flutter.widgets，3年前末版）起步；
-  # 移植中若遇定位 bug 再回退到  fork ref。
+  # 阅读器竖直连续模式的可定位滚动列表（竖直流定位）。
+  # 使用 pub 官方 scrollable_positioned_list 0.3.8。
   scrollable_positioned_list: ^0.3.8
   # 缩放手势与矩阵变换（竖直模式自定义双击放大 Matrix4Tween）
   vector_math: ^2.2.0

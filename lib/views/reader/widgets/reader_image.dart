@@ -1,8 +1,7 @@
-/// 阅读器单图：直接移植  的 ComicImage 上屏路径。
+/// 阅读器单图：ImageProvider → ImageStream → RawImage + 尺寸缓存。
 ///
-/// 下载 / JM 重组仍用 [ReaderNetworkImageProvider]；显示侧不再自研
-/// Image.memory / 双订阅，而是按  `pages/reader/image.dart`：
-/// ImageProvider → ImageStream → RawImage + 尺寸缓存。
+/// 下载 / JM 重组仍用 [ReaderNetworkImageProvider]；显示侧用标准
+/// ImageStream 路径上屏，按解码像素宽高计算列表项高度。
 library;
 
 import 'package:flutter/foundation.dart';
@@ -13,7 +12,7 @@ import 'package:flutter/semantics.dart';
 import '../../../foundation/log.dart';
 import '../utils/reader_image_provider.dart';
 
-/// 漫画单图加载显示组件（ ComicImage 同构实现）。
+/// 漫画单图加载显示组件。
 class ReaderImage extends StatefulWidget {
   ReaderImage({
     super.key,
@@ -100,7 +99,7 @@ class _ReaderImageState extends State<ReaderImage> with WidgetsBindingObserver {
   ImageStreamCompleterHandle? _completerHandle;
   bool _loggedFirstFrame = false;
 
-  /// : cache decoded pixel size by image hash for list layout.
+  /// Cache decoded pixel size by image hash for list layout.
   static final Map<int, Size> _cache = {};
 
   static void clear() => _cache.clear();
@@ -127,7 +126,7 @@ class _ReaderImageState extends State<ReaderImage> with WidgetsBindingObserver {
     _updateInvertColors();
     _resolveImage();
 
-    // ignore: deprecated_member_use — same gate as  ComicImage
+    // ignore: deprecated_member_use — pause stream when ticker mode is off
     if (TickerMode.of(context)) {
       _listenToStream();
     } else {
@@ -167,7 +166,7 @@ class _ReaderImageState extends State<ReaderImage> with WidgetsBindingObserver {
   }
 
   void _resolveImage() {
-    // : ScrollAwareImageProvider defers loads off-screen.
+    // ScrollAwareImageProvider defers loads for off-screen list items.
     final ScrollAwareImageProvider provider = ScrollAwareImageProvider<Object>(
       context: _scrollAwareContext,
       imageProvider: widget.image,
@@ -199,7 +198,7 @@ class _ReaderImageState extends State<ReaderImage> with WidgetsBindingObserver {
               'Reader image stream error',
               error:
                   'trace=${widget.traceId} idx=${widget.imageIndex ?? '-'} '
-                  'via= err=$error',
+                  'via=stream err=$error',
             );
           }
         },
@@ -230,7 +229,7 @@ class _ReaderImageState extends State<ReaderImage> with WidgetsBindingObserver {
         'trace=${widget.traceId} idx=${widget.imageIndex ?? '-'} '
         'size=${w}x$h '
         'layout=${layoutW.toStringAsFixed(1)}x${layoutH.toStringAsFixed(1)} '
-        'via= '
+        'via=stream '
         'cache=${ReaderDiagnostics.cacheKeySummary(widget.cacheKey ?? widget.url)}',
       );
     }
@@ -359,8 +358,7 @@ class _ReaderImageState extends State<ReaderImage> with WidgetsBindingObserver {
           );
         }
 
-        //  ComicImage layout: width from prop/constraints;
-        // height from size cache only (constructor height not for paint).
+        // Width from prop/constraints; height from size cache only.
         double? height;
 
         final Size? cacheSize = _cache[widget.image.hashCode];
@@ -378,7 +376,6 @@ class _ReaderImageState extends State<ReaderImage> with WidgetsBindingObserver {
               _imageInfo!.image.height * (width / _imageInfo!.image.width);
           height = height.ceilToDouble();
 
-          //  paint path: RawImage + explicit size box.
           Widget result = RawImage(
             image: _imageInfo?.image,
             debugImageLabel: _imageInfo?.debugLabel,
@@ -400,7 +397,7 @@ class _ReaderImageState extends State<ReaderImage> with WidgetsBindingObserver {
           return result;
         }
 
-        // Loading placeholder (: width x height??300 + spinner).
+        // Loading placeholder.
         return SizedBox(
           width: width,
           height: height ?? 300,

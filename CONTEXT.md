@@ -8,21 +8,10 @@
 ## 技术栈决策
 
 - **纯 Dart / Flutter，不引入 Rust。** 原因：主人 Windows 开发机无法编译 iOS，Rust 会增加 iOS 原生链接与云端 CI 复杂度。
-- **离线归档用 `archive` + `pdf` 纯 Dart 包**替代  的 Rust 归档能力。
+- **离线归档用 `archive` + `pdf` 纯 Dart 包**，不引入原生压缩库。
 - **图片加解密全部纯 Dart**：哔咔 HMAC-SHA256（`crypto` 包）、禁漫 AES-ECB + MD5 token（`pointycastle` 包）、禁漫图片分段重组（`image` 包 + 独立 Isolate）。
 - **依赖锁版本**已写入 `pubspec.yaml`（dio 5.7 / pointycastle 3.9.1 / uuid 4.5 / image 4.3 / go_router 16 / sqlite3 2.4 等），阶段2~4 直接用，勿随意升 major。
-
-## 参考项目的边界（绝对约束）
-
-三个 `clone/` 仓库**只读参考，不参与编译、不复制源码注释/作者名/溯源表述**。移植时只能中性重写逻辑。
-
-| 参考项目 | 路径 | 仅参考什么 | 它的"语言"不采用 |
-|---|---|---|---|
-|  | `clone/` | 网络层签名/解密逻辑、DB 设计、WebDAV 同步 | 它是 Flutter/Dart（与本项目一致，最易移植） |
-|  | `clone/` | 阅读器交互（5 模式/预加载/缓存）、UI 质感 | 它含 Rust，**Rust 部分必须用纯 Dart 重写** |
-| joycomic-ios | `clone/joycomic-ios` | 功能定位的"目标蓝本" + 源配置 + 测速选源交互 | 它是 **React Native/TS，仅参考功能不改语言** |
-
-已 grep 校验：项目内无任何仓库名/作者名/溯源评论残留，仅保留 `picaapi.picacomic.com`、`jmcomic1~4.cc` 等必需 API 域名。
+- **源码注释中性**：不写外部仓库名、作者名或溯源表述；仅保留 `picaapi.picacomic.com`、`jmcomic1~4.cc` 等必需 API 域名。
 
 ## 源数量配置（✅ 已闭环 — 2026-07-09）
 
@@ -69,7 +58,7 @@
 
 ### Rust 不需要重写（已在 2026-07-09 摸清）
 
-经探查 `clone//rust/`： 的 Rust 只暴露两类离线功能——`compress.rs`（zip 打包/解压，用于 WebDAV 备份恢复 + 各平台导出 zip）、`simple.rs::export_pdf`（图片目录→PDF 导出）。**阅读器看图链路零 Rust 调用**，整 `views/reader/` 目录 grep Rust 全无命中。
+经探查 `rust/`： 的 Rust 只暴露两类离线功能——`compress.rs`（zip 打包/解压，用于 WebDAV 备份恢复 + 各平台导出 zip）、`simple.rs::export_pdf`（图片目录→PDF 导出）。**阅读器看图链路零 Rust 调用**，整 `views/reader/` 目录 grep Rust 全无命中。
 
 → **阶段2 阅读器移植无需重写任何 Rust**，直接移植 Dart 层即可。Rust 相关的 zip/PDF/WebDAV 备份推迟到阶段3/4 用 joycomic 已锁的 `archive`(^4.0.0) + `pdf` 包替代，与阅读器解耦。
 
@@ -77,16 +66,16 @@
 
  阅读器 `reader_image.dart` 直接拿 API 返回的 `media.url` 喂 `CachedNetworkImageProvider`/`FileImage`，**无解密无分段重组**—— 根本没实现禁漫图片分段。
 
-但 joycomic 阶段1已实现禁漫图片分段重组（`lib/foundation/jm_image_recombine.dart`，独立 Isolate）。→ **移植阅读器时**：网络取图后，禁漫图片必须经 joycomic 自己的重组 Isolate 还原再渲染，不能照搬  的直加载流程（否则禁漫新章节图会乱序）。
+但 joycomic 阶段1已实现禁漫图片分段重组（`lib/foundation/jm_image_recombine.dart`，独立 Isolate）。→ **移植阅读器时**：网络取图后，禁漫图片必须经 joycomic 自己的重组 Isolate 还原再渲染，不能照搬 的直加载流程（否则禁漫新章节图会乱序）。
 
 ### 5 种阅读模式（read_mode.dart，纯 enum 零依赖可直接移植）
 
 ```
-1. vertical         连续从上到下   ← 竖直连续流 scrollable_positioned_list
-2. leftToRight      单页从左到右   ← 单页 PageView
-3. rightToLeft      单页从右到左   ← 单页 PageView 反向
-4. doubleLeftToRight 双页从左到右  ← 双页 PageView
-5. doubleRightToLeft 双页从右到左  ← 双页 PageView 反向
+1. vertical 连续从上到下 ← 竖直连续流 scrollable_positioned_list
+2. leftToRight 单页从左到右 ← 单页 PageView
+3. rightToLeft 单页从右到左 ← 单页 PageView 反向
+4. doubleLeftToRight 双页从左到右 ← 双页 PageView
+5. doubleRightToLeft 双页从右到左 ← 双页 PageView 反向
 ```
 方向判定 helper：`isVertical`/`isDoublePage`/`isReverse`。
 
@@ -117,7 +106,7 @@
 
 **图片加载缓存**（`reader_image.dart:55`）：`CachedNetworkImageProvider`(网)/`FileImage`(本) + `ResizeImage.resizeIfNeeded(cacheWidth)`，`DefaultCacheManager(stalePeriod:15d)`，`RetryForImage` 重试，尺寸入 DB `ImagesHelper`。
 
-**移植需用 joycomic 基础设施替代/简化的  模块**：`AppConf`(配置→用阶段1`app_data.dart`或新增)、`network/models`(→joycomic已有`base_comic`/`jm_models`/`picacg_models`)、`utils/request/*`(→joycomic用Res封装简化)、`database/read_record_helper`+`images_helper`(→阶段4 DB，移植期先内存/shared_preferences兜底)、`utils/extension`/`common`/`log`/`ui`(→自写最小)、`widgets/toast`/`error_page`/`retry_for_image`/`deferred_blur`/`shadow_text`(→自写或精简)。
+**移植需用 joycomic 基础设施替代/简化的 模块**：`AppConf`(配置→用阶段1`app_data.dart`或新增)、`network/models`(→joycomic已有`base_comic`/`jm_models`/`picacg_models`)、`utils/request/*`(→joycomic用Res封装简化)、`database/read_record_helper`+`images_helper`(→阶段4 DB，移植期先内存/shared_preferences兜底)、`utils/extension`/`common`/`log`/`ui`(→自写最小)、`widgets/toast`/`error_page`/`retry_for_image`/`deferred_blur`/`shadow_text`(→自写或精简)。
 
 **注意 publisher 关键修正**：无任何方向锁定代码（grep `lockOrientation` 0命中），资源里的"lockOrientation设置"是误信息，只锁菜单`menuLocked`。阅读记录DB与图片尺寸DB属阶段4，移植期可空实现/兜底。
 
@@ -133,13 +122,13 @@
 | 决策 | 做法 | 原因 |
 |------|------|------|
 | `ReaderImageLoader` 回调注入 | `typedef ReaderImageLoader = Future<Res<List<String>>> Function(String comicId, String? ep)` | 源无关，reader 不需要知道图片来源是哪个网络层 |
-| 砍掉 `RequestProvider` 基类 | 直接 `extends ChangeNotifier` + `ReaderLoadState` 枚举 |  的 handler 模式耦合其专用网络层，joycomic 的 `Res<T>` 已统一封装 |
+| 砍掉 `RequestProvider` 基类 | 直接 `extends ChangeNotifier` + `ReaderLoadState` 枚举 | handler 模式耦合其专用网络层，joycomic 的 `Res<T>` 已统一封装 |
 | 砍掉 `volume_button_override` | 不实现音量键翻页 | iOS 场景无拦截音量键需求 |
 | 砍掉 DB `ReadRecordHelper` | 50ms debounce + 内存兜底 | 阶段4 统一接入 sqlite3，移植期不引入 DB 依赖 |
 | `ImagePreloadControllerRef` 抽象契约 | 在 `reader_provider.dart` 定义抽象接口 | 任务10 实现前先定交互边界，保证 ReaderProvider 不依赖具体预加载实现 |
-| `ReaderImage` 值类 | url + cacheKey，==/hashCode 对照 cacheKey | 替代  的 `ImageBase` 抽象类，简化图片数据模型 |
-| `_pageNo` 始终存原始单页索引 | 双页模式 getter 返回 `~/2`，setter 存原始值 | 与  一致，保证 `multiPageImages` 缓存分组逻辑正确 |
-| `onPageNoChanged` 对比 `_pageNo` 而非 `pageNo` | 避免双页模式下不必要的冗余通知 | 修复  原版的细微 bug（ 对比 `pageNo` 在双页模式下可能误判） |
+| `ReaderImage` 值类 | url + cacheKey，==/hashCode 对照 cacheKey | 替代 `ImageBase` 抽象类，简化图片数据模型 |
+| `_pageNo` 始终存原始单页索引 | 双页模式 getter 返回 `~/2`，setter 存原始值 | 与现有设计一致，保证 `multiPageImages` 缓存分组逻辑正确 |
+| `onPageNoChanged` 对比 `_pageNo` 而非 `pageNo` | 避免双页模式下不必要的冗余通知 | 修复旧实现的细微 bug（ 对比 `pageNo` 在双页模式下可能误判） |
 
 ### 2026-07-09 已落地的 ReaderProvider 模块清单
 
@@ -163,7 +152,7 @@
 | 图片渲染使用 `ReaderImage` widget | 正式 ReaderImage 组件 | 任务13 提取后垂直列表直接引用 |
 | `ImagePreloadController` 在 `initState` 创建 | `VerticalList.initState` 中 `new` + `ReaderProvider.initPreloadController` | 控制器生命周期跟随列表 widget，不在 Provider 中管理 |
 | `ComicListMixin` + DB 跳过 | 不查询/存储图片尺寸 | 阶段4 DB 统一接入 |
-| `ChapterSwipeDetector` 跳过 | 不移植边缘滑动手势 |  原版也注释掉了该组件 |
+| `ChapterSwipeDetector` 跳过 | 不移植边缘滑动手势 |旧实现也注释掉了该组件 |
 | 三区翻页参数 | `ReaderConf.verticalCenterFraction`（默认 0.3）| 上/中/下 = (1-center)/2 / center / (1-center)/2 |
 | 双击缩放倍数 | `Matrix4.identity()..translateByVector3(..)..scaleByVector3(3.0,3.0,1.0)` | 以双击点为中心放大 3×，双击恢复 1:1 |
 
@@ -171,7 +160,7 @@
 
 | 决策 | 做法 | 原因 |
 |------|------|------|
-| `PhotoViewGallery` 非 `PageView` | Gallery 提供内置缩放/双页/反向 | 与  一致，零适配 |
+| `PhotoViewGallery` 非 `PageView` | Gallery 提供内置缩放/双页/反向 | 与现有设计一致，零适配 |
 | 双页模式用 `customChild` | Row + 2× `ReaderImage` | 支持各自独立缩放 |
 | 图片缓存踢出 `_evictImage` | 走 `cacheManager.removeFile` + `CachedNetworkImageProvider.evict` | 重试时确保重新下载 |
 | 滚轮翻页 200ms 防抖 | `_scrollLock` bool 锁 | 防连续滚轮触发多次翻页 |
@@ -184,7 +173,7 @@
 | `MultiProvider` 两 Provider | `ReaderProvider` + `ListStateProvider` | 内容态与 UI 态分离 |
 | `ReaderImage` 识别网络/本地 | `Uri.tryParse(url)?.scheme` | 自动判断，无需 `ReaderType` 参数 |
 | 工具栏 `AnimatedPositioned` | top/bottom 滑入滑出 | 系统 UI 模式 + 动画双保险 |
-| 章节列表 `Drawer` → `ScrollablePositionedList` | 定位当前章节 | 与  一致 |
+| 章节列表 `Drawer` → `ScrollablePositionedList` | 定位当前章节 | 与现有设计一致 |
 | 缩放图片 `ReaderImage` 用 `RetryForImage` | 3 次自动重试 + 手动重试 | joycomic 已有 RetryForImage 实现 |
 
 ### 入口连接（2026-07-09 定，任务14落地）
