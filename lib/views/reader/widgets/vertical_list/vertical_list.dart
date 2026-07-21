@@ -25,7 +25,6 @@ class VerticalList extends StatefulWidget {
 class _VerticalListState extends State<VerticalList> {
   final ScrollController _scrollController = ScrollController();
   ImagePreloadController? _preloadController;
-  int? _lastCacheWidth;
   int _lastReportedPage = 0;
 
   @override
@@ -138,70 +137,52 @@ class _VerticalListState extends State<VerticalList> {
           var imageWidth = screenW * widthFactor;
           if (imageWidth <= 0 || !imageWidth.isFinite) imageWidth = screenW;
 
-          final dpr = MediaQuery.devicePixelRatioOf(context);
-          final cacheWidth = computeImageCacheWidth(
-            layoutWidth: imageWidth,
-            devicePixelRatio: dpr,
-          );
-          // Only push cache width when it actually changes — never every frame.
-          if (_lastCacheWidth != cacheWidth) {
-            _lastCacheWidth = cacheWidth;
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (!mounted) return;
-              context.reader.updatePreloadCacheWidth(cacheWidth);
-            });
-          }
-
           final placeholderHeight = imageWidth * 1.2;
 
+          // Full-bleed list — no nested Center/SizedBox that can zero out width.
           return ColoredBox(
             color: const Color(0xFF121212),
-            child: Center(
-              child: SizedBox(
-                width: imageWidth,
-                height: screenH,
-                child: ListView.builder(
-                  controller: _scrollController,
-                  physics: physics,
-                  // Keep more tiles alive so paint state survives scroll.
-                  // ignore: deprecated_member_use
-                  cacheExtent: screenH * 3,
-                  itemCount: pageCount + 1,
-                  itemBuilder: (context, index) {
-                    if (index == pageCount) {
-                      return const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 24.0),
-                        child: Text(
-                          '本章完',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 20.0,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFFECECEC),
-                          ),
-                        ),
-                      );
-                    }
+            child: ListView.builder(
+              controller: _scrollController,
+              physics: physics,
+              // ignore: deprecated_member_use
+              cacheExtent: screenH * 4,
+              padding: EdgeInsets.zero,
+              itemCount: pageCount + 1,
+              itemBuilder: (context, index) {
+                if (index == pageCount) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24.0),
+                    child: Text(
+                      '本章完',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 20.0,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFFECECEC),
+                      ),
+                    ),
+                  );
+                }
 
-                    final item = images[index];
-                    return ReaderImage(
-                      key: ValueKey(item.cacheKey),
-                      url: item.url,
-                      cacheKey: item.cacheKey,
-                      headers: item.headers,
-                      fallbackUrls: item.fallbackUrls,
-                      bytesTransformer: item.bytesTransformer,
-                      cacheWidth: cacheWidth,
-                      width: imageWidth,
-                      height: placeholderHeight,
-                      fit: BoxFit.fitWidth,
-                      filterQuality: FilterQuality.medium,
-                      traceId: context.reader.traceId,
-                      imageIndex: index,
-                    );
-                  },
-                ),
-              ),
+                final item = images[index];
+                return ReaderImage(
+                  key: ValueKey(item.cacheKey),
+                  url: item.url,
+                  cacheKey: item.cacheKey,
+                  headers: item.headers,
+                  fallbackUrls: item.fallbackUrls,
+                  bytesTransformer: item.bytesTransformer,
+                  // Do not pass cacheWidth — let Flutter decode at natural size
+                  // to avoid iOS texture upload edge cases.
+                  width: imageWidth,
+                  height: placeholderHeight,
+                  fit: BoxFit.fitWidth,
+                  filterQuality: FilterQuality.low,
+                  traceId: context.reader.traceId,
+                  imageIndex: index,
+                );
+              },
             ),
           );
         },

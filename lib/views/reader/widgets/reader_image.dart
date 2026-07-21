@@ -1,8 +1,9 @@
-/// 阅读器单图：下载/JM 重组后用 [Image.memory] 上屏。
+/// 阅读器单图。
 ///
-/// 真机日志曾出现：`bytes ready` 已成功，但没有 `first frame via=memory`。
-/// 原因是列表重建 / didUpdateWidget 把进行中的 load 取消（gen 递增），
-/// setState 永远跑不到。这里用全局字节缓存 + 稳定加载，避免重复拉图。
+/// 策略（针对「转圈后黑屏」）：
+/// 1. 下载 + JM 重组后的字节写入临时文件
+/// 2. 用 [Image.file] 上屏（比 Image.memory 在 iOS 上更稳）
+/// 3. 加载成功时显示绿色状态条，便于确认组件已挂上且有数据
 library;
 
 import 'dart:async';
@@ -11,48 +12,65 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../../foundation/log.dart';
 import '../utils/reader_image_provider.dart';
 
-/// In-memory transformed page cache (JPEG after JM recombine).
-///
-/// Shared across remounts of the same list tile so ScrollablePositionedList /
-/// ListView recycle does not re-download and does not lose paint state.
+/// Transformed page bytes + optional on-disk path.
+class CachedReaderPage {
+  const CachedReaderPage({
+    required this.bytes,
+    this.filePath,
+    this.width,
+    this.height,
+  });
+
+  final Uint8List bytes;
+  final String? filePath;
+  final int? width;
+  final int? height;
+}
+
 class ReaderImageBytesCache {
   ReaderImageBytesCache._();
 
-  static final Map<String, Uint8List> _bytes = <String, Uint8List>{};
-  static final Map<String, Size> _sizes = <String, Size>{};
-  static const int _maxEntries = 80;
+  static final Map<String, CachedReaderPage> _pages =
+      <String, CachedReaderPage>{};
+  static const int _maxEntries = 60;
 
-  static Uint8List? getBytes(String key) => _bytes[key];
+  static CachedReaderPage? get(String key) => _pages[key];
 
-  static Size? getSize(String key) => _sizes[key];
-
-  static void put(String key, Uint8List bytes, {int? width, int? height}) {
-    if (key.isEmpty || bytes.isEmpty) return;
-    _bytes[key] = bytes;
-    if (width != null &&
-        height != null &&
-        width > 0 &&
-        height > 0) {
-      _sizes[key] = Size(width.toDouble(), height.toDouble());
-    }
-    while (_bytes.length > _maxEntries) {
-      final first = _bytes.keys.first;
-      _bytes.remove(first);
-      _sizes.remove(first);
+  static void put(String key, CachedReaderPage page) {
+    if (key.isEmpty || page.bytes.isEmpty) return;
+    _pages[key] = page;
+    while (_pages.length > _maxEntries) {
+      final first = _pages.keys.first;
+      final old = _pages.remove(first);
+      final path = old?.filePath;
+      if (path != null) {
+        try {
+          final f = File(path);
+          if (f.existsSync()) f.deleteSync();
+        } catch (_) {}
+      }
     }
   }
 
   static void clear() {
-    _bytes.clear();
-    _sizes.clear();
+    for (final page in _pages.values) {
+      final path = page.filePath;
+      if (path == null) continue;
+      try {
+        final f = File(path);
+        if (f.existsSync()) f.deleteSync();
+      } catch (_) {}
+    }
+    _pages.clear();
   }
 }
 
-/// 漫画单图加载显示组件。
+/// 漫画单图。
 class ReaderImage extends StatefulWidget {
   const ReaderImage({
     super.key,
@@ -97,14 +115,14 @@ class ReaderImage extends StatefulWidget {
 
 class _ReaderImageState extends State<ReaderImage> {
   Uint8List? _bytes;
+  String? _filePath;
   int? _pixelW;
   int? _pixelH;
   Object? _error;
   int _attempt = 0;
   bool _loading = true;
   int _loadGen = 0;
-  bool _loggedFirstFrame = false;
-  Future<void>? _inFlight;
+  bool _loggedPaint = false;
 
   String get _sizeKey => widget.cacheKey ?? widget.url;
 
@@ -116,54 +134,44 @@ class _ReaderImageState extends State<ReaderImage> {
   @override
   void initState() {
     super.initState();
-    _hydrateFromCache();
-    if (_bytes == null) {
-      _startLoad();
-    } else {
+    if (_applyCache()) {
       _loading = false;
-      _logFirstFrameIfNeeded();
+      _logPaint('cache-hit');
+    } else {
+      _startLoad();
     }
   }
 
   @override
   void didUpdateWidget(covariant ReaderImage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Only restart when the *page identity* changes. cacheWidth / transformer
-    // identity changes must NOT cancel an in-flight successful download —
-    // that was wiping setState and leaving a permanent black list.
     final identityChanged =
         oldWidget.url != widget.url || oldWidget.cacheKey != widget.cacheKey;
-    if (!identityChanged) {
-      if (oldWidget.width != widget.width || oldWidget.height != widget.height) {
-        // Layout-only change: rebuild with existing bytes.
-        setState(() {});
-      }
-      return;
-    }
+    if (!identityChanged) return;
+
     _attempt = 0;
-    _loggedFirstFrame = false;
-    _hydrateFromCache();
-    if (_bytes == null) {
-      _startLoad();
-    } else {
+    _loggedPaint = false;
+    if (_applyCache()) {
       setState(() {
         _loading = false;
         _error = null;
       });
-      _logFirstFrameIfNeeded();
+      _logPaint('cache-hit-update');
+    } else {
+      _bytes = null;
+      _filePath = null;
+      _startLoad();
     }
   }
 
-  void _hydrateFromCache() {
-    final cached = ReaderImageBytesCache.getBytes(_sizeKey);
-    final size = ReaderImageBytesCache.getSize(_sizeKey);
-    if (cached != null && cached.isNotEmpty) {
-      _bytes = cached;
-      if (size != null) {
-        _pixelW = size.width.round();
-        _pixelH = size.height.round();
-      }
-    }
+  bool _applyCache() {
+    final page = ReaderImageBytesCache.get(_sizeKey);
+    if (page == null || page.bytes.isEmpty) return false;
+    _bytes = page.bytes;
+    _filePath = page.filePath;
+    _pixelW = page.width;
+    _pixelH = page.height;
+    return true;
   }
 
   void _startLoad() {
@@ -172,9 +180,27 @@ class _ReaderImageState extends State<ReaderImage> {
       _loading = true;
       _error = null;
     });
-    final future = _load(gen);
-    _inFlight = future;
-    unawaited(future);
+    unawaited(_load(gen));
+  }
+
+  Future<String?> _writeTempFile(Uint8List bytes) async {
+    try {
+      final dir = await getTemporaryDirectory();
+      final safe = _sizeKey.hashCode.toUnsigned(32).toRadixString(16);
+      final isJpeg = bytes.length >= 3 && bytes[0] == 0xff && bytes[1] == 0xd8;
+      final ext = isJpeg ? 'jpg' : 'img';
+      final file = File('${dir.path}/jc_reader_$safe.$ext');
+      await file.writeAsBytes(bytes, flush: true);
+      return file.path;
+    } catch (e) {
+      if (widget.traceId != null) {
+        Log.w(
+          'Reader temp write failed',
+          error: 'trace=${widget.traceId} err=$e',
+        );
+      }
+      return null;
+    }
   }
 
   Future<void> _load(int gen) async {
@@ -198,10 +224,7 @@ class _ReaderImageState extends State<ReaderImage> {
       int? pw;
       int? ph;
       try {
-        final codec = await ui.instantiateImageCodec(
-          bytes,
-          targetWidth: widget.cacheWidth,
-        );
+        final codec = await ui.instantiateImageCodec(bytes);
         final frame = await codec.getNextFrame();
         pw = frame.image.width;
         ph = frame.image.height;
@@ -217,48 +240,38 @@ class _ReaderImageState extends State<ReaderImage> {
         }
       }
 
-      // Always park bytes in the global cache first — even if this State
-      // is disposed, the next mount can paint immediately.
-      ReaderImageBytesCache.put(_sizeKey, bytes, width: pw, height: ph);
+      final path = await _writeTempFile(bytes);
+      ReaderImageBytesCache.put(
+        _sizeKey,
+        CachedReaderPage(bytes: bytes, filePath: path, width: pw, height: ph),
+      );
 
-      if (!mounted) {
+      if (!mounted || gen != _loadGen) {
         if (widget.traceId != null) {
           Log.w(
             'Reader paint skipped',
             error:
                 'trace=${widget.traceId} idx=${widget.imageIndex ?? '-'} '
-                'reason=unmounted after bytes len=${bytes.length}',
+                'mounted=$mounted gen=$gen/$_loadGen len=${bytes.length}',
           );
         }
-        return;
-      }
-      if (gen != _loadGen) {
-        if (widget.traceId != null) {
-          Log.w(
-            'Reader paint skipped',
-            error:
-                'trace=${widget.traceId} idx=${widget.imageIndex ?? '-'} '
-                'reason=stale_gen gen=$gen current=$_loadGen '
-                'len=${bytes.length}',
-          );
-        }
-        // Newer load is in flight, but if we already have bytes show them.
-        if (_bytes == null) {
+        // Still try to show if mounted with stale gen.
+        if (mounted && _bytes == null) {
           setState(() {
             _bytes = bytes;
-            if (pw != null && ph != null) {
-              _pixelW = pw;
-              _pixelH = ph;
-            }
+            _filePath = path;
+            _pixelW = pw;
+            _pixelH = ph;
             _loading = false;
           });
-          _logFirstFrameIfNeeded(pw: pw, ph: ph, len: bytes.length);
+          _logPaint('stale-gen-show', pw: pw, ph: ph, len: bytes.length);
         }
         return;
       }
 
       setState(() {
         _bytes = bytes;
+        _filePath = path;
         if (pw != null && ph != null && pw > 0 && ph > 0) {
           _pixelW = pw;
           _pixelH = ph;
@@ -266,8 +279,7 @@ class _ReaderImageState extends State<ReaderImage> {
         _loading = false;
         _error = null;
       });
-
-      _logFirstFrameIfNeeded(pw: pw, ph: ph, len: bytes.length);
+      _logPaint('ready', pw: pw, ph: ph, len: bytes.length);
       if (pw != null && ph != null) {
         widget.onImageSizeChanged?.call(pw, ph);
       }
@@ -293,44 +305,36 @@ class _ReaderImageState extends State<ReaderImage> {
               'trace=${widget.traceId} idx=${widget.imageIndex ?? '-'} err=$error',
         );
       }
-    } finally {
-      if (identical(_inFlight, null) || true) {
-        // clear in-flight marker when this gen finishes
-      }
     }
   }
 
-  void _logFirstFrameIfNeeded({int? pw, int? ph, int? len}) {
-    if (_loggedFirstFrame || widget.traceId == null) return;
-    if (!mounted) return;
-    final bytes = _bytes;
-    if (bytes == null) return;
-    _loggedFirstFrame = true;
+  void _logPaint(String via, {int? pw, int? ph, int? len}) {
+    if (_loggedPaint || widget.traceId == null || !mounted) return;
+    if (_bytes == null) return;
+    _loggedPaint = true;
     final layoutW = _resolveWidth();
     final useW = pw ?? _pixelW;
     final useH = ph ?? _pixelH;
     final aspect = (useW != null && useH != null && useW > 0 && useH > 0)
         ? useW / useH
         : 3 / 4;
-    final layoutH = layoutW / aspect;
     Log.i(
       'Reader first frame',
       'trace=${widget.traceId} idx=${widget.imageIndex ?? '-'} '
       'size=${useW ?? '?'}x${useH ?? '?'} '
-      'layout=${layoutW.toStringAsFixed(1)}x${layoutH.toStringAsFixed(1)} '
+      'layout=${layoutW.toStringAsFixed(1)}x${(layoutW / aspect).toStringAsFixed(1)} '
       'propW=${widget.width?.toStringAsFixed(1) ?? 'null'} '
-      'bytes=${len ?? bytes.length} via=memory '
+      'bytes=${len ?? _bytes!.length} via=$via file=${_filePath != null} '
       'cache=${ReaderDiagnostics.cacheKeySummary(widget.cacheKey ?? widget.url)}',
     );
   }
 
   double _resolveWidth() {
-    final candidates = <double>[
+    for (final w in <double>[
       if (widget.width != null) widget.width!,
       if (mounted) MediaQuery.sizeOf(context).width,
       390,
-    ];
-    for (final w in candidates) {
+    ]) {
       if (w.isFinite && w > 1) return w;
     }
     return 390;
@@ -348,58 +352,96 @@ class _ReaderImageState extends State<ReaderImage> {
     return width * 1.2;
   }
 
+  Widget _statusBar(String text, Color color) {
+    return Container(
+      width: double.infinity,
+      color: color,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Remount / rebuild may race a completed fetch — rehydrate once more.
     if (_bytes == null) {
-      final cached = ReaderImageBytesCache.getBytes(_sizeKey);
-      if (cached != null) {
-        _bytes = cached;
-        final size = ReaderImageBytesCache.getSize(_sizeKey);
-        if (size != null) {
-          _pixelW = size.width.round();
-          _pixelH = size.height.round();
-        }
-        _loading = false;
-      }
+      _applyCache();
     }
 
     final width = _resolveWidth();
     final height = _resolveHeight(width);
     final bytes = _bytes;
+    final path = _filePath;
 
     if (bytes != null && bytes.isNotEmpty) {
-      return ColoredBox(
-        color: const Color(0xFF2A2A2A),
-        child: Image.memory(
-          bytes,
-          key: ValueKey('$_sizeKey:${bytes.length}'),
-          width: width,
-          height: height,
-          fit: BoxFit.fitWidth,
-          alignment: widget.alignment is Alignment
-              ? widget.alignment as Alignment
-              : Alignment.center,
-          filterQuality: widget.filterQuality,
-          gaplessPlayback: true,
-          cacheWidth: widget.cacheWidth,
-          errorBuilder: (context, error, stack) {
-            if (widget.traceId != null) {
-              Log.w(
-                'Reader Image.memory failed',
-                error:
-                    'trace=${widget.traceId} idx=${widget.imageIndex ?? '-'} '
-                    'err=$error',
-              );
-            }
-            return SizedBox(
+      final idx = widget.imageIndex ?? -1;
+      final imageChild = path != null && File(path).existsSync()
+          ? Image.file(
+              File(path),
+              key: ValueKey('file:$path:${bytes.length}'),
               width: width,
               height: height,
-              child: const Center(
-                child: Icon(Icons.broken_image_outlined, color: Colors.white70),
-              ),
+              fit: BoxFit.fitWidth,
+              alignment: Alignment.center,
+              filterQuality: FilterQuality.low,
+              gaplessPlayback: true,
+              errorBuilder: (context, error, stack) {
+                Log.w(
+                  'Reader Image.file failed',
+                  error:
+                      'trace=${widget.traceId} idx=$idx err=$error → memory',
+                );
+                return Image.memory(
+                  bytes,
+                  width: width,
+                  height: height,
+                  fit: BoxFit.fitWidth,
+                  gaplessPlayback: true,
+                  errorBuilder: (c, e, s) => _statusBar(
+                    '图片解码失败 idx=$idx',
+                    Colors.red.shade800,
+                  ),
+                );
+              },
+            )
+          : Image.memory(
+              bytes,
+              key: ValueKey('mem:$_sizeKey:${bytes.length}'),
+              width: width,
+              height: height,
+              fit: BoxFit.fitWidth,
+              alignment: Alignment.center,
+              filterQuality: FilterQuality.low,
+              gaplessPlayback: true,
+              errorBuilder: (context, error, stack) {
+                Log.w(
+                  'Reader Image.memory failed',
+                  error: 'trace=${widget.traceId} idx=$idx err=$error',
+                );
+                return _statusBar('图片解码失败 idx=$idx', Colors.red.shade800);
+              },
             );
-          },
+
+      // Green bar MUST be visible if this widget paints — proves tile is alive.
+      return ColoredBox(
+        color: const Color(0xFF1E1E1E),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _statusBar(
+              '已加载 第${idx + 1}页 ${bytes.length}B'
+              '${path != null ? ' file' : ' mem'}',
+              const Color(0xFF1B5E20),
+            ),
+            imageChild,
+          ],
         ),
       );
     }
@@ -409,26 +451,18 @@ class _ReaderImageState extends State<ReaderImage> {
         width: width,
         height: height,
         child: ColoredBox(
-          color: const Color(0xFF2A2A2A),
+          color: const Color(0xFF3E2723),
           child: Center(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(
-                  Icons.broken_image_outlined,
-                  color: Color(0xFFECECEC),
-                  size: 40,
-                ),
+                const Icon(Icons.broken_image_outlined, color: Colors.white, size: 40),
                 const SizedBox(height: 8),
-                const Text(
-                  '图片加载失败',
-                  style: TextStyle(color: Color(0xFFECECEC)),
-                ),
+                const Text('图片加载失败', style: TextStyle(color: Colors.white)),
                 const SizedBox(height: 8),
                 FilledButton.tonalIcon(
                   onPressed: () {
                     _attempt = 0;
-                    ReaderImageBytesCache.clear();
                     _startLoad();
                   },
                   icon: const Icon(Icons.refresh_rounded),
@@ -444,17 +478,25 @@ class _ReaderImageState extends State<ReaderImage> {
     return SizedBox(
       width: width,
       height: height,
-      child: const ColoredBox(
-        color: Color(0xFF2A2A2A),
-        child: Center(
-          child: SizedBox(
-            width: 28,
-            height: 28,
-            child: CircularProgressIndicator(
-              strokeWidth: 3,
-              color: Color(0xFFECECEC),
+      child: ColoredBox(
+        color: const Color(0xFF263238),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const SizedBox(
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator(
+                strokeWidth: 3,
+                color: Colors.white,
+              ),
             ),
-          ),
+            const SizedBox(height: 12),
+            Text(
+              '加载中 第${(widget.imageIndex ?? 0) + 1}页…',
+              style: const TextStyle(color: Colors.white70, fontSize: 13),
+            ),
+          ],
         ),
       ),
     );

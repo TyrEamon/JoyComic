@@ -24,8 +24,9 @@ workflows:
           fi
           /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryUsageDescription string 选择漫画图片用于以图搜图" ios/Runner/Info.plist 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :NSPhotoLibraryUsageDescription 选择漫画图片用于以图搜图" ios/Runner/Info.plist
           /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string 拍摄漫画图片用于以图搜图" ios/Runner/Info.plist 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :NSCameraUsageDescription 拍摄漫画图片用于以图搜图" ios/Runner/Info.plist
-          # Disable Impeller: reader frames decode + layout OK but stay black on some iOS devices.
-          /usr/libexec/PlistBuddy -c "Add :FLTEnableImpeller bool false" ios/Runner/Info.plist 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :FLTEnableImpeller false" ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Delete :FLTEnableImpeller" ios/Runner/Info.plist 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :FLTEnableImpeller bool false" ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Print :FLTEnableImpeller" ios/Runner/Info.plist
       - name: Generate app icons
         script: |
           flutter pub get
