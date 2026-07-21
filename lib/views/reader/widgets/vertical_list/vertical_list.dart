@@ -9,7 +9,6 @@ import '../../../../foundation/reader_config.dart';
 import '../../providers/reader_provider.dart' hide ReaderImage;
 import '../../providers/list_state_provider.dart';
 import '../../utils/image_preload_controller.dart';
-import '../../utils/reader_utils.dart';
 import '../reader_image.dart';
 import 'gesture.dart';
 
