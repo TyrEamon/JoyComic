@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:cached_network_image_ce/cached_network_image.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
 /// 全局图片缓存管理器：阅读器与预加载共用，保证缓存命中。
@@ -20,16 +19,12 @@ class RetryImageStatus {
     required this.maxAttempts,
     required this.isLoaded,
     required this.retry,
-    this.imageInfo,
     this.chunk,
     this.error,
   });
 
-  /// 当前正在加载的 [ImageProvider]。
+  /// 当前正在加载的 [ImageProvider]。builder 渲染实际图片时直接用它即可。
   final ImageProvider provider;
-
-  /// 已解码帧；非 null 时应直接用 [RawImage] 绘制，避免二次 resolve。
-  final ImageInfo? imageInfo;
 
   /// 当前尝试次数（0 = 首次加载，N = 第 N 次自动重试）。
   final int attempt;
@@ -59,11 +54,11 @@ class RetryImageStatus {
 typedef RetryForImageBuilder =
     Widget Function(BuildContext context, RetryImageStatus status);
 
-/// 一个只负责重试逻辑的图片包装组件。
+/// 只负责重试逻辑的图片包装（对齐 ）。
 ///
-/// - 直接订阅 [imageProvider]，内部监听加载错误、下载进度和解码完成。
-/// - 解码成功后保留 [ImageInfo]，供 builder 用 [RawImage] 立即上屏。
-/// - 出错时按 [retryDelay] 定时自动重试，累计 [maxAttempts] 次仍失败后停手。
+/// - 订阅 [imageProvider]，监听错误 / 进度 / 解码完成
+/// - 解码成功后设 [RetryImageStatus.isLoaded]，builder 用 [Image] 上屏
+/// - 不持有 [ImageInfo]（避免与 ImageCache 生命周期打架导致黑屏）
 class RetryForImage extends StatefulWidget {
   const RetryForImage({
     super.key,
@@ -71,32 +66,17 @@ class RetryForImage extends StatefulWidget {
     required this.builder,
     this.maxAttempts = 3,
     this.retryDelay = const Duration(milliseconds: 200),
-    this.fadeDuration = const Duration(milliseconds: 120),
+    this.fadeDuration = Duration.zero,
     this.fadeCurve = Curves.easeOutQuad,
     this.onImageResolved,
   });
 
-  /// 待加载的图片 provider。当这个值（按 `==` 比较）发生变化时，内部会
-  /// 解除旧订阅、清零计数器并重新订阅新 provider。
   final ImageProvider imageProvider;
-
-  /// 使用当前状态构建图片 UI。
   final RetryForImageBuilder builder;
-
-  /// 最多自动重试多少次。
   final int maxAttempts;
-
-  /// 收到错误后延迟多久触发下一次自动重试。
   final Duration retryDelay;
-
-  /// 在 loading / loaded / exhausted 三种状态之间切换时的淡入淡出时长。
-  /// 设为 [Duration.zero] 可关闭动画。
   final Duration fadeDuration;
-
-  /// 状态切换时使用的缓动曲线。
   final Curve fadeCurve;
-
-  /// 每轮加载首次解码成功时触发，用于把 [ImageInfo]（含宽高）暴露给调用方。
   final void Function(ImageInfo info)? onImageResolved;
 
   @override
@@ -106,21 +86,18 @@ class RetryForImage extends StatefulWidget {
 class _RetryForImageState extends State<RetryForImage> {
   ImageStream? _stream;
   ImageStreamListener? _listener;
+  ImageStreamCompleterHandle? _completerHandle;
 
   int _attempt = 0;
+  bool _isLoaded = false;
   bool _resolvedFired = false;
-  ImageInfo? _imageInfo;
   ImageChunkEvent? _chunk;
   Object? _error;
   Timer? _retryTimer;
 
-  bool get _isLoaded => _imageInfo != null;
-
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // 首次订阅放到这里，确保 InheritedWidget（ImageConfiguration 会用到）
-    // 已经就绪。
     if (_listener == null) {
       _subscribe();
     }
@@ -139,11 +116,10 @@ class _RetryForImageState extends State<RetryForImage> {
   void dispose() {
     _retryTimer?.cancel();
     _unsubscribe();
-    _replaceImage(null);
+    _completerHandle?.dispose();
+    _completerHandle = null;
     super.dispose();
   }
-
-  // ---------- 订阅管理 ----------
 
   void _subscribe() {
     final config = createLocalImageConfiguration(context);
@@ -156,6 +132,9 @@ class _RetryForImageState extends State<RetryForImage> {
     _stream = stream;
     _listener = listener;
     stream.addListener(listener);
+    // Keep decoded frames resident while this widget is mounted (iOS thrash).
+    _completerHandle?.dispose();
+    _completerHandle = stream.completer?.keepAlive();
   }
 
   void _unsubscribe() {
@@ -171,40 +150,26 @@ class _RetryForImageState extends State<RetryForImage> {
   void _resetForNewProvider() {
     _retryTimer?.cancel();
     _unsubscribe();
+    _completerHandle?.dispose();
+    _completerHandle = null;
     _attempt = 0;
+    _isLoaded = false;
     _resolvedFired = false;
     _chunk = null;
     _error = null;
-    // Keep the previous frame until the next one arrives (gapless).
   }
-
-  void _replaceImage(ImageInfo? next) {
-    final previous = _imageInfo;
-    _imageInfo = next;
-    if (previous != null) {
-      // Dispose after the frame so the current paint can still use it.
-      SchedulerBinding.instance.addPostFrameCallback((_) {
-        previous.dispose();
-      });
-    }
-  }
-
-  // ---------- 事件回调 ----------
 
   void _handleImage(ImageInfo info, bool synchronousCall) {
     if (!mounted) return;
     final firstResolve = !_resolvedFired;
     _resolvedFired = true;
-    // Stream may dispose the delivered ImageInfo after the listener returns;
-    // keep an owned clone for RawImage painting.
-    final owned = info.clone();
     setState(() {
-      _replaceImage(owned);
+      _isLoaded = true;
       _error = null;
       _chunk = null;
     });
     if (firstResolve) {
-      widget.onImageResolved?.call(owned);
+      widget.onImageResolved?.call(info);
     }
   }
 
@@ -215,7 +180,6 @@ class _RetryForImageState extends State<RetryForImage> {
 
   void _handleError(Object error, StackTrace? stackTrace) {
     if (!mounted) return;
-    // If we already have a painted frame, keep it and only retry in background.
     final shouldSchedule =
         _attempt < widget.maxAttempts && _retryTimer?.isActive != true;
     setState(() {
@@ -228,8 +192,6 @@ class _RetryForImageState extends State<RetryForImage> {
     }
   }
 
-  // ---------- 重试 ----------
-
   Future<void> _performRetry() async {
     if (!mounted) return;
     _unsubscribe();
@@ -237,8 +199,6 @@ class _RetryForImageState extends State<RetryForImage> {
       _error = null;
       _chunk = null;
     });
-    // Do not evict a successfully painted frame's cache entry on soft retry —
-    // only manual retry forces a full reload.
     if (!mounted) return;
     _subscribe();
   }
@@ -248,17 +208,16 @@ class _RetryForImageState extends State<RetryForImage> {
     _unsubscribe();
     setState(() {
       _attempt = 0;
+      _isLoaded = false;
       _resolvedFired = false;
       _error = null;
       _chunk = null;
-      _replaceImage(null);
     });
     await widget.imageProvider.evict();
     if (!mounted) return;
     _subscribe();
   }
 
-  /// 当前所处的渲染阶段，用于驱动 AnimatedSwitcher 的过渡。
   _RetryPhase get _phase {
     if (_isLoaded) return _RetryPhase.loaded;
     if (_error != null && _attempt >= widget.maxAttempts) {
@@ -271,7 +230,6 @@ class _RetryForImageState extends State<RetryForImage> {
   Widget build(BuildContext context) {
     final status = RetryImageStatus(
       provider: widget.imageProvider,
-      imageInfo: _imageInfo,
       attempt: _attempt,
       maxAttempts: widget.maxAttempts,
       isLoaded: _isLoaded,
@@ -293,7 +251,6 @@ class _RetryForImageState extends State<RetryForImage> {
       duration: widget.fadeDuration,
       switchInCurve: widget.fadeCurve,
       switchOutCurve: widget.fadeCurve,
-      // 用 passthrough 的 Stack 作为容器，保证外层约束能透传。
       layoutBuilder: _passthroughLayoutBuilder,
       child: child,
     );

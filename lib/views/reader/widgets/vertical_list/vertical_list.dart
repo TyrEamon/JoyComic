@@ -116,40 +116,44 @@ class _VerticalListState extends State<VerticalList> {
           // 预加载使用同一个 cacheWidth，保证 ImageCache 命中。
           context.reader.updatePreloadCacheWidth(cacheWidth);
 
-          return FractionallySizedBox(
-            widthFactor: widthFactor,
-            child: ScrollablePositionedList.builder(
-              initialScrollIndex: initialPage,
-              padding: EdgeInsets.zero,
-              physics: physics,
-              itemCount: pageCount + 1,
-              addAutomaticKeepAlives: false,
-              minCacheExtent: screenHeight * 2,
-              itemScrollController: context.reader.itemScrollController,
-              itemPositionsListener: itemPositionsListener,
-              scrollOffsetController: context.reader.scrollOffsetController,
-              itemBuilder: (context, index) {
-                // 最后一项："本章完" 占位。
-                if (index == pageCount) {
-                  return const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 16.0),
-                    child: Text(
-                      '本章完',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 20.0,
-                        fontWeight: FontWeight.bold,
+          // Center + fixed width keeps the list under a tight height constraint
+          // from LayoutBuilder (Positioned.fill). Avoid FractionallySizedBox
+          // alone, which can leave the scroll view with ambiguous height.
+          return Align(
+            alignment: Alignment.topCenter,
+            child: SizedBox(
+              width: imageLayoutWidth > 0
+                  ? imageLayoutWidth
+                  : constraints.maxWidth,
+              height: constraints.maxHeight,
+              child: ScrollablePositionedList.builder(
+                initialScrollIndex: initialPage,
+                padding: EdgeInsets.zero,
+                physics: physics,
+                itemCount: pageCount + 1,
+                addAutomaticKeepAlives: false,
+                minCacheExtent: screenHeight * 2,
+                itemScrollController: context.reader.itemScrollController,
+                itemPositionsListener: itemPositionsListener,
+                scrollOffsetController: context.reader.scrollOffsetController,
+                itemBuilder: (context, index) {
+                  if (index == pageCount) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 16.0),
+                      child: Text(
+                        '本章完',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 20.0,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFFECECEC),
+                        ),
                       ),
-                    ),
-                  );
-                }
+                    );
+                  }
 
-                final item = images[index];
-                // Explicit width from LayoutBuilder so list items never inherit
-                // unbounded/zero cross-axis constraints from InteractiveViewer.
-                return SizedBox(
-                  width: imageLayoutWidth,
-                  child: ReaderImage(
+                  final item = images[index];
+                  return ReaderImage(
                     key: ValueKey(item.cacheKey),
                     url: item.url,
                     cacheKey: item.cacheKey,
@@ -159,9 +163,9 @@ class _VerticalListState extends State<VerticalList> {
                     cacheWidth: cacheWidth,
                     traceId: context.reader.traceId,
                     imageIndex: index,
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
           );
         },
