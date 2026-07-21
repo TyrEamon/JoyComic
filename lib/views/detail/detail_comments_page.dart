@@ -92,7 +92,12 @@ class _DetailCommentsScaffold extends StatelessWidget {
                   ),
                 )
               : ListView(
-                  padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+                  padding: EdgeInsets.only(
+                    top: AppSpacing.md,
+                    // Keep the composer / last comments above the home indicator.
+                    bottom:
+                        MediaQuery.paddingOf(context).bottom + AppSpacing.md,
+                  ),
                   children: [
                     CommentSection(
                       comments: vm.comments,
