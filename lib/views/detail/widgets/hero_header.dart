@@ -54,24 +54,11 @@ class HeroHeader extends StatelessWidget {
                 sectionSpacing: AppSpacing.md,
               );
 
-              // Right column bottoms exactly at coverBottom: rating is the baseline;
-              // title/author/tags stack above it. Do not use the clamped title
-              // band height alone — that can end above the cover on tall covers.
+              // Right info column shares the cover's vertical bounds exactly:
+              // same top, same height, rating sits on the cover bottom edge.
               final stackHeight = geometry.totalHeight;
               final rightColumnLeft =
                   AppSpacing.md + geometry.coverWidth + AppSpacing.md;
-              final rightColumnTop = geometry.titleBandTop;
-              final rightColumnHeight =
-                  (geometry.coverBottom - rightColumnTop)
-                      .clamp(56.0, geometry.coverBottom)
-                      .toDouble();
-              final ratingRowHeight =
-                  rating == null ? 0.0 : 28.0 * textScale.clamp(1.0, 1.6);
-              final titleMaxHeight = rating == null
-                  ? rightColumnHeight
-                  : (rightColumnHeight - ratingRowHeight - AppSpacing.sm)
-                        .clamp(40.0, rightColumnHeight)
-                        .toDouble();
 
               return SizedBox(
                 height: stackHeight,
@@ -122,29 +109,47 @@ class HeroHeader extends StatelessWidget {
                       key: const ValueKey('detail-hero-title-band'),
                       left: rightColumnLeft,
                       right: AppSpacing.md,
-                      top: rightColumnTop,
-                      height: rightColumnHeight,
-                      child: Align(
-                        alignment: Alignment.bottomLeft,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _HeroTitle(
-                              title: title,
-                              subTitle: subTitle,
-                              tags: tags,
-                              maxHeight: titleMaxHeight,
+                      top: geometry.coverTop,
+                      height: geometry.coverHeight,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: LayoutBuilder(
+                              builder: (context, titleConstraints) {
+                                // Bottom-align title stack inside the residual
+                                // cover height above the rating; clip overflow
+                                // instead of flex-erroring under large text.
+                                return SizedBox(
+                                  width: double.infinity,
+                                  height: titleConstraints.maxHeight,
+                                  child: ClipRect(
+                                    child: OverflowBox(
+                                      maxHeight: double.infinity,
+                                      alignment: Alignment.bottomLeft,
+                                      child: _HeroTitle(
+                                        title: title,
+                                        subTitle: subTitle,
+                                        tags: tags,
+                                        maxHeight: titleConstraints.maxHeight,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
-                            if (rating != null) ...[
-                              const SizedBox(height: AppSpacing.sm),
-                              KeyedSubtree(
+                          ),
+                          if (rating != null)
+                            Padding(
+                              padding: const EdgeInsets.only(
+                                top: AppSpacing.xs,
+                              ),
+                              child: KeyedSubtree(
                                 key: const ValueKey('detail-hero-rating'),
                                 child: _HeroRating(rating: rating!),
                               ),
-                            ],
-                          ],
-                        ),
+                            ),
+                        ],
                       ),
                     ),
                   ],
@@ -251,76 +256,68 @@ class _HeroTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final onImage = context.onImageColor;
-    final compact = maxHeight < 110;
-    final titleLines = maxHeight < 80 ? 1 : (compact ? 1 : 2);
+    // Prefer showing title + author + a few tags; clip only if the cover
+    // column is extremely short (large text scale / tiny width).
+    final titleLines = maxHeight < 72 ? 1 : 2;
     final showSubtitle =
-        maxHeight >= 96 && subTitle != null && subTitle!.trim().isNotEmpty;
-    final showTags = maxHeight >= 140 && tags.isNotEmpty;
+        maxHeight >= 64 && subTitle != null && subTitle!.trim().isNotEmpty;
+    final showTags = maxHeight >= 96 && tags.isNotEmpty;
+    final tagLimit = maxHeight < 130 ? 2 : 4;
 
-    // OverflowBox lets the column size freely; ClipRect paints only the band
-    // so large text scale never reports a Flex overflow.
-    return SizedBox(
-      height: maxHeight,
-      width: double.infinity,
-      child: ClipRect(
-        child: OverflowBox(
-          maxHeight: double.infinity,
-          alignment: Alignment.bottomLeft,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                title,
-                maxLines: titleLines,
-                overflow: TextOverflow.ellipsis,
-                style: AppTypography.hero(context).copyWith(color: onImage),
-              ),
-              if (showSubtitle) ...[
-                const SizedBox(height: AppSpacing.xs),
-                Text(
-                  subTitle!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.subtitle(
-                    context,
-                  ).copyWith(color: onImage.withValues(alpha: 0.82)),
-                ),
-              ],
-              if (showTags) ...[
-                const SizedBox(height: AppSpacing.sm),
-                Wrap(
-                  spacing: AppSpacing.xs,
-                  runSpacing: AppSpacing.xs,
-                  children: [
-                    for (final tag in tags.take(compact ? 2 : 4))
-                      DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: context.semanticColors.imageScrimSoft,
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(
-                            color: onImage.withValues(alpha: 0.24),
-                          ),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          child: Text(
-                            tag,
-                            style: AppTypography.meta(
-                              context,
-                            ).copyWith(color: onImage, fontSize: 12),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ],
-            ],
+    return ClipRect(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            title,
+            maxLines: titleLines,
+            overflow: TextOverflow.ellipsis,
+            style: AppTypography.hero(context).copyWith(color: onImage),
           ),
-        ),
+          if (showSubtitle) ...[
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              subTitle!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.subtitle(
+                context,
+              ).copyWith(color: onImage.withValues(alpha: 0.82)),
+            ),
+          ],
+          if (showTags) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Wrap(
+              spacing: AppSpacing.xs,
+              runSpacing: AppSpacing.xs,
+              children: [
+                for (final tag in tags.take(tagLimit))
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: context.semanticColors.imageScrimSoft,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: onImage.withValues(alpha: 0.24),
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      child: Text(
+                        tag,
+                        style: AppTypography.meta(
+                          context,
+                        ).copyWith(color: onImage, fontSize: 12),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ],
       ),
     );
   }

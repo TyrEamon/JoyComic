@@ -100,10 +100,15 @@ void main() {
     final cover = tester.getRect(
       find.byKey(const ValueKey('detail-floating-cover')),
     );
+    final titleBand = tester.getRect(
+      find.byKey(const ValueKey('detail-hero-title-band')),
+    );
     final rating = tester.getRect(
       find.byKey(const ValueKey('detail-hero-rating')),
     );
-    // Rating baseline aligns with the floating cover bottom.
+    // Right column matches cover height; rating is the bottom baseline.
+    expect(titleBand.top, closeTo(cover.top, 1.5));
+    expect(titleBand.bottom, closeTo(cover.bottom, 1.5));
     expect(rating.bottom, closeTo(cover.bottom, 1.5));
   });
 
@@ -162,7 +167,8 @@ void main() {
 
         expect(surface.top, closeTo(expectedSurfaceTop, 1.5));
         expect(cover.bottom, greaterThan(surface.top));
-        // Right column bottom-aligns to the cover; rating is the baseline.
+        // Right column shares cover vertical bounds; rating sits on cover bottom.
+        expect(titleBand.top, closeTo(cover.top, 1.5));
         expect(titleBand.bottom, closeTo(cover.bottom, 1.5));
         expect(rating.bottom, closeTo(cover.bottom, 1.5));
         expect(rating.top, greaterThan(titleBand.top));
