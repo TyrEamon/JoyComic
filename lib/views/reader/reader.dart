@@ -32,14 +32,8 @@ import 'providers/list_state_provider.dart';
 import 'providers/reader_provider.dart';
 import 'state/comic_state.dart';
 import 'state/read_mode.dart';
-import 'widgets/app_bar.dart';
-import 'widgets/bottom.dart';
 import 'widgets/error_page.dart';
 import 'widgets/horizontal_list/horizontal_list.dart';
-import 'widgets/menu_lock.dart';
-import 'widgets/next_chapter.dart';
-import 'widgets/page_no_tag.dart';
-import 'widgets/reader_keyboard_listener.dart';
 import 'widgets/vertical_list/vertical_list.dart';
 
 /// Returns only a network loader suitable for route injection.
@@ -178,10 +172,7 @@ class _ReaderContent extends StatelessWidget {
     final chapterIndex = context.selector((p) => p.chapterIndex);
     final loadingState = context.selector((p) => p.loadingState);
     final loadingErrorMessage = context.selector((p) => p.loadingErrorMessage);
-    final showPageNumbers = context.stateSelector((p) => p.showPageNumbers);
     final chapters = context.selector((p) => p.chapters);
-    final prev = context.reader.prev;
-    final next = context.reader.next;
 
     Widget listWidget = NotificationListener<ScrollNotification>(
       onNotification: onScrollNotification,
@@ -190,23 +181,14 @@ class _ReaderContent extends StatelessWidget {
           : const HorizontalList(),
     );
 
+    // Diagnostic reader shell: bright colors so pure-black = widget not built.
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: const Color(0xFF4A148C),
       body: Stack(
         children: [
           Positioned.fill(
             child: switch (loadingState) {
-              ReaderLoadState.success => ReaderKeyboardListener(
-                handlers: {
-                  LogicalKeyboardKey.arrowLeft: prev,
-                  LogicalKeyboardKey.arrowRight: next,
-                  LogicalKeyboardKey.arrowUp: prev,
-                  LogicalKeyboardKey.arrowDown: next,
-                  LogicalKeyboardKey.pageUp: prev,
-                  LogicalKeyboardKey.pageDown: next,
-                },
-                child: listWidget,
-              ),
+              ReaderLoadState.success => listWidget,
               ReaderLoadState.error => ErrorPage(
                 errorMessage: loadingErrorMessage ?? '加载失败',
                 onRetry: context.reader.retry,
@@ -215,9 +197,7 @@ class _ReaderContent extends StatelessWidget {
                 onOpenLogs: () {
                   try {
                     context.push('/logs');
-                  } catch (_) {
-                    // Navigation unavailable — trace ID remains copyable.
-                  }
+                  } catch (_) {}
                 },
               ),
               ReaderLoadState.loading => _ReaderLoadingView(
@@ -241,19 +221,25 @@ class _ReaderContent extends StatelessWidget {
             },
           ),
 
-          // Page chrome is always painted above content so black canvas never
-          // hides back / diagnostics while loading or after a silent failure.
-          if (showPageNumbers && loadingState == ReaderLoadState.success)
-            const ReaderPageNoTag(),
-
-          if (loadingState == ReaderLoadState.success) ...[
-            const ReaderNextChapter(),
-            const MenuLock(),
-          ],
-
-          const ReaderAppBar(),
-
-          if (loadingState == ReaderLoadState.success) const ReaderBottom(),
+          // Always-on back so user is never trapped on black.
+          Positioned(
+            top: 0,
+            left: 0,
+            child: SafeArea(
+              child: IconButton(
+                icon: const Icon(Icons.arrow_back, color: Colors.white, size: 28),
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.black54,
+                ),
+                onPressed: () {
+                  try {
+                    context.reader.stopPageTurn();
+                  } catch (_) {}
+                  context.pop();
+                },
+              ),
+            ),
+          ),
         ],
       ),
       drawer: Drawer(

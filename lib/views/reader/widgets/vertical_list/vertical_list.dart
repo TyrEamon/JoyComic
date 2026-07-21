@@ -1,18 +1,17 @@
-/// 竖直连续模式。
+/// 竖直连续模式 —— 诊断版。
 ///
-/// 列表 + 标准 [Image] 组件（与可用阅读器相同），不做自研绘制。
+/// 每页强制：红标题条 + 蓝底 + 固定高度 + 标准 [Image]。
+/// 若用户仍「纯黑、无红条」，说明列表根本没进树，不是图片解码问题。
 library;
 
 import 'package:flutter/material.dart';
 
+import '../../../../foundation/log.dart';
 import '../../../../foundation/reader_config.dart';
+import '../../image_pipeline/page_image_provider.dart';
 import '../../providers/reader_provider.dart' hide ReaderImage;
-import '../../providers/list_state_provider.dart';
 import '../../utils/image_preload_controller.dart';
-import '../reader_image.dart';
-import 'gesture.dart';
 
-/// 竖直连续模式。
 class VerticalList extends StatefulWidget {
   const VerticalList({super.key});
 
@@ -23,7 +22,7 @@ class VerticalList extends StatefulWidget {
 class _VerticalListState extends State<VerticalList> {
   final ScrollController _scrollController = ScrollController();
   ImagePreloadController? _preloadController;
-  int _lastPage = 0;
+  bool _loggedOpen = false;
 
   @override
   void initState() {
@@ -37,97 +36,144 @@ class _VerticalListState extends State<VerticalList> {
       traceId: reader.traceId,
     );
     reader.initPreloadController(_preloadController!);
-    _scrollController.addListener(_onScroll);
   }
 
   @override
   void dispose() {
-    _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _preloadController?.dispose();
     super.dispose();
   }
 
-  void _onScroll() {
-    if (!_scrollController.hasClients) return;
-    final count = context.reader.images.length;
-    if (count == 0) return;
-    final w = MediaQuery.sizeOf(context).width;
-    final avgH = w > 0 ? w * 1.2 : 600.0;
-    final index = (_scrollController.offset / avgH).floor().clamp(0, count - 1);
-    if (index != _lastPage) {
-      _lastPage = index;
-      _preloadController?.onAnchorChanged([index]);
-      context.reader.onPageNoChanged(index);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final physics = context.stateSelector((p) => p.physics);
     final pageCount = context.selector((p) => p.pageCount);
     final images = context.selector((p) => p.images);
     final traceId = context.reader.traceId;
-    final screenW = MediaQuery.sizeOf(context).width;
-    final imageWidth = screenW > 1 ? screenW : 390.0;
+    final size = MediaQuery.sizeOf(context);
 
-    return GestureWrapper(
-      openOrCloseToolbar: context.reader.openOrCloseToolbar,
-      jumpOffset: (delta) {
-        if (!_scrollController.hasClients) return;
-        final target = (_scrollController.offset + delta).clamp(
-          0.0,
-          _scrollController.position.maxScrollExtent,
-        );
-        _scrollController.animateTo(
-          target,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-        );
-      },
-      child: ColoredBox(
-        color: Colors.black,
-        child: ListView.builder(
-          controller: _scrollController,
-          physics: physics,
-          // ignore: deprecated_member_use
-          cacheExtent: MediaQuery.sizeOf(context).height * 3,
-          padding: EdgeInsets.zero,
-          itemCount: pageCount + 1,
-          itemBuilder: (context, index) {
-            if (index == pageCount) {
-              return const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
+    if (!_loggedOpen) {
+      _loggedOpen = true;
+      Log.i(
+        'Reader vertical open',
+        'trace=$traceId pages=$pageCount '
+        'mq=${size.width.toStringAsFixed(1)}x${size.height.toStringAsFixed(1)} '
+        'images=${images.length}',
+      );
+    }
+
+    // 全屏蓝底：若用户看到蓝底，说明列表区域在画。
+    return ColoredBox(
+      color: const Color(0xFF0D47A1),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // 永久可见顶栏（不依赖工具栏状态）
+          Material(
+            color: const Color(0xFFB71C1C),
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 child: Text(
-                  '本章完',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 20,
+                  '阅读器诊断  共$pageCount页  ${size.width.toStringAsFixed(0)}x${size.height.toStringAsFixed(0)}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
                     fontWeight: FontWeight.bold,
-                    color: Colors.white70,
                   ),
                 ),
-              );
-            }
+              ),
+            ),
+          ),
+          Expanded(
+            child: pageCount <= 0
+                ? const Center(
+                    child: Text(
+                      'pageCount=0 无图片',
+                      style: TextStyle(color: Colors.white, fontSize: 18),
+                    ),
+                  )
+                : ListView.builder(
+                    controller: _scrollController,
+                    padding: EdgeInsets.zero,
+                    itemCount: pageCount,
+                    itemBuilder: (context, index) {
+                      final item = images[index];
+                      final provider = createPageImageProvider(
+                        url: item.url,
+                        cacheKey: item.cacheKey,
+                        fallbackUrls: item.fallbackUrls,
+                        headers: item.headers,
+                        bytesTransformer: item.bytesTransformer,
+                        traceId: traceId,
+                        imageIndex: index,
+                      );
 
-            final item = images[index];
-            // 标准 Image 路径：provider 内部完成下载+JM重组。
-            return ReaderImage(
-              key: ValueKey(item.cacheKey),
-              url: item.url,
-              cacheKey: item.cacheKey,
-              headers: item.headers,
-              fallbackUrls: item.fallbackUrls,
-              bytesTransformer: item.bytesTransformer,
-              width: imageWidth,
-              height: imageWidth * 1.2,
-              fit: BoxFit.fitWidth,
-              filterQuality: FilterQuality.medium,
-              traceId: traceId,
-              imageIndex: index,
-            );
-          },
-        ),
+                      // 固定高度 520，绝不依赖解码尺寸。
+                      return Container(
+                        width: double.infinity,
+                        height: 520,
+                        color: index.isEven
+                            ? const Color(0xFF1565C0)
+                            : const Color(0xFF2E7D32),
+                        margin: const EdgeInsets.only(bottom: 4),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Container(
+                              color: Colors.black87,
+                              padding: const EdgeInsets.all(6),
+                              child: Text(
+                                '第${index + 1}/$pageCount页',
+                                style: const TextStyle(
+                                  color: Colors.yellow,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              child: Image(
+                                image: provider,
+                                fit: BoxFit.contain,
+                                alignment: Alignment.topCenter,
+                                gaplessPlayback: true,
+                                filterQuality: FilterQuality.low,
+                                loadingBuilder: (context, child, progress) {
+                                  if (progress == null) return child;
+                                  return const Center(
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                    ),
+                                  );
+                                },
+                                errorBuilder: (context, error, stack) {
+                                  Log.w(
+                                    'Reader Image error',
+                                    error:
+                                        'trace=$traceId idx=$index err=$error',
+                                  );
+                                  return Center(
+                                    child: Text(
+                                      '图失败 #$index\n$error',
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
       ),
     );
   }
