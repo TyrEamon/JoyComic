@@ -1,6 +1,8 @@
 /// 阅读器主框架。
 ///
-/// 竖直列表使用真机已验证的「固定非零槽 + 系统 Image + 下载重组 Provider」路径。
+/// 接收 [ComicState] 与可选 [ReaderImageLoader]，创建 [ReaderProvider] 与
+/// [ListStateProvider] 后按阅读模式渲染 [VerticalList] 或 [HorizontalList]，
+/// 并叠放工具栏、页码角标、下一章 FAB、菜单锁等 UI。
 library;
 
 import 'package:flutter/material.dart';
@@ -15,17 +17,13 @@ import '../../network/res.dart';
 import 'providers/list_state_provider.dart';
 import 'providers/reader_provider.dart';
 import 'state/comic_state.dart';
-import 'widgets/app_bar.dart';
-import 'widgets/bottom.dart';
 import 'widgets/error_page.dart';
 import 'widgets/horizontal_list/horizontal_list.dart';
-import 'widgets/menu_lock.dart';
-import 'widgets/next_chapter.dart';
 import 'widgets/page_no_tag.dart';
-import 'widgets/reader_keyboard_listener.dart';
 import 'widgets/vertical_list/vertical_list.dart';
 
 /// Returns only a network loader suitable for route injection.
+/// Local reader states deliberately receive no source loader.
 ReaderImageLoader? readerRouteNetworkLoader(
   ComicState state,
   ComicSource? source,
@@ -36,7 +34,8 @@ ReaderImageLoader? readerRouteNetworkLoader(
   return (String comicId, String? ep) => source!.loadComicPages!(comicId, ep);
 }
 
-/// Resolves Reader content with local paths taking precedence.
+/// Resolves Reader content with local paths taking precedence over every
+/// supplied or source-backed network loader.
 ReaderImageLoader? resolveReaderImageLoader({
   required ComicState state,
   ReaderImageLoader? supplied,
@@ -51,6 +50,8 @@ ReaderImageLoader? resolveReaderImageLoader({
 
 /// 阅读器页面。
 class Reader extends StatefulWidget {
+  /// [comicState] 为进入阅读器的初始状态快照。
+  /// [imageLoader] 为外部图片加载回调；不传则尝试从 [ComicSource] 按 key 匹配。
   const Reader({
     super.key,
     required this.comicState,
@@ -158,8 +159,6 @@ class _ReaderContent extends StatelessWidget {
     final loadingErrorMessage = context.selector((p) => p.loadingErrorMessage);
     final showPageNumbers = context.stateSelector((p) => p.showPageNumbers);
     final chapters = context.selector((p) => p.chapters);
-    final prev = context.reader.prev;
-    final next = context.reader.next;
 
     Widget listWidget = NotificationListener<ScrollNotification>(
       onNotification: onScrollNotification,
@@ -168,23 +167,14 @@ class _ReaderContent extends StatelessWidget {
           : const HorizontalList(),
     );
 
+    // 列表保持 a747864 能出图结构；外壳仅叠返回与页码。
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
           Positioned.fill(
             child: switch (loadingState) {
-              ReaderLoadState.success => ReaderKeyboardListener(
-                handlers: {
-                  LogicalKeyboardKey.arrowLeft: prev,
-                  LogicalKeyboardKey.arrowRight: next,
-                  LogicalKeyboardKey.arrowUp: prev,
-                  LogicalKeyboardKey.arrowDown: next,
-                  LogicalKeyboardKey.pageUp: prev,
-                  LogicalKeyboardKey.pageDown: next,
-                },
-                child: listWidget,
-              ),
+              ReaderLoadState.success => listWidget,
               ReaderLoadState.error => ErrorPage(
                 errorMessage: loadingErrorMessage ?? '加载失败',
                 onRetry: context.reader.retry,
@@ -217,17 +207,26 @@ class _ReaderContent extends StatelessWidget {
             },
           ),
 
+          if (loadingState == ReaderLoadState.success)
+            Positioned(
+              top: 0,
+              left: 0,
+              child: SafeArea(
+                child: IconButton(
+                  icon: const Icon(Icons.arrow_back, color: Colors.white),
+                  style: IconButton.styleFrom(backgroundColor: Colors.black54),
+                  onPressed: () {
+                    try {
+                      context.reader.stopPageTurn();
+                    } catch (_) {}
+                    context.pop();
+                  },
+                ),
+              ),
+            ),
+
           if (showPageNumbers && loadingState == ReaderLoadState.success)
             const ReaderPageNoTag(),
-
-          if (loadingState == ReaderLoadState.success) ...[
-            const ReaderNextChapter(),
-            const MenuLock(),
-          ],
-
-          const ReaderAppBar(),
-
-          if (loadingState == ReaderLoadState.success) const ReaderBottom(),
         ],
       ),
       drawer: Drawer(
@@ -268,7 +267,7 @@ class _ReaderContent extends StatelessWidget {
   }
 }
 
-class _ReaderLoadingView extends StatelessWidget {
+class _ReaderLoadingView extends StatefulWidget {
   const _ReaderLoadingView({
     required this.message,
     this.traceId,
@@ -279,6 +278,11 @@ class _ReaderLoadingView extends StatelessWidget {
   final String? traceId;
   final VoidCallback? onOpenLogs;
 
+  @override
+  State<_ReaderLoadingView> createState() => _ReaderLoadingViewState();
+}
+
+class _ReaderLoadingViewState extends State<_ReaderLoadingView> {
   @override
   Widget build(BuildContext context) {
     return ColoredBox(
@@ -297,12 +301,22 @@ class _ReaderLoadingView extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              message,
+              widget.message,
               style: const TextStyle(color: Colors.white70, fontSize: 14),
             ),
-            if (onOpenLogs != null) ...[
+            if (widget.traceId != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                'trace=${widget.traceId}',
+                style: const TextStyle(color: Colors.white38, fontSize: 11),
+              ),
+            ],
+            if (widget.onOpenLogs != null) ...[
               const SizedBox(height: 12),
-              TextButton(onPressed: onOpenLogs, child: const Text('查看日志')),
+              TextButton(
+                onPressed: widget.onOpenLogs,
+                child: const Text('查看日志'),
+              ),
             ],
           ],
         ),

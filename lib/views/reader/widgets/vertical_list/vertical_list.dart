@@ -1,8 +1,7 @@
-/// 竖直连续模式。
+/// 竖直连续模式 —— 对齐真机能出图的诊断列表结构。
 ///
-/// 出图关键结构（真机已验证）：
-/// 固定非零高度槽 + [createPageImageProvider] + 系统 [Image]（fit contain）。
-/// 不用 InteractiveViewer、不用自研 Image.memory 状态机。
+/// 每页固定高度槽 + createPageImageProvider + 系统 Image。
+/// 不用 InteractiveViewer、不用 Image.memory 自研状态机。
 library;
 
 import 'package:flutter/material.dart';
@@ -30,7 +29,7 @@ class _VerticalListState extends State<VerticalList> {
   bool _loggedOpen = false;
   final Set<int> _tileLogged = <int>{};
 
-  /// 非零页槽高度。诊断版 520 能出图；过小/0 会导致真机黑屏。
+  /// 诊断版能出图的固定页高（逻辑像素）。
   static const double _kPageSlotHeight = 520;
 
   @override
@@ -97,6 +96,7 @@ class _VerticalListState extends State<VerticalList> {
           curve: Curves.easeOut,
         );
       },
+      // 黑底正式阅读；页槽结构与能出图的 a747864 完全一致。
       child: ColoredBox(
         color: Colors.black,
         child: ListView.builder(
@@ -116,7 +116,7 @@ class _VerticalListState extends State<VerticalList> {
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
-                    color: Colors.white54,
+                    color: Colors.white70,
                   ),
                 ),
               );
@@ -137,53 +137,61 @@ class _VerticalListState extends State<VerticalList> {
               imageIndex: index,
             );
 
-            // 能出图的槽位结构：固定高度 + Image 填满（黑底无彩条）。
+            // 与 a747864 同构：固定高 + Column + Expanded(Image)。
+            // 仅去掉彩条/黄字；勿改成「裸 Image 无 Expanded」（会再黑屏）。
             return SizedBox(
               width: double.infinity,
               height: _kPageSlotHeight,
               child: ColoredBox(
                 color: Colors.black,
-                child: Image(
-                  image: provider,
-                  fit: BoxFit.contain,
-                  alignment: Alignment.topCenter,
-                  gaplessPlayback: true,
-                  filterQuality: FilterQuality.medium,
-                  loadingBuilder: (context, child, progress) {
-                    if (progress == null) {
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (!context.mounted) return;
-                        ReaderPipeline.widgetFrame(
-                          index,
-                          layoutW: mq.width,
-                          layoutH: _kPageSlotHeight,
-                        );
-                      });
-                      return child;
-                    }
-                    return const Center(
-                      child: SizedBox(
-                        width: 28,
-                        height: 28,
-                        child: CircularProgressIndicator(
-                          color: Colors.white54,
-                          strokeWidth: 3,
-                        ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: Image(
+                        image: provider,
+                        fit: BoxFit.contain,
+                        alignment: Alignment.topCenter,
+                        gaplessPlayback: true,
+                        filterQuality: FilterQuality.low,
+                        loadingBuilder: (context, child, progress) {
+                          if (progress == null) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (!context.mounted) return;
+                              ReaderPipeline.widgetFrame(
+                                index,
+                                layoutW: mq.width,
+                                layoutH: _kPageSlotHeight,
+                              );
+                            });
+                            return child;
+                          }
+                          return const Center(
+                            child: SizedBox(
+                              width: 28,
+                              height: 28,
+                              child: CircularProgressIndicator(
+                                color: Colors.white54,
+                                strokeWidth: 3,
+                              ),
+                            ),
+                          );
+                        },
+                        errorBuilder: (context, error, stack) {
+                          ReaderPipeline.widgetError(index, error: error);
+                          return Center(
+                            child: Text(
+                              '加载失败 第${index + 1}页',
+                              style: const TextStyle(
+                                color: Colors.white54,
+                                fontSize: 13,
+                              ),
+                            ),
+                          );
+                        },
                       ),
-                    );
-                  },
-                  errorBuilder: (context, error, stack) {
-                    ReaderPipeline.widgetError(index, error: error);
-                    return Center(
-                      child: Text(
-                        '加载失败 第${index + 1}页',
-                        style: const TextStyle(
-                          color: Colors.white54,
-                          fontSize: 13,
-                        ),
-                      ),
-                    );
-                  },
+                    ),
+                  ],
                 ),
               ),
             );
