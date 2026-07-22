@@ -43,6 +43,8 @@ void main() {
       ).readAsStringSync();
 
       expect(vertical, contains('ReaderImage('));
+      expect(vertical, contains('ListView.builder('));
+      expect(vertical, isNot(contains('ScrollablePositionedList.builder(')));
       expect(horizontal, contains('img_widget.ReaderImage('));
       expect(image, contains('ReaderV2PageImage('));
       expect(vertical, isNot(contains('ImagePreloadController')));

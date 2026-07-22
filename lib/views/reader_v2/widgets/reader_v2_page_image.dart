@@ -13,6 +13,7 @@ final class ReaderV2PageImage extends StatefulWidget {
     required this.scheduler,
     required this.priority,
     required this.bytesLoader,
+    this.onImageSize,
     this.height,
     this.placeholderHeight = 300,
     this.fit = BoxFit.contain,
@@ -23,6 +24,7 @@ final class ReaderV2PageImage extends StatefulWidget {
   final ReaderV2Scheduler scheduler;
   final ReaderV2Priority priority;
   final ReaderV2BytesLoader bytesLoader;
+  final ValueChanged<Size>? onImageSize;
   final double? height;
   final double placeholderHeight;
   final BoxFit fit;
@@ -94,6 +96,9 @@ final class _ReaderV2PageImageState extends State<ReaderV2PageImage>
       (info, synchronousCall) {
         if (!mounted || widget.session.isCancelled) return;
         _replaceInfo(info);
+        widget.onImageSize?.call(
+          Size(info.image.width.toDouble(), info.image.height.toDouble()),
+        );
         widget.session.record(
           'frame',
           page: widget.page.index,

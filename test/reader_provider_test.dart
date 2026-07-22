@@ -79,6 +79,51 @@ void main() {
     expect(provider.loadingErrorMessage, contains('network down'));
   });
 
+  test(
+    'vertical scroll actions preserve slider jump and pixel scrolling',
+    () async {
+      final provider = ReaderProvider(
+        state: state(),
+        readRecordHelper: records(),
+        imageLoader: (comicId, ep) async => const Res<List<String>>(
+          <String>[
+            'https://cdn.example/1.webp',
+            'https://cdn.example/2.webp',
+            'https://cdn.example/3.webp',
+          ],
+        ),
+      );
+      addTearDown(provider.dispose);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      final owner = Object();
+      int? jumpedTo;
+      double? scrolledBy;
+      Duration? scrollDuration;
+      provider.attachVerticalScrollActions(
+        owner,
+        VerticalReaderScrollActions(
+          isAttached: () => true,
+          jumpToIndex: (index) => jumpedTo = index,
+          scrollBy: (offset, duration) {
+            scrolledBy = offset;
+            scrollDuration = duration;
+          },
+        ),
+      );
+
+      provider.onSliderChanged(1);
+      expect(jumpedTo, 1);
+
+      provider.pageTurnForVertical(25);
+      expect(scrolledBy, 25);
+      expect(scrollDuration, isNotNull);
+
+      provider.detachVerticalScrollActions(owner);
+      provider.onSliderChanged(2);
+      expect(jumpedTo, 1);
+    },
+  );
   test('reader diagnostic helpers redact secrets and query strings', () {
     final redacted = ReaderDiagnostics.redactUrl(
       'https://cdn.example/path/img.webp?token=secret&sig=abc',

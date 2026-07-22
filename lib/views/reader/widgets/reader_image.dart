@@ -35,6 +35,7 @@ class ReaderImage extends StatefulWidget {
     this.traceId,
     this.imageIndex,
     this.maxAttempts = 3,
+    this.placeholderHeight = 300,
   });
 
   final String url;
@@ -49,6 +50,7 @@ class ReaderImage extends StatefulWidget {
   final String? traceId;
   final int? imageIndex;
   final int maxAttempts;
+  final double placeholderHeight;
 
   static void clearSizeCache() => ReaderImageSizeCache.clear();
 
@@ -103,7 +105,13 @@ class _ReaderImageState extends State<ReaderImage> {
           scheduler: runtime.scheduler,
           priority: runtime.priorityFor(safeIndex, anchor),
           bytesLoader: runtime.bytesLoader,
+          onImageSize: (size) => ReaderImageSizeCache.put(
+            page.cacheKey,
+            size.width.round(),
+            size.height.round(),
+          ),
           height: boundedHeight ? constraints.maxHeight : null,
+          placeholderHeight: widget.placeholderHeight,
           fit: widget.fit,
         );
       },

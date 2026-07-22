@@ -1,14 +1,8 @@
-/// 竖直连续阅读 —— 对齐 HakaComic 可工作结构。
-///
-/// ## 与黑屏版的关键差异
-/// - 使用 [ScrollablePositionedList]（精确定位 + 页码联动）
-/// - 每页 [ReaderImage] **自己按宽高比撑开高度**，无固定槽、无 [Expanded]
-/// - 解码后只写尺寸缓存，**不**对列表做 setState 改槽高
-/// - 不包整表 [InteractiveViewer]（真机黑屏）
+/// 竖直连续阅读。
 library;
 
 import 'package:flutter/material.dart';
-import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 
 import '../../providers/list_state_provider.dart';
 import '../../providers/reader_provider.dart' hide ReaderImage;
@@ -16,7 +10,6 @@ import '../../utils/reader_pipeline.dart';
 import '../../utils/reader_utils.dart';
 import '../reader_image.dart';
 import 'gesture.dart';
-import 'page_index.dart';
 
 Size resolveVerticalReaderViewportSize(
   BoxConstraints constraints,
@@ -39,7 +32,6 @@ Size resolveVerticalReaderViewportSize(
   return Size(availableWidth * factor, availableHeight);
 }
 
-/// 竖直连续模式。
 class VerticalList extends StatefulWidget {
   const VerticalList({super.key});
 
@@ -48,29 +40,127 @@ class VerticalList extends StatefulWidget {
 }
 
 class _VerticalListState extends State<VerticalList> {
-  final ItemPositionsListener _positionsListener =
-      ItemPositionsListener.create();
+  final ScrollController _scrollController = ScrollController();
+  final Object _scrollOwner = Object();
+  final List<GlobalKey> _itemKeys = <GlobalKey>[];
+  ReaderProvider? _attachedReader;
   bool _loggedOpen = false;
+  bool _initialPositionScheduled = false;
+  double _layoutWidth = 390;
 
   @override
   void initState() {
     super.initState();
-    _positionsListener.itemPositions.addListener(_onPositionsChanged);
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reader = context.reader;
+    if (identical(_attachedReader, reader)) return;
+    _attachedReader?.detachVerticalScrollActions(_scrollOwner);
+    _attachedReader = reader;
+    reader.attachVerticalScrollActions(
+      _scrollOwner,
+      VerticalReaderScrollActions(
+        isAttached: () => _scrollController.hasClients,
+        jumpToIndex: _jumpToIndex,
+        scrollBy: _scrollBy,
+      ),
+    );
   }
 
   @override
   void dispose() {
-    _positionsListener.itemPositions.removeListener(_onPositionsChanged);
+    _scrollController.removeListener(_onScroll);
+    _attachedReader?.detachVerticalScrollActions(_scrollOwner);
+    _scrollController.dispose();
     super.dispose();
   }
 
-  void _onPositionsChanged() {
-    final positions = _positionsListener.itemPositions.value;
-    if (positions.isEmpty) return;
-    final count = context.reader.images.length;
-    final visible = visibleVerticalImageIndices(positions, imageCount: count);
-    if (visible.isEmpty) return;
-    context.reader.onPageNoChanged(visible.last);
+  double _pageHeight(int index) {
+    final reader = _attachedReader;
+    if (reader == null || index < 0 || index >= reader.images.length) {
+      return _layoutWidth * 4 / 3;
+    }
+    final cached = ReaderImageSizeCache.get(reader.images[index].cacheKey);
+    if (cached != null && cached.width > 0 && cached.height > 0) {
+      return _layoutWidth * cached.height / cached.width;
+    }
+    return _layoutWidth * 1355 / 960;
+  }
+
+  double _offsetForIndex(int index) {
+    var offset = 0.0;
+    for (var page = 0; page < index; page++) {
+      offset += _pageHeight(page);
+    }
+    return offset;
+  }
+
+  int _indexAtOffset(double offset, int count) {
+    var cursor = 0.0;
+    for (var index = 0; index < count; index++) {
+      cursor += _pageHeight(index);
+      if (offset < cursor) return index;
+    }
+    return count - 1;
+  }
+
+  void _onScroll() {
+    final reader = _attachedReader;
+    if (reader == null || reader.images.isEmpty) return;
+    final index = _indexAtOffset(
+      _scrollController.offset + 1,
+      reader.images.length,
+    );
+    reader.onPageNoChanged(index);
+  }
+
+  void _jumpToIndex(int index) {
+    final reader = _attachedReader;
+    if (reader == null ||
+        reader.images.isEmpty ||
+        !_scrollController.hasClients) {
+      return;
+    }
+    final safeIndex = index.clamp(0, reader.images.length - 1);
+    final itemContext = safeIndex < _itemKeys.length
+        ? _itemKeys[safeIndex].currentContext
+        : null;
+    if (itemContext != null) {
+      Scrollable.ensureVisible(itemContext, alignment: 0);
+      return;
+    }
+    final position = _scrollController.position;
+    final target = _offsetForIndex(
+      safeIndex,
+    ).clamp(0.0, position.maxScrollExtent);
+    _scrollController.jumpTo(target);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || safeIndex >= _itemKeys.length) return;
+      final context = _itemKeys[safeIndex].currentContext;
+      if (context != null) Scrollable.ensureVisible(context, alignment: 0);
+    });
+  }
+
+  void _scrollBy(double offset, Duration duration) {
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    final target = (_scrollController.offset + offset).clamp(
+      0.0,
+      position.maxScrollExtent,
+    );
+    if (duration == Duration.zero) {
+      _scrollController.jumpTo(target);
+    } else {
+      _scrollController.animateTo(
+        target,
+        duration: duration,
+        curve: Curves.easeOut,
+      );
+    }
   }
 
   @override
@@ -80,9 +170,15 @@ class _VerticalListState extends State<VerticalList> {
     final pageCount = context.selector((p) => p.pageCount);
     final images = context.selector((p) => p.images);
     final traceId = context.reader.traceId;
-    // 仅 initialScrollIndex 用一次，不监听 pageNo 以免列表重建
     final initialPage = context.reader.pageNo;
     final mq = MediaQuery.sizeOf(context);
+
+    while (_itemKeys.length < pageCount) {
+      _itemKeys.add(GlobalKey());
+    }
+    if (_itemKeys.length > pageCount) {
+      _itemKeys.removeRange(pageCount, _itemKeys.length);
+    }
 
     return GestureWrapper(
       openOrCloseToolbar: context.reader.openOrCloseToolbar,
@@ -96,39 +192,43 @@ class _VerticalListState extends State<VerticalList> {
               mq,
               widthRatio,
             );
-            final layoutW = viewportSize.width;
+            _layoutWidth = viewportSize.width;
             if (!_loggedOpen) {
               _loggedOpen = true;
               ReaderPipeline.listBuild(pageCount: pageCount, mq: mq);
               ReaderPipeline.mark(
                 ReaderStage.listBuild,
                 detail:
-                    'haka_style ScrollablePositionedList ratio=$widthRatio '
+                    'ListView ratio=$widthRatio '
                     'viewport=${viewportSize.width}x${viewportSize.height} '
                     'constraints=$constraints',
               );
             }
-            final dpr = MediaQuery.devicePixelRatioOf(context);
             final cacheWidth = computeImageCacheWidth(
-              layoutWidth: layoutW,
-              devicePixelRatio: dpr,
+              layoutWidth: viewportSize.width,
+              devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
             );
             context.reader.updatePreloadCacheWidth(cacheWidth);
+
+            if (!_initialPositionScheduled && initialPage > 0) {
+              _initialPositionScheduled = true;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) _jumpToIndex(initialPage);
+              });
+            }
 
             return Align(
               alignment: Alignment.topCenter,
               child: SizedBox(
                 width: viewportSize.width,
                 height: viewportSize.height,
-                child: ScrollablePositionedList.builder(
-                  initialScrollIndex: initialPage.clamp(0, pageCount),
+                child: ListView.builder(
+                  controller: _scrollController,
                   padding: EdgeInsets.zero,
                   physics: physics,
+                  scrollCacheExtent: ScrollCacheExtent.pixels(mq.height * 2),
                   itemCount: pageCount + 1,
                   addAutomaticKeepAlives: false,
-                  itemScrollController: context.reader.itemScrollController,
-                  itemPositionsListener: _positionsListener,
-                  scrollOffsetController: context.reader.scrollOffsetController,
                   itemBuilder: (context, index) {
                     if (index == pageCount) {
                       return const Padding(
@@ -149,19 +249,22 @@ class _VerticalListState extends State<VerticalList> {
                     if (index < 5) {
                       ReaderPipeline.tileBuild(index, cacheKey: item.cacheKey);
                     }
-
-                    return ReaderImage(
-                      key: ValueKey(item.cacheKey),
-                      url: item.url,
-                      cacheKey: item.cacheKey,
-                      headers: item.headers,
-                      fallbackUrls: item.fallbackUrls,
-                      bytesTransformer: item.bytesTransformer,
-                      cacheWidth: cacheWidth,
-                      fit: BoxFit.contain,
-                      alignment: Alignment.topCenter,
-                      traceId: traceId,
-                      imageIndex: index,
+                    return KeyedSubtree(
+                      key: _itemKeys[index],
+                      child: ReaderImage(
+                        key: ValueKey(item.cacheKey),
+                        url: item.url,
+                        cacheKey: item.cacheKey,
+                        headers: item.headers,
+                        fallbackUrls: item.fallbackUrls,
+                        bytesTransformer: item.bytesTransformer,
+                        cacheWidth: cacheWidth,
+                        placeholderHeight: _pageHeight(index),
+                        fit: BoxFit.contain,
+                        alignment: Alignment.topCenter,
+                        traceId: traceId,
+                        imageIndex: index,
+                      ),
                     );
                   },
                 ),

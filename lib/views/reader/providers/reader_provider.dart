@@ -10,7 +10,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 import '../../../database/read_record_helper.dart';
 import '../../../foundation/reader_config.dart';
@@ -110,6 +109,17 @@ abstract class ImagePreloadControllerRef {
   void invalidatePreloaded();
 }
 
+final class VerticalReaderScrollActions {
+  const VerticalReaderScrollActions({
+    required this.isAttached,
+    required this.jumpToIndex,
+    required this.scrollBy,
+  });
+
+  final bool Function() isAttached;
+  final ValueChanged<int> jumpToIndex;
+  final void Function(double offset, Duration duration) scrollBy;
+}
 // ============================ ReaderProvider ============================
 
 class ReaderProvider extends ChangeNotifier {
@@ -262,7 +272,7 @@ class ReaderProvider extends ChangeNotifier {
     Log.i(
       'Reader load begin',
       'trace=$trace source=$_sourceKey comic=$id chapter=${chapterSnapshot.id} '
-      'mode=$_readMode page=$_pageNo',
+          'mode=$_readMode page=$_pageNo',
     );
 
     if (imageLoader == null) {
@@ -318,7 +328,7 @@ class ReaderProvider extends ChangeNotifier {
       Log.i(
         'Reader loaded',
         'trace=$trace chapter=${chapterSnapshot.id} images=${_images.length} '
-        'state=success',
+            'state=success',
       );
       ReaderPipeline.chapterReady(imageCount: _images.length);
       _multiPageImagesCache = null;
@@ -398,11 +408,11 @@ class ReaderProvider extends ChangeNotifier {
     Log.i(
       'Reader image config',
       'trace=$_traceId idx=$index structured=$isStructured '
-      'fallbacks=${descriptor.fallbackUrls.length} '
-      'jm=${bytesTransformer != null} '
-      'cache=${ReaderDiagnostics.cacheKeySummary(descriptor.cacheKey)} '
-      'headers=${ReaderDiagnostics.headerSummary(descriptor.headers)} '
-      'url=${ReaderDiagnostics.redactUrl(descriptor.url)}',
+          'fallbacks=${descriptor.fallbackUrls.length} '
+          'jm=${bytesTransformer != null} '
+          'cache=${ReaderDiagnostics.cacheKeySummary(descriptor.cacheKey)} '
+          'headers=${ReaderDiagnostics.headerSummary(descriptor.headers)} '
+          'url=${ReaderDiagnostics.redactUrl(descriptor.url)}',
     );
 
     return ReaderImage(
@@ -544,11 +554,22 @@ class ReaderProvider extends ChangeNotifier {
 
   // ============================ 滚动/翻页控制器 ============================
 
-  /// [VerticalList] 精确滚动偏移控制器（scrollable_positioned_list）。
-  final scrollOffsetController = ScrollOffsetController();
+  Object? _verticalScrollOwner;
+  VerticalReaderScrollActions? _verticalScrollActions;
 
-  /// [VerticalList] 条目滚动控制器。
-  final itemScrollController = ItemScrollController();
+  void attachVerticalScrollActions(
+    Object owner,
+    VerticalReaderScrollActions actions,
+  ) {
+    _verticalScrollOwner = owner;
+    _verticalScrollActions = actions;
+  }
+
+  void detachVerticalScrollActions(Object owner) {
+    if (!identical(_verticalScrollOwner, owner)) return;
+    _verticalScrollOwner = null;
+    _verticalScrollActions = null;
+  }
 
   /// [HorizontalList] PageView 控制器。
   final PageController _pageController = PageController();
@@ -640,7 +661,7 @@ class ReaderProvider extends ChangeNotifier {
   void onSliderChanged(int index) {
     onPageNoChanged(index);
     if (_readMode.isVertical) {
-      itemScrollController.jumpTo(index: index);
+      _verticalScrollActions?.jumpToIndex(index);
     } else {
       _pageController.jumpToPage(index);
     }
@@ -650,7 +671,8 @@ class ReaderProvider extends ChangeNotifier {
 
   /// [VerticalList] 翻页（按偏移量滚动）。
   void pageTurnForVertical(double offset) {
-    if (!itemScrollController.isAttached) return;
+    final actions = _verticalScrollActions;
+    if (actions == null || !actions.isAttached()) return;
 
     if (_pageNo == 0 && offset < 0) {
       if (!isFirstChapter) {
@@ -672,15 +694,9 @@ class ReaderProvider extends ChangeNotifier {
     }
 
     if (ReaderConf.instance.enablePageAnimation) {
-      scrollOffsetController.animateScroll(
-        offset: offset,
-        duration: const Duration(milliseconds: 200),
-      );
+      actions.scrollBy(offset, const Duration(milliseconds: 200));
     } else {
-      scrollOffsetController.animateScroll(
-        offset: offset,
-        duration: Duration.zero,
-      );
+      actions.scrollBy(offset, Duration.zero);
     }
   }
 
@@ -823,7 +839,8 @@ class ReaderProvider extends ChangeNotifier {
     _smoothTicker?.dispose();
     _smoothTicker = vsync.createTicker((_) {
       if (_loadingState == ReaderLoadState.loading) return;
-      if (!itemScrollController.isAttached) return;
+      final actions = _verticalScrollActions;
+      if (actions == null || !actions.isAttached()) return;
       if (_pageNo == _images.length - 1) {
         if (!isLastChapter) {
           goNext();
@@ -833,10 +850,7 @@ class ReaderProvider extends ChangeNotifier {
         }
         return;
       }
-      scrollOffsetController.animateScroll(
-        offset: _scrollSpeed,
-        duration: Duration.zero,
-      );
+      actions.scrollBy(_scrollSpeed, Duration.zero);
     });
     _smoothTicker!.start();
     isPageTurning = true;
