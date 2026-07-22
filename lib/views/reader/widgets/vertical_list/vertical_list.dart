@@ -1,16 +1,19 @@
-/// 竖直连续模式（带全链路流水线诊断条）。
+/// 竖直连续模式。
+///
+/// 列表 + 标准 [Image]（[createPageImageProvider] 负责下载与 JM 重组）。
 library;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
-import '../../../../foundation/log.dart';
 import '../../../../foundation/reader_config.dart';
-import '../../image_pipeline/page_image_provider.dart';
+import '../../providers/list_state_provider.dart';
 import '../../providers/reader_provider.dart' hide ReaderImage;
 import '../../utils/image_preload_controller.dart';
 import '../../utils/reader_pipeline.dart';
+import '../reader_image.dart';
+import 'gesture.dart';
 
+/// 竖直连续模式。
 class VerticalList extends StatefulWidget {
   const VerticalList({super.key});
 
@@ -21,6 +24,7 @@ class VerticalList extends StatefulWidget {
 class _VerticalListState extends State<VerticalList> {
   final ScrollController _scrollController = ScrollController();
   ImagePreloadController? _preloadController;
+  int _lastPage = 0;
   bool _loggedOpen = false;
   final Set<int> _tileLogged = <int>{};
 
@@ -36,242 +40,109 @@ class _VerticalListState extends State<VerticalList> {
       traceId: reader.traceId,
     );
     reader.initPreloadController(_preloadController!);
+    _scrollController.addListener(_onScroll);
   }
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _preloadController?.dispose();
     super.dispose();
   }
 
-  Future<void> _copyDump() async {
-    final text = ReaderPipeline.dumpRecent();
-    await Clipboard.setData(ClipboardData(text: text));
-    Log.i('ReaderPipeline dump copied', 'len=${text.length}');
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('流水线日志已复制到剪贴板')),
-    );
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final count = context.reader.images.length;
+    if (count == 0) return;
+    final w = MediaQuery.sizeOf(context).width;
+    final avgH = w > 0 ? w * 1.2 : 600.0;
+    final index = (_scrollController.offset / avgH).floor().clamp(0, count - 1);
+    if (index != _lastPage) {
+      _lastPage = index;
+      _preloadController?.onAnchorChanged([index]);
+      context.reader.onPageNoChanged(index);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final physics = context.stateSelector((p) => p.physics);
     final pageCount = context.selector((p) => p.pageCount);
     final images = context.selector((p) => p.images);
     final traceId = context.reader.traceId;
-    final size = MediaQuery.sizeOf(context);
+    final screenW = MediaQuery.sizeOf(context).width;
+    final imageWidth = screenW > 1 ? screenW : 390.0;
 
     if (!_loggedOpen) {
       _loggedOpen = true;
-      ReaderPipeline.listBuild(pageCount: pageCount, mq: size);
-      Log.i(
-        'Reader vertical open',
-        'trace=$traceId pages=$pageCount '
-        'mq=${size.width.toStringAsFixed(1)}x${size.height.toStringAsFixed(1)}',
+      ReaderPipeline.listBuild(
+        pageCount: pageCount,
+        mq: MediaQuery.sizeOf(context),
       );
     }
 
-    return ColoredBox(
-      color: const Color(0xFF0D47A1),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // 实时流水线诊断条
-          Material(
-            color: const Color(0xFFB71C1C),
-            child: SafeArea(
-              bottom: false,
-              child: ValueListenableBuilder<int>(
-                valueListenable: ReaderPipeline.tick,
-                builder: (context, _, __) {
-                  return Padding(
-                    padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '流水线诊断  共$pageCount页  '
-                          '${size.width.toStringAsFixed(0)}×${size.height.toStringAsFixed(0)}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '卡点: ${ReaderPipeline.stuckHint()}',
-                          style: const TextStyle(
-                            color: Color(0xFFFFF59D),
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '第0页: ${ReaderPipeline.summaryForPage0()}',
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 11,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            TextButton(
-                              onPressed: _copyDump,
-                              style: TextButton.styleFrom(
-                                foregroundColor: Colors.white,
-                                backgroundColor: Colors.black45,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 4,
-                                ),
-                              ),
-                              child: const Text('复制流水线日志'),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'trace=${traceId ?? '-'}',
-                              style: const TextStyle(
-                                color: Colors.white54,
-                                fontSize: 10,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-          Expanded(
-            child: pageCount <= 0
-                ? const Center(
-                    child: Text(
-                      'pageCount=0 无图片',
-                      style: TextStyle(color: Colors.white, fontSize: 18),
-                    ),
-                  )
-                : ListView.builder(
-                    controller: _scrollController,
-                    padding: EdgeInsets.zero,
-                    itemCount: pageCount,
-                    itemBuilder: (context, index) {
-                      final item = images[index];
-                      if (_tileLogged.add(index)) {
-                        ReaderPipeline.tileBuild(
-                          index,
-                          cacheKey: item.cacheKey,
-                        );
-                      }
-
-                      final provider = createPageImageProvider(
-                        url: item.url,
-                        cacheKey: item.cacheKey,
-                        fallbackUrls: item.fallbackUrls,
-                        headers: item.headers,
-                        bytesTransformer: item.bytesTransformer,
-                        traceId: traceId,
-                        imageIndex: index,
-                      );
-
-                      return Container(
-                        width: double.infinity,
-                        height: 520,
-                        color: index.isEven
-                            ? const Color(0xFF1565C0)
-                            : const Color(0xFF2E7D32),
-                        margin: const EdgeInsets.only(bottom: 4),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Container(
-                              color: Colors.black87,
-                              padding: const EdgeInsets.all(6),
-                              child: ValueListenableBuilder<int>(
-                                valueListenable: ReaderPipeline.tick,
-                                builder: (context, _, __) {
-                                  final stage =
-                                      ReaderPipeline.pageStages[index];
-                                  return Text(
-                                    '第${index + 1}/$pageCount  '
-                                    '${stage?.code ?? "?"} ${stage?.label ?? "等待"}',
-                                    style: const TextStyle(
-                                      color: Colors.yellow,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                            Expanded(
-                              child: Image(
-                                image: provider,
-                                fit: BoxFit.contain,
-                                alignment: Alignment.topCenter,
-                                gaplessPlayback: true,
-                                filterQuality: FilterQuality.low,
-                                loadingBuilder: (context, child, progress) {
-                                  if (progress == null) {
-                                    // 最终帧
-                                    WidgetsBinding.instance
-                                        .addPostFrameCallback((_) {
-                                      if (!context.mounted) return;
-                                      final box =
-                                          context.findRenderObject()
-                                              as RenderBox?;
-                                      final sz = box?.size;
-                                      ReaderPipeline.widgetFrame(
-                                        index,
-                                        layoutW: sz?.width ?? 0,
-                                        layoutH: sz?.height ?? 0,
-                                      );
-                                    });
-                                    return child;
-                                  }
-                                  ReaderPipeline.widgetLoading(
-                                    index,
-                                    loaded: progress.cumulativeBytesLoaded,
-                                    total: progress.expectedTotalBytes,
-                                  );
-                                  return const Center(
-                                    child: CircularProgressIndicator(
-                                      color: Colors.white,
-                                    ),
-                                  );
-                                },
-                                errorBuilder: (context, error, stack) {
-                                  ReaderPipeline.widgetError(
-                                    index,
-                                    error: error,
-                                  );
-                                  return Center(
-                                    child: Text(
-                                      '图失败 #$index\n$error',
-                                      textAlign: TextAlign.center,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
+    return GestureWrapper(
+      openOrCloseToolbar: context.reader.openOrCloseToolbar,
+      jumpOffset: (delta) {
+        if (!_scrollController.hasClients) return;
+        final target = (_scrollController.offset + delta).clamp(
+          0.0,
+          _scrollController.position.maxScrollExtent,
+        );
+        _scrollController.animateTo(
+          target,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      },
+      child: ColoredBox(
+        color: Colors.black,
+        child: ListView.builder(
+          controller: _scrollController,
+          physics: physics,
+          // ignore: deprecated_member_use
+          cacheExtent: MediaQuery.sizeOf(context).height * 3,
+          padding: EdgeInsets.zero,
+          itemCount: pageCount + 1,
+          itemBuilder: (context, index) {
+            if (index == pageCount) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Text(
+                  '本章完',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white70,
                   ),
-          ),
-        ],
+                ),
+              );
+            }
+
+            final item = images[index];
+            if (_tileLogged.add(index)) {
+              ReaderPipeline.tileBuild(index, cacheKey: item.cacheKey);
+            }
+
+            return ReaderImage(
+              key: ValueKey(item.cacheKey),
+              url: item.url,
+              cacheKey: item.cacheKey,
+              headers: item.headers,
+              fallbackUrls: item.fallbackUrls,
+              bytesTransformer: item.bytesTransformer,
+              width: imageWidth,
+              // 仅作加载占位高度；出图后 Image 按真实宽高比占位。
+              height: imageWidth * 1.2,
+              fit: BoxFit.fitWidth,
+              filterQuality: FilterQuality.medium,
+              traceId: traceId,
+              imageIndex: index,
+            );
+          },
+        ),
       ),
     );
   }

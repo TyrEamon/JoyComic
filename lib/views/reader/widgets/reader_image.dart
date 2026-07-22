@@ -1,14 +1,11 @@
-/// 阅读器单图：与可用阅读器相同的标准路径。
-///
-/// [ImageProvider] → Flutter 内置 [Image] 组件。
-/// 不做自研 ImageStream / RawImage / Image.memory 状态机。
-/// JM 重组在 [createPageImageProvider] 的下载流里完成。
+/// 阅读器单图：标准 [Image] + [createPageImageProvider]（下载 / JM 重组）。
 library;
 
 import 'package:flutter/material.dart';
 
 import '../image_pipeline/page_image_provider.dart';
 import '../utils/reader_image_provider.dart' show ReaderImageBytesTransformer;
+import '../utils/reader_pipeline.dart';
 
 /// 漫画单图（列表项）。
 class ReaderImage extends StatelessWidget {
@@ -58,6 +55,7 @@ class ReaderImage extends StatelessWidget {
     final placeholderH = (height != null && height!.isFinite && height! > 1)
         ? height!
         : w * 1.2;
+    final idx = imageIndex ?? -1;
 
     final provider = createPageImageProvider(
       url: url,
@@ -69,7 +67,6 @@ class ReaderImage extends StatelessWidget {
       imageIndex: imageIndex,
     );
 
-    // 与可用阅读器一致：系统 [Image] 组件，不手写 stream 监听。
     return Image(
       image: provider,
       width: w,
@@ -82,9 +79,23 @@ class ReaderImage extends StatelessWidget {
       excludeFromSemantics: true,
       loadingBuilder: (context, child, progress) {
         if (progress == null) {
-          // 已解码：直接返回 child（系统 Image 会按宽高比占位）。
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!context.mounted) return;
+            final box = context.findRenderObject() as RenderBox?;
+            final sz = box?.size;
+            ReaderPipeline.widgetFrame(
+              idx,
+              layoutW: sz?.width ?? w,
+              layoutH: sz?.height ?? 0,
+            );
+          });
           return child;
         }
+        ReaderPipeline.widgetLoading(
+          idx,
+          loaded: progress.cumulativeBytesLoaded,
+          total: progress.expectedTotalBytes,
+        );
         final total = progress.expectedTotalBytes;
         final value = (total != null && total > 0)
             ? (progress.cumulativeBytesLoaded / total).clamp(0.0, 1.0)
@@ -93,7 +104,7 @@ class ReaderImage extends StatelessWidget {
           width: w,
           height: placeholderH,
           child: ColoredBox(
-            color: const Color(0xFF1A1A1A),
+            color: Colors.black,
             child: Center(
               child: SizedBox(
                 width: 28,
@@ -109,20 +120,21 @@ class ReaderImage extends StatelessWidget {
         );
       },
       errorBuilder: (context, error, stack) {
+        ReaderPipeline.widgetError(idx, error: error);
         return SizedBox(
           width: w,
           height: placeholderH,
           child: ColoredBox(
-            color: const Color(0xFF3E2723),
+            color: const Color(0xFF1A1A1A),
             child: Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.broken_image_outlined, color: Colors.white70),
+                  const Icon(Icons.broken_image_outlined, color: Colors.white54),
                   const SizedBox(height: 8),
                   Text(
-                    '加载失败 第${(imageIndex ?? 0) + 1}页',
-                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                    '加载失败 第${idx + 1}页',
+                    style: const TextStyle(color: Colors.white54, fontSize: 12),
                   ),
                 ],
               ),

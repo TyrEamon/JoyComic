@@ -1,20 +1,8 @@
 /// 阅读器主框架。
 ///
 /// 接收 [ComicState] 与可选 [ReaderImageLoader]，创建 [ReaderProvider] 与
-/// [ListStateProvider] 后按阅读模式（[ReadMode]）渲染 [VerticalList] 或
-/// [HorizontalList]，并叠放工具栏、页码角标、下一章 FAB、菜单锁等 UI。
-///
-/// ```
-/// MultiProvider（ReaderProvider + ListStateProvider）
-///   └── Scaffold
-///         ├── [listWidget]（VerticalList / HorizontalList）
-///         ├── ReaderPageNoTag          ← 页码角标
-///         ├── ReaderNextChapter        ← 下一章 FAB
-///         ├── MenuLock                 ← 菜单锁按钮
-///         ├── ReaderAppBar             ← 顶部工具栏
-///         ├── ReaderBottom             ← 底部工具栏
-///         └── Drawer                   ← 章节列表
-/// ```
+/// [ListStateProvider] 后按阅读模式渲染 [VerticalList] 或 [HorizontalList]，
+/// 并叠放工具栏、页码角标、下一章 FAB、菜单锁等 UI。
 library;
 
 import 'package:flutter/material.dart';
@@ -23,18 +11,20 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
-import '../../foundation/log_export.dart';
-
 import '../../comic_source/comic_source.dart';
 import '../../database/read_record_helper.dart';
 import '../../network/res.dart';
 import 'providers/list_state_provider.dart';
 import 'providers/reader_provider.dart';
 import 'state/comic_state.dart';
-import 'state/read_mode.dart';
+import 'widgets/app_bar.dart';
+import 'widgets/bottom.dart';
 import 'widgets/error_page.dart';
 import 'widgets/horizontal_list/horizontal_list.dart';
-import 'widgets/reader_debug_overlay.dart';
+import 'widgets/menu_lock.dart';
+import 'widgets/next_chapter.dart';
+import 'widgets/page_no_tag.dart';
+import 'widgets/reader_keyboard_listener.dart';
 import 'widgets/vertical_list/vertical_list.dart';
 
 /// Returns only a network loader suitable for route injection.
@@ -91,7 +81,6 @@ class _ReaderState extends State<Reader> {
   @override
   void initState() {
     super.initState();
-    // 进入沉浸式阅读模式
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersive);
   }
 
@@ -173,7 +162,10 @@ class _ReaderContent extends StatelessWidget {
     final chapterIndex = context.selector((p) => p.chapterIndex);
     final loadingState = context.selector((p) => p.loadingState);
     final loadingErrorMessage = context.selector((p) => p.loadingErrorMessage);
+    final showPageNumbers = context.stateSelector((p) => p.showPageNumbers);
     final chapters = context.selector((p) => p.chapters);
+    final prev = context.reader.prev;
+    final next = context.reader.next;
 
     Widget listWidget = NotificationListener<ScrollNotification>(
       onNotification: onScrollNotification,
@@ -182,117 +174,102 @@ class _ReaderContent extends StatelessWidget {
           : const HorizontalList(),
     );
 
-    void goBack() {
-      try {
-        context.reader.stopPageTurn();
-      } catch (_) {}
-      context.pop();
-    }
-
-    // Diagnostic shell + root-overlay debug ball (always above black content).
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        Scaffold(
-          backgroundColor: const Color(0xFF4A148C),
-          body: Stack(
-            children: [
-              Positioned.fill(
-                child: switch (loadingState) {
-                  ReaderLoadState.success => listWidget,
-                  ReaderLoadState.error => ErrorPage(
-                    errorMessage: loadingErrorMessage ?? '加载失败',
-                    onRetry: context.reader.retry,
-                    canPop: true,
-                    traceId: context.reader.traceId,
-                    onOpenLogs: () {
-                      try {
-                        context.push('/logs');
-                      } catch (_) {}
-                    },
-                  ),
-                  ReaderLoadState.loading => _ReaderLoadingView(
-                    message: '正在加载章节图片…',
-                    traceId: context.reader.traceId,
-                    onOpenLogs: () {
-                      try {
-                        context.push('/logs');
-                      } catch (_) {}
-                    },
-                  ),
-                  ReaderLoadState.idle => _ReaderLoadingView(
-                    message: '正在准备阅读器…',
-                    traceId: context.reader.traceId,
-                    onOpenLogs: () {
-                      try {
-                        context.push('/logs');
-                      } catch (_) {}
-                    },
-                  ),
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: switch (loadingState) {
+              ReaderLoadState.success => ReaderKeyboardListener(
+                handlers: {
+                  LogicalKeyboardKey.arrowLeft: prev,
+                  LogicalKeyboardKey.arrowRight: next,
+                  LogicalKeyboardKey.arrowUp: prev,
+                  LogicalKeyboardKey.arrowDown: next,
+                  LogicalKeyboardKey.pageUp: prev,
+                  LogicalKeyboardKey.pageDown: next,
+                },
+                child: listWidget,
+              ),
+              ReaderLoadState.error => ErrorPage(
+                errorMessage: loadingErrorMessage ?? '加载失败',
+                onRetry: context.reader.retry,
+                canPop: true,
+                traceId: context.reader.traceId,
+                onOpenLogs: () {
+                  try {
+                    context.push('/logs');
+                  } catch (_) {}
                 },
               ),
-              Positioned(
-                top: 0,
-                left: 0,
-                child: SafeArea(
-                  child: IconButton(
-                    icon: const Icon(
-                      Icons.arrow_back,
-                      color: Colors.white,
-                      size: 28,
-                    ),
-                    style: IconButton.styleFrom(
-                      backgroundColor: Colors.black54,
-                    ),
-                    onPressed: goBack,
-                  ),
+              ReaderLoadState.loading => _ReaderLoadingView(
+                message: '正在加载章节图片…',
+                traceId: context.reader.traceId,
+                onOpenLogs: () {
+                  try {
+                    context.push('/logs');
+                  } catch (_) {}
+                },
+              ),
+              ReaderLoadState.idle => _ReaderLoadingView(
+                message: '正在准备阅读器…',
+                traceId: context.reader.traceId,
+                onOpenLogs: () {
+                  try {
+                    context.push('/logs');
+                  } catch (_) {}
+                },
+              ),
+            },
+          ),
+
+          if (showPageNumbers && loadingState == ReaderLoadState.success)
+            const ReaderPageNoTag(),
+
+          if (loadingState == ReaderLoadState.success) ...[
+            const ReaderNextChapter(),
+            const MenuLock(),
+          ],
+
+          const ReaderAppBar(),
+
+          if (loadingState == ReaderLoadState.success) const ReaderBottom(),
+        ],
+      ),
+      drawer: Drawer(
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+        child: SafeArea(
+          child: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.fromLTRB(0, 20, 0, 10),
+                child: Text(
+                  '章节列表',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+              ),
+              Expanded(
+                child: ScrollablePositionedList.builder(
+                  initialScrollIndex: chapterIndex,
+                  itemBuilder: (context, index) {
+                    final chapter = chapters[index];
+                    return ListTile(
+                      enabled: index != chapterIndex,
+                      title: Text(chapter.name),
+                      onTap: () {
+                        context.pop();
+                        context.reader.go(chapter);
+                      },
+                    );
+                  },
+                  itemCount: chapters.length,
                 ),
               ),
             ],
           ),
-          drawer: Drawer(
-            shape: const RoundedRectangleBorder(
-              borderRadius: BorderRadius.zero,
-            ),
-            child: SafeArea(
-              child: Column(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.fromLTRB(0, 20, 0, 10),
-                    child: Text(
-                      '章节列表',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                  ),
-                  Expanded(
-                    child: ScrollablePositionedList.builder(
-                      initialScrollIndex: chapterIndex,
-                      itemBuilder: (context, index) {
-                        final chapter = chapters[index];
-                        return ListTile(
-                          enabled: index != chapterIndex,
-                          title: Text(chapter.name),
-                          onTap: () {
-                            context.pop();
-                            context.reader.go(chapter);
-                          },
-                        );
-                      },
-                      itemCount: chapters.length,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
         ),
-        // 最高层：根 Overlay 悬浮球（黑屏也盖不住）
-        ReaderDebugOverlayHost(
-          traceId: context.reader.traceId,
-          onBack: goBack,
-        ),
-      ],
+      ),
     );
   }
 }
@@ -313,114 +290,44 @@ class _ReaderLoadingView extends StatefulWidget {
 }
 
 class _ReaderLoadingViewState extends State<_ReaderLoadingView> {
-  bool _exporting = false;
-
-  Future<void> _exportTxt() async {
-    if (_exporting) return;
-    setState(() => _exporting = true);
-    try {
-      final note = widget.traceId == null || widget.traceId!.isEmpty
-          ? 'from reader loading view'
-          : 'from reader loading view; trace=${widget.traceId}';
-      final ok = await exportJoyComicLogsTxt(context: context, note: note);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(ok ? '已生成 TXT，请选择发送方式' : '暂无日志可导出'),
-        ),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('导出失败：$error')));
-    } finally {
-      if (mounted) setState(() => _exporting = false);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    // readerCanvas is pure black — force light controls so loading is not
-    // perceived as a frozen black screen, and always expose diagnostics.
-    const onDark = Color(0xFFECECEC);
-    return Stack(
-      children: [
-        Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const CircularProgressIndicator(
-                  color: onDark,
-                  strokeWidth: 3,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  widget.message,
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: onDark,
-                  ),
-                ),
-                if (widget.traceId != null && widget.traceId!.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  SelectableText(
-                    'trace ${widget.traceId}',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: onDark.withValues(alpha: 0.72),
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-                const SizedBox(height: 16),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  alignment: WrapAlignment.center,
-                  children: [
-                    FilledButton.tonalIcon(
-                      style: FilledButton.styleFrom(
-                        foregroundColor: onDark,
-                        backgroundColor: const Color(0x33FFFFFF),
-                      ),
-                      onPressed: widget.onOpenLogs,
-                      icon: const Icon(Icons.bug_report_outlined),
-                      label: const Text('打开日志页'),
-                    ),
-                    FilledButton.icon(
-                      style: FilledButton.styleFrom(
-                        foregroundColor: const Color(0xFF111111),
-                        backgroundColor: onDark,
-                      ),
-                      onPressed: _exporting ? null : _exportTxt,
-                      icon: _exporting
-                          ? const SizedBox.square(
-                              dimension: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.ios_share_rounded),
-                      label: Text(_exporting ? '导出中…' : '导出 TXT'),
-                    ),
-                  ],
-                ),
-              ],
+    return ColoredBox(
+      color: Colors.black,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(
+              width: 32,
+              height: 32,
+              child: CircularProgressIndicator(
+                strokeWidth: 3,
+                color: Colors.white70,
+              ),
             ),
-          ),
-        ),
-        SafeArea(
-          child: Align(
-            alignment: Alignment.topLeft,
-            child: IconButton(
-              tooltip: '返回',
-              color: onDark,
-              onPressed: context.canPop() ? () => context.pop() : null,
-              icon: const Icon(Icons.arrow_back_rounded),
+            const SizedBox(height: 16),
+            Text(
+              widget.message,
+              style: const TextStyle(color: Colors.white70, fontSize: 14),
             ),
-          ),
+            if (widget.traceId != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                'trace=${widget.traceId}',
+                style: const TextStyle(color: Colors.white38, fontSize: 11),
+              ),
+            ],
+            if (widget.onOpenLogs != null) ...[
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: widget.onOpenLogs,
+                child: const Text('查看日志'),
+              ),
+            ],
+          ],
         ),
-      ],
+      ),
     );
   }
 }

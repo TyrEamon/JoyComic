@@ -17,7 +17,8 @@ import '../../providers/reader_provider.dart';
 import '../../state/read_mode.dart';
 import '../../utils/image_preload_controller.dart';
 import '../../utils/reader_utils.dart';
-import '../../utils/reader_image_provider.dart';
+import '../../image_pipeline/page_image_provider.dart';
+import '../../utils/reader_image_provider.dart' show ReaderDiagnostics;
 import '../reader_image.dart' as img_widget;
 
 /// 横向翻页模式。
@@ -246,13 +247,12 @@ class _HorizontalListState extends State<HorizontalList> {
     return PhotoViewGalleryPageOptions(
       minScale: PhotoViewComputedScale.contained * 1.0,
       maxScale: PhotoViewComputedScale.covered * 4.0,
-      imageProvider: readerImageProvider(
+      imageProvider: createPageImageProvider(
         url: item.url,
         cacheKey: item.cacheKey,
         fallbackUrls: item.fallbackUrls,
         headers: item.headers,
         bytesTransformer: item.bytesTransformer,
-        cacheWidth: cacheWidth,
         traceId: traceId,
         imageIndex: imageIndex,
       ),
@@ -304,13 +304,12 @@ class _HorizontalListState extends State<HorizontalList> {
                     icon: const Icon(Icons.refresh_rounded),
                     label: const Text('重试'),
                     onPressed: () async {
-                      await readerImageProvider(
+                      await createPageImageProvider(
                         url: item.url,
                         cacheKey: item.cacheKey,
                         fallbackUrls: item.fallbackUrls,
                         headers: item.headers,
                         bytesTransformer: item.bytesTransformer,
-                        cacheWidth: cacheWidth,
                         traceId: traceId,
                         imageIndex: imageIndex,
                       ).evict();
