@@ -18,6 +18,27 @@ import '../reader_image.dart';
 import 'gesture.dart';
 import 'page_index.dart';
 
+Size resolveVerticalReaderViewportSize(
+  BoxConstraints constraints,
+  Size mediaSize,
+  double widthRatio,
+) {
+  final factor = widthRatio.clamp(0.05, 1.0);
+  final availableWidth =
+      constraints.maxWidth.isFinite && constraints.maxWidth > 1
+      ? constraints.maxWidth
+      : (mediaSize.width.isFinite && mediaSize.width > 1
+            ? mediaSize.width
+            : 390.0);
+  final availableHeight =
+      constraints.maxHeight.isFinite && constraints.maxHeight > 1
+      ? constraints.maxHeight
+      : (mediaSize.height.isFinite && mediaSize.height > 1
+            ? mediaSize.height
+            : 844.0);
+  return Size(availableWidth * factor, availableHeight);
+}
+
 /// 竖直连续模式。
 class VerticalList extends StatefulWidget {
   const VerticalList({super.key});
@@ -63,15 +84,6 @@ class _VerticalListState extends State<VerticalList> {
     final initialPage = context.reader.pageNo;
     final mq = MediaQuery.sizeOf(context);
 
-    if (!_loggedOpen) {
-      _loggedOpen = true;
-      ReaderPipeline.listBuild(pageCount: pageCount, mq: mq);
-      ReaderPipeline.mark(
-        ReaderStage.listBuild,
-        detail: 'haka_style ScrollablePositionedList ratio=$widthRatio',
-      );
-    }
-
     return GestureWrapper(
       openOrCloseToolbar: context.reader.openOrCloseToolbar,
       jumpOffset: context.reader.pageTurnForVertical,
@@ -79,8 +91,23 @@ class _VerticalListState extends State<VerticalList> {
         color: Colors.black,
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final factor = widthRatio.clamp(0.05, 1.0);
-            final layoutW = constraints.maxWidth * factor;
+            final viewportSize = resolveVerticalReaderViewportSize(
+              constraints,
+              mq,
+              widthRatio,
+            );
+            final layoutW = viewportSize.width;
+            if (!_loggedOpen) {
+              _loggedOpen = true;
+              ReaderPipeline.listBuild(pageCount: pageCount, mq: mq);
+              ReaderPipeline.mark(
+                ReaderStage.listBuild,
+                detail:
+                    'haka_style ScrollablePositionedList ratio=$widthRatio '
+                    'viewport=${viewportSize.width}x${viewportSize.height} '
+                    'constraints=$constraints',
+              );
+            }
             final dpr = MediaQuery.devicePixelRatioOf(context);
             final cacheWidth = computeImageCacheWidth(
               layoutWidth: layoutW,
@@ -90,8 +117,9 @@ class _VerticalListState extends State<VerticalList> {
 
             return Align(
               alignment: Alignment.topCenter,
-              child: FractionallySizedBox(
-                widthFactor: factor,
+              child: SizedBox(
+                width: viewportSize.width,
+                height: viewportSize.height,
                 child: ScrollablePositionedList.builder(
                   initialScrollIndex: initialPage.clamp(0, pageCount),
                   padding: EdgeInsets.zero,

@@ -107,4 +107,54 @@ void main() {
     expect(layout.single.detail, contains('attached=true'));
     expect(layout.single.detail, contains('hasSize=true'));
   });
+
+  testWidgets('page image escapes a zero-width positioned-list probe', (
+    tester,
+  ) async {
+    final session = ReaderV2Session(traceId: 'zero-width');
+    final scheduler = ReaderV2Scheduler(session: session, maxConcurrent: 1);
+    addTearDown(scheduler.dispose);
+    const page = ReaderV2Page(
+      index: 0,
+      url: 'https://example.test/zero.png',
+      cacheKey: 'zero-width-page',
+    );
+
+    Widget buildAtWidth(double width) => MaterialApp(
+      home: MediaQuery(
+        data: const MediaQueryData(size: Size(440, 956)),
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            width: width,
+            child: ReaderV2PageImage(
+              key: const ValueKey('retained-page'),
+              page: page,
+              session: session,
+              scheduler: scheduler,
+              priority: ReaderV2Priority.visible,
+              bytesLoader: (_, _) async => _png,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(buildAtWidth(440));
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    for (var i = 0; i < 6 && find.byType(RawImage).evaluate().isEmpty; i++) {
+      await tester.pump();
+    }
+    expect(find.byType(RawImage), findsOneWidget);
+
+    await tester.pumpWidget(buildAtWidth(0));
+    await tester.pump();
+
+    final rawImage = tester.widget<RawImage>(find.byType(RawImage));
+    expect(rawImage.width, 440);
+    expect(rawImage.height, 440);
+    expect(tester.getSize(find.byType(RawImage)), const Size(440, 440));
+  });
 }

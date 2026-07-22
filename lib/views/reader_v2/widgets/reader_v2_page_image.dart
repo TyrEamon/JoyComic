@@ -183,9 +183,13 @@ final class _ReaderV2PageImageState extends State<ReaderV2PageImage>
     return LayoutBuilder(
       builder: (context, constraints) {
         _lastConstraints = constraints;
-        final width = constraints.maxWidth.isFinite
-            ? constraints.maxWidth
-            : MediaQuery.sizeOf(context).width;
+        final constrainedWidth = constraints.maxWidth;
+        final mediaWidth = MediaQuery.sizeOf(context).width;
+        final useFallbackWidth =
+            !constrainedWidth.isFinite || constrainedWidth <= 1;
+        final width = useFallbackWidth
+            ? (mediaWidth.isFinite && mediaWidth > 1 ? mediaWidth : 390.0)
+            : constrainedWidth;
         final fixedHeight = widget.height;
         final info = _info;
         if (info != null) {
@@ -194,7 +198,7 @@ final class _ReaderV2PageImageState extends State<ReaderV2PageImage>
               width *
                   info.image.height.toDouble() /
                   info.image.width.toDouble();
-          return SizedBox(
+          final image = SizedBox(
             width: width,
             height: height,
             child: RawImage(
@@ -207,6 +211,15 @@ final class _ReaderV2PageImageState extends State<ReaderV2PageImage>
               filterQuality: FilterQuality.medium,
               scale: info.scale,
             ),
+          );
+          if (!useFallbackWidth) return image;
+          return OverflowBox(
+            alignment: Alignment.topLeft,
+            minWidth: width,
+            maxWidth: width,
+            minHeight: height,
+            maxHeight: height,
+            child: image,
           );
         }
         return SizedBox(
