@@ -17,47 +17,9 @@ class ReaderAppBar extends StatelessWidget {
     final showToolbar = context.selector((p) => p.showToolbar);
     final foreground = context.semanticColors.readerControlForeground;
 
-    // Keep a compact always-visible chrome strip when the full toolbar is
-    // collapsed so a black reader never traps the user without back/logs.
+    // 沉浸式：工具栏收起时不占位；点屏幕中间可再打开。
     if (!showToolbar) {
-      return Positioned(
-        top: 0,
-        left: 0,
-        right: 0,
-        child: SafeArea(
-          bottom: false,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Row(
-              children: [
-                IconButton(
-                  tooltip: '返回',
-                  icon: Icon(
-                    Icons.arrow_back,
-                    key: const Key('reader-back-icon'),
-                    color: foreground,
-                  ),
-                  onPressed: () {
-                    context.reader.stopPageTurn();
-                    context.pop();
-                  },
-                ),
-                const Spacer(),
-                IconButton(
-                  key: const Key('reader-logs-collapsed'),
-                  tooltip: '查看诊断日志',
-                  icon: Icon(Icons.bug_report_outlined, color: foreground),
-                  onPressed: () {
-                    try {
-                      context.push('/logs');
-                    } catch (_) {}
-                  },
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
+      return const SizedBox.shrink();
     }
 
     return AnimatedPositioned(

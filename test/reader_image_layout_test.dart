@@ -10,8 +10,17 @@ void main() {
     expect(image.fit, BoxFit.fitWidth);
   });
 
-  test('ReaderImage is StatelessWidget using stock Image path', () {
+  test('ReaderImage is StatefulWidget with size cache', () {
     const image = ReaderImage(url: 'https://example.com/a.webp');
-    expect(image, isA<StatelessWidget>());
+    expect(image, isA<StatefulWidget>());
+  });
+
+  test('ReaderImageSizeCache stores pixel size', () {
+    ReaderImageSizeCache.clear();
+    ReaderImageSizeCache.put('k', 960, 1378);
+    final s = ReaderImageSizeCache.get('k');
+    expect(s, isNotNull);
+    expect(s!.width, 960);
+    expect(s.height, 1378);
   });
 }

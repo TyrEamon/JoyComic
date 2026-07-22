@@ -1,6 +1,4 @@
-/// 竖直连续模式。
-///
-/// 列表 + 标准 [Image]（[createPageImageProvider] 负责下载与 JM 重组）。
+/// 竖直连续模式：图贴图、真实高度缓存、滚动藏 UI、双指缩放。
 library;
 
 import 'package:flutter/material.dart';
@@ -26,7 +24,9 @@ class _VerticalListState extends State<VerticalList> {
   ImagePreloadController? _preloadController;
   int _lastPage = 0;
   bool _loggedOpen = false;
-  final Set<int> _tileLogged = <int>{};
+
+  /// 每页布局高度（逻辑像素），用于精确页码。
+  final Map<int, double> _heights = <int, double>{};
 
   @override
   void initState() {
@@ -51,18 +51,43 @@ class _VerticalListState extends State<VerticalList> {
     super.dispose();
   }
 
+  double _defaultHeight(double width) => width / (3 / 4); // 4:3 竖图占位
+
+  double _heightOf(int index, double width) {
+    return _heights[index] ?? _defaultHeight(width);
+  }
+
+  int _pageAtOffset(double offset, double width, int count) {
+    if (count <= 0) return 0;
+    var y = 0.0;
+    for (var i = 0; i < count; i++) {
+      final h = _heightOf(i, width);
+      if (offset < y + h) return i;
+      y += h;
+    }
+    return count - 1;
+  }
+
   void _onScroll() {
     if (!_scrollController.hasClients) return;
     final count = context.reader.images.length;
     if (count == 0) return;
     final w = MediaQuery.sizeOf(context).width;
-    final avgH = w > 0 ? w * 1.2 : 600.0;
-    final index = (_scrollController.offset / avgH).floor().clamp(0, count - 1);
+    final index = _pageAtOffset(_scrollController.offset, w, count);
     if (index != _lastPage) {
       _lastPage = index;
       _preloadController?.onAnchorChanged([index]);
       context.reader.onPageNoChanged(index);
     }
+  }
+
+  void _onImageSize(int index, int pxW, int pxH, double layoutW) {
+    if (pxW <= 0 || pxH <= 0 || layoutW <= 0) return;
+    final h = layoutW * pxH / pxW;
+    if (_heights[index] != null && (_heights[index]! - h).abs() < 0.5) {
+      return;
+    }
+    setState(() => _heights[index] = h);
   }
 
   @override
@@ -104,27 +129,26 @@ class _VerticalListState extends State<VerticalList> {
           // ignore: deprecated_member_use
           cacheExtent: MediaQuery.sizeOf(context).height * 3,
           padding: EdgeInsets.zero,
+          // 相邻图零间距
           itemCount: pageCount + 1,
           itemBuilder: (context, index) {
             if (index == pageCount) {
               return const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
+                padding: EdgeInsets.symmetric(vertical: 32),
                 child: Text(
                   '本章完',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white70,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white54,
                   ),
                 ),
               );
             }
 
             final item = images[index];
-            if (_tileLogged.add(index)) {
-              ReaderPipeline.tileBuild(index, cacheKey: item.cacheKey);
-            }
+            final layoutH = _heightOf(index, imageWidth);
 
             return ReaderImage(
               key: ValueKey(item.cacheKey),
@@ -134,12 +158,14 @@ class _VerticalListState extends State<VerticalList> {
               fallbackUrls: item.fallbackUrls,
               bytesTransformer: item.bytesTransformer,
               width: imageWidth,
-              // 仅作加载占位高度；出图后 Image 按真实宽高比占位。
-              height: imageWidth * 1.2,
+              height: layoutH,
               fit: BoxFit.fitWidth,
               filterQuality: FilterQuality.medium,
               traceId: traceId,
               imageIndex: index,
+              onImageSizeChanged: (pw, ph) {
+                _onImageSize(index, pw, ph, imageWidth);
+              },
             );
           },
         ),
