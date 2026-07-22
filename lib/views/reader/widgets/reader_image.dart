@@ -16,8 +16,8 @@ import '../utils/reader_image_provider.dart' show ReaderImageBytesTransformer;
 import '../utils/reader_pipeline.dart';
 
 /// 已重组 JPEG + 像素尺寸缓存。
-class _PageCache {
-  _PageCache(this.bytes, this.pxW, this.pxH);
+class CachedReaderPage {
+  CachedReaderPage(this.bytes, this.pxW, this.pxH);
   final Uint8List bytes;
   final int pxW;
   final int pxH;
@@ -25,13 +25,14 @@ class _PageCache {
 
 class ReaderImageSizeCache {
   ReaderImageSizeCache._();
-  static final Map<String, _PageCache> _map = <String, _PageCache>{};
+  static final Map<String, CachedReaderPage> _map =
+      <String, CachedReaderPage>{};
 
-  static _PageCache? get(String key) => _map[key];
+  static CachedReaderPage? get(String key) => _map[key];
 
   static void put(String key, Uint8List bytes, int w, int h) {
     if (key.isEmpty || bytes.isEmpty || w <= 0 || h <= 0) return;
-    _map[key] = _PageCache(bytes, w, h);
+    _map[key] = CachedReaderPage(bytes, w, h);
     while (_map.length > 60) {
       _map.remove(_map.keys.first);
     }
