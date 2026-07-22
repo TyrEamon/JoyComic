@@ -62,14 +62,16 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        home: SizedBox(
-          width: 200,
-          child: ReaderV2PageImage(
-            page: page,
-            session: session,
-            scheduler: scheduler,
-            priority: ReaderV2Priority.visible,
-            bytesLoader: (_, _) => gate.future,
+        home: Center(
+          child: SizedBox(
+            width: 200,
+            child: ReaderV2PageImage(
+              page: page,
+              session: session,
+              scheduler: scheduler,
+              priority: ReaderV2Priority.visible,
+              bytesLoader: (_, _) => gate.future,
+            ),
           ),
         ),
       ),
@@ -93,6 +95,16 @@ void main() {
       findsOneWidget,
       reason: session.events.map((event) => event.stage).join(' | '),
     );
+    final rawImage = tester.widget<RawImage>(find.byType(RawImage));
+    expect(rawImage.width, 200);
+    expect(rawImage.height, 200);
     expect(session.events.any((event) => event.stage == 'frame'), isTrue);
+    await tester.pump();
+    final layout = session.events.where((event) => event.stage == 'layout');
+    expect(layout, hasLength(1));
+    expect(layout.single.detail, contains('widget=200.0x200.0'));
+    expect(layout.single.detail, contains('raw=200.0x200.0'));
+    expect(layout.single.detail, contains('attached=true'));
+    expect(layout.single.detail, contains('hasSize=true'));
   });
 }

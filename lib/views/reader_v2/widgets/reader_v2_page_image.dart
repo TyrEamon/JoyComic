@@ -34,11 +34,13 @@ final class ReaderV2PageImage extends StatefulWidget {
 final class _ReaderV2PageImageState extends State<ReaderV2PageImage>
     with WidgetsBindingObserver {
   late DisposableBuildContext<State<ReaderV2PageImage>> _scrollContext;
+  final GlobalKey _rawImageKey = GlobalKey();
   ImageStream? _stream;
   ImageStreamListener? _listener;
   ImageStreamCompleterHandle? _keepAlive;
   ImageInfo? _info;
   Object? _error;
+  BoxConstraints? _lastConstraints;
 
   @override
   void initState() {
@@ -98,6 +100,7 @@ final class _ReaderV2PageImageState extends State<ReaderV2PageImage>
           detail: '${info.image.width}x${info.image.height}',
         );
         setState(() => _error = null);
+        _recordLayoutAfterFrame(info);
       },
       onError: (Object error, StackTrace? stackTrace) {
         if (!mounted || widget.session.isCancelled) return;
@@ -130,6 +133,42 @@ final class _ReaderV2PageImageState extends State<ReaderV2PageImage>
     }
   }
 
+  void _recordLayoutAfterFrame(ImageInfo info) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !identical(_info, info)) return;
+      final widgetRenderObject = context.findRenderObject();
+      final rawRenderObject = _rawImageKey.currentContext?.findRenderObject();
+      final widgetBox = widgetRenderObject is RenderBox
+          ? widgetRenderObject
+          : null;
+      final rawBox = rawRenderObject is RenderBox ? rawRenderObject : null;
+      final constraints = _lastConstraints;
+      widget.session.record(
+        'layout',
+        page: widget.page.index,
+        detail: [
+          'constraints=${_formatConstraints(constraints)}',
+          'widget=${_formatSize(widgetBox)}',
+          'raw=${_formatSize(rawBox)}',
+          'attached=${rawBox?.attached ?? false}',
+          'hasSize=${rawBox?.hasSize ?? false}',
+        ].join(' '),
+      );
+    });
+  }
+
+  static String _formatConstraints(BoxConstraints? constraints) {
+    if (constraints == null) return 'missing';
+    return '${constraints.minWidth}..${constraints.maxWidth}'
+        'x${constraints.minHeight}..${constraints.maxHeight}';
+  }
+
+  static String _formatSize(RenderBox? box) {
+    if (box == null) return 'missing';
+    if (!box.hasSize) return 'unlaid-out';
+    return '${box.size.width}x${box.size.height}';
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -143,6 +182,7 @@ final class _ReaderV2PageImageState extends State<ReaderV2PageImage>
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
+        _lastConstraints = constraints;
         final width = constraints.maxWidth.isFinite
             ? constraints.maxWidth
             : MediaQuery.sizeOf(context).width;
@@ -158,7 +198,10 @@ final class _ReaderV2PageImageState extends State<ReaderV2PageImage>
             width: width,
             height: height,
             child: RawImage(
+              key: _rawImageKey,
               image: info.image,
+              width: width,
+              height: height,
               fit: fixedHeight == null ? BoxFit.fitWidth : widget.fit,
               alignment: Alignment.topCenter,
               filterQuality: FilterQuality.medium,
