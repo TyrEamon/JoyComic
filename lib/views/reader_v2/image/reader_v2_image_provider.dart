@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:dio/dio.dart';
@@ -25,6 +26,25 @@ final class ReaderV2PageLoader {
   final ReaderV2CandidateFetcher _candidateFetcher;
 
   Future<Uint8List> load(ReaderV2Page page, ReaderV2Session session) async {
+    final uri = Uri.tryParse(page.url);
+    final scheme = uri?.scheme.toLowerCase() ?? '';
+    if (scheme != 'http' && scheme != 'https') {
+      session.throwIfCancelled();
+      final file = scheme == 'file' && uri != null
+          ? File.fromUri(uri)
+          : File(page.url);
+      final bytes = await file.readAsBytes();
+      session.throwIfCancelled();
+      if (!_looksLikeImage(bytes)) {
+        throw StateError('invalid local image bytes len=${bytes.length}');
+      }
+      session.record(
+        'bytes',
+        page: page.index,
+        detail: 'local ${bytes.length}',
+      );
+      return bytes;
+    }
     final candidates = <String>{
       page.url,
       ...page.fallbackUrls,

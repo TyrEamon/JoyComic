@@ -10,10 +10,8 @@ library;
 import 'package:flutter/material.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
-import '../../../../foundation/reader_config.dart';
 import '../../providers/list_state_provider.dart';
 import '../../providers/reader_provider.dart' hide ReaderImage;
-import '../../utils/image_preload_controller.dart';
 import '../../utils/reader_pipeline.dart';
 import '../../utils/reader_utils.dart';
 import '../reader_image.dart';
@@ -31,28 +29,17 @@ class VerticalList extends StatefulWidget {
 class _VerticalListState extends State<VerticalList> {
   final ItemPositionsListener _positionsListener =
       ItemPositionsListener.create();
-  ImagePreloadController? _preloadController;
   bool _loggedOpen = false;
 
   @override
   void initState() {
     super.initState();
-    final reader = context.reader;
-    _preloadController = ImagePreloadController(
-      context: context,
-      items: reader.images,
-      type: reader.readerType,
-      maxPreloadCount: ReaderConf.instance.preloadImageCount,
-      traceId: reader.traceId,
-    );
-    reader.initPreloadController(_preloadController!);
     _positionsListener.itemPositions.addListener(_onPositionsChanged);
   }
 
   @override
   void dispose() {
     _positionsListener.itemPositions.removeListener(_onPositionsChanged);
-    _preloadController?.dispose();
     super.dispose();
   }
 
@@ -60,12 +47,8 @@ class _VerticalListState extends State<VerticalList> {
     final positions = _positionsListener.itemPositions.value;
     if (positions.isEmpty) return;
     final count = context.reader.images.length;
-    final visible = visibleVerticalImageIndices(
-      positions,
-      imageCount: count,
-    );
+    final visible = visibleVerticalImageIndices(positions, imageCount: count);
     if (visible.isEmpty) return;
-    _preloadController?.onAnchorChanged(visible);
     context.reader.onPageNoChanged(visible.last);
   }
 
@@ -115,8 +98,6 @@ class _VerticalListState extends State<VerticalList> {
                   physics: physics,
                   itemCount: pageCount + 1,
                   addAutomaticKeepAlives: false,
-                  // ignore: deprecated_member_use
-                  minCacheExtent: screenHeight * 2,
                   itemScrollController: context.reader.itemScrollController,
                   itemPositionsListener: _positionsListener,
                   scrollOffsetController: context.reader.scrollOffsetController,

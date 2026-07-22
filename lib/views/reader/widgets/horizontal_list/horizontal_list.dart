@@ -15,10 +15,7 @@ import '../../../../foundation/reader_config.dart';
 import '../../providers/list_state_provider.dart';
 import '../../providers/reader_provider.dart';
 import '../../state/read_mode.dart';
-import '../../utils/image_preload_controller.dart';
 import '../../utils/reader_utils.dart';
-import '../../image_pipeline/page_image_provider.dart';
-import '../../utils/reader_image_provider.dart' show ReaderDiagnostics;
 import '../reader_image.dart' as img_widget;
 
 /// 横向翻页模式。
@@ -30,28 +27,6 @@ class HorizontalList extends StatefulWidget {
 }
 
 class _HorizontalListState extends State<HorizontalList> {
-  ImagePreloadController? _preloadController;
-
-  @override
-  void initState() {
-    super.initState();
-    final reader = context.reader;
-    _preloadController = ImagePreloadController(
-      context: context,
-      items: reader.images,
-      type: reader.readerType,
-      maxPreloadCount: ReaderConf.instance.preloadImageCount,
-      traceId: reader.traceId,
-    );
-    reader.initPreloadController(_preloadController!);
-  }
-
-  @override
-  void dispose() {
-    _preloadController?.dispose();
-    super.dispose();
-  }
-
   /// 当前章节 ID，用于图片缓存清理。
   String get cid => context.reader.id;
 
@@ -244,89 +219,25 @@ class _HorizontalListState extends State<HorizontalList> {
     required int imageIndex,
     String? traceId,
   }) {
-    return PhotoViewGalleryPageOptions(
+    return PhotoViewGalleryPageOptions.customChild(
       minScale: PhotoViewComputedScale.contained * 1.0,
       maxScale: PhotoViewComputedScale.covered * 4.0,
-      imageProvider: createPageImageProvider(
+      child: img_widget.ReaderImage(
+        key: ValueKey(item.cacheKey),
         url: item.url,
         cacheKey: item.cacheKey,
-        fallbackUrls: item.fallbackUrls,
         headers: item.headers,
+        fallbackUrls: item.fallbackUrls,
         bytesTransformer: item.bytesTransformer,
+        cacheWidth: cacheWidth,
         traceId: traceId,
         imageIndex: imageIndex,
+        fit: BoxFit.contain,
       ),
-      filterQuality: FilterQuality.medium,
-      errorBuilder: (context, error, stackTrace) {
-        final scheme = Theme.of(context).colorScheme;
-        // Prefer sanitized diagnostics; never surface raw network payloads.
-        final detail = ReaderDiagnostics.sanitizeCaughtError(
-          error,
-          candidateUrl: item.url,
-          headers: item.headers,
-        );
-        return ColoredBox(
-          color: scheme.surfaceContainerHighest.withValues(alpha: 0.35),
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.broken_image_outlined,
-                    size: 40,
-                    color: scheme.onSurface,
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    '图片加载失败',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.titleSmall?.copyWith(color: scheme.onSurface),
-                  ),
-                  if (detail.isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      detail.length > 160
-                          ? '${detail.substring(0, 157)}...'
-                          : detail,
-                      textAlign: TextAlign.center,
-                      maxLines: 4,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 8),
-                  FilledButton.tonalIcon(
-                    icon: const Icon(Icons.refresh_rounded),
-                    label: const Text('重试'),
-                    onPressed: () async {
-                      await createPageImageProvider(
-                        url: item.url,
-                        cacheKey: item.cacheKey,
-                        fallbackUrls: item.fallbackUrls,
-                        headers: item.headers,
-                        bytesTransformer: item.bytesTransformer,
-                        traceId: traceId,
-                        imageIndex: imageIndex,
-                      ).evict();
-                      if (mounted) setState(() {});
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
     );
   }
 
   // ============================ 双页选项 ============================
-
   PhotoViewGalleryPageOptions _buildDoublePageOptions(
     List<ReaderImage> items,
     ReadMode readMode,
@@ -394,7 +305,6 @@ class _HorizontalListState extends State<HorizontalList> {
     final isDoublePage = context.reader.readMode.isDoublePage;
     final i = isDoublePage ? toCorrectSinglePageNo(index, 2) : index;
 
-    context.reader.preloadController?.onAnchorChanged([i]);
     context.reader.onPageNoChanged(i);
   }
 }

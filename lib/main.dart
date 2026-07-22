@@ -20,7 +20,8 @@ import 'views/history/history_page.dart';
 import 'views/image_search/image_search_page.dart';
 import 'views/main_scaffold.dart';
 import 'views/ranking/ranking_page.dart';
-import 'views/reader/reader.dart';
+import 'views/reader/reader.dart' show readerRouteNetworkLoader;
+import 'views/reader_v2/reader_v2.dart';
 import 'views/reader/state/comic_state.dart';
 import 'views/search/search_page.dart';
 import 'views/settings/reader_settings_page.dart';
@@ -184,7 +185,7 @@ final appRouter = GoRouter(
         final comicState = extra;
         final source = ComicSource.find(comicState.sourceKey);
         final imageLoader = readerRouteNetworkLoader(comicState, source);
-        return Reader(comicState: comicState, imageLoader: imageLoader);
+        return ReaderV2(comicState: comicState, imageLoader: imageLoader);
       },
     ),
   ],

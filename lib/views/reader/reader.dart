@@ -14,6 +14,7 @@ import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import '../../comic_source/comic_source.dart';
 import '../../database/read_record_helper.dart';
 import '../../network/res.dart';
+import '../reader_v2/reader_v2_runtime.dart';
 import 'providers/list_state_provider.dart';
 import 'providers/reader_provider.dart';
 import 'state/comic_state.dart';
@@ -118,6 +119,11 @@ class _ReaderState extends State<Reader> {
             readRecordHelper: widget.readRecordHelper,
             readRecordDebounce: widget.readRecordDebounce,
           ),
+        ),
+        ChangeNotifierProxyProvider<ReaderProvider, ReaderV2Runtime>(
+          create: (_) => ReaderV2Runtime(),
+          update: (_, reader, runtime) =>
+              (runtime ?? ReaderV2Runtime())..sync(reader),
         ),
         ChangeNotifierProvider(create: (_) => ListStateProvider()),
       ],

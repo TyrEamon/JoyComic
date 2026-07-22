@@ -76,7 +76,7 @@ void main() {
       'lib/views/reader/providers/reader_provider.dart',
     ).readAsStringSync();
     expect(errorPage.contains('导出 TXT') || errorPage.contains('打开日志页'), isTrue);
-    expect(reader.contains('导出 TXT') || reader.contains('打开日志页'), isTrue);
+    expect(reader.contains("context.push('/logs')"), isTrue);
     expect(appBar.contains('查看诊断日志'), isTrue);
     // Toolbar starts expanded so logs are reachable without first tapping the canvas.
     expect(provider.contains('bool showToolbar = true'), isTrue);

@@ -27,13 +27,16 @@ final class ReaderV2Event {
 }
 
 typedef ReaderV2CancelListener = void Function(ReaderV2Cancelled error);
+typedef ReaderV2EventSink = void Function(ReaderV2Event event);
 
 final class ReaderV2Session {
-  ReaderV2Session({String? traceId}) : traceId = traceId ?? _newTraceId() {
+  ReaderV2Session({String? traceId, this.eventSink})
+    : traceId = traceId ?? _newTraceId() {
     record('start');
   }
 
   final String traceId;
+  final ReaderV2EventSink? eventSink;
   final List<ReaderV2Event> _events = <ReaderV2Event>[];
   final Set<ReaderV2CancelListener> _cancelListeners =
       <ReaderV2CancelListener>{};
@@ -45,15 +48,15 @@ final class ReaderV2Session {
       UnmodifiableListView<ReaderV2Event>(_events);
 
   void record(String stage, {int? page, String detail = ''}) {
-    _events.add(
-      ReaderV2Event(
-        traceId: traceId,
-        stage: stage,
-        at: DateTime.now(),
-        page: page,
-        detail: detail,
-      ),
+    final event = ReaderV2Event(
+      traceId: traceId,
+      stage: stage,
+      at: DateTime.now(),
+      page: page,
+      detail: detail,
     );
+    _events.add(event);
+    eventSink?.call(event);
   }
 
   void addCancelListener(ReaderV2CancelListener listener) {
