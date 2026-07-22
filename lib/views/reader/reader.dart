@@ -17,9 +17,14 @@ import '../../network/res.dart';
 import 'providers/list_state_provider.dart';
 import 'providers/reader_provider.dart';
 import 'state/comic_state.dart';
+import 'widgets/app_bar.dart';
+import 'widgets/bottom.dart';
 import 'widgets/error_page.dart';
 import 'widgets/horizontal_list/horizontal_list.dart';
+import 'widgets/menu_lock.dart';
+import 'widgets/next_chapter.dart';
 import 'widgets/page_no_tag.dart';
+import 'widgets/reader_keyboard_listener.dart';
 import 'widgets/vertical_list/vertical_list.dart';
 
 /// Returns only a network loader suitable for route injection.
@@ -158,7 +163,10 @@ class _ReaderContent extends StatelessWidget {
     final loadingState = context.selector((p) => p.loadingState);
     final loadingErrorMessage = context.selector((p) => p.loadingErrorMessage);
     final showPageNumbers = context.stateSelector((p) => p.showPageNumbers);
+    final showToolbar = context.selector((p) => p.showToolbar);
     final chapters = context.selector((p) => p.chapters);
+    final prev = context.reader.prev;
+    final next = context.reader.next;
 
     Widget listWidget = NotificationListener<ScrollNotification>(
       onNotification: onScrollNotification,
@@ -167,14 +175,24 @@ class _ReaderContent extends StatelessWidget {
           : const HorizontalList(),
     );
 
-    // 列表保持 a747864 能出图结构；外壳仅叠返回与页码。
+    // 列表保持 Column+Expanded 出图结构；chrome 叠在上面。
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
           Positioned.fill(
             child: switch (loadingState) {
-              ReaderLoadState.success => listWidget,
+              ReaderLoadState.success => ReaderKeyboardListener(
+                handlers: {
+                  LogicalKeyboardKey.arrowLeft: prev,
+                  LogicalKeyboardKey.arrowRight: next,
+                  LogicalKeyboardKey.arrowUp: prev,
+                  LogicalKeyboardKey.arrowDown: next,
+                  LogicalKeyboardKey.pageUp: prev,
+                  LogicalKeyboardKey.pageDown: next,
+                },
+                child: listWidget,
+              ),
               ReaderLoadState.error => ErrorPage(
                 errorMessage: loadingErrorMessage ?? '加载失败',
                 onRetry: context.reader.retry,
@@ -207,12 +225,14 @@ class _ReaderContent extends StatelessWidget {
             },
           ),
 
-          if (loadingState == ReaderLoadState.success)
+          // 沉浸：工具栏收起时只留返回（左）与页码（右），互不重叠。
+          if (loadingState == ReaderLoadState.success && !showToolbar)
             Positioned(
               top: 0,
               left: 0,
               child: SafeArea(
                 child: IconButton(
+                  tooltip: '返回',
                   icon: const Icon(Icons.arrow_back, color: Colors.white),
                   style: IconButton.styleFrom(backgroundColor: Colors.black54),
                   onPressed: () {
@@ -227,6 +247,15 @@ class _ReaderContent extends StatelessWidget {
 
           if (showPageNumbers && loadingState == ReaderLoadState.success)
             const ReaderPageNoTag(),
+
+          if (loadingState == ReaderLoadState.success) ...[
+            const ReaderNextChapter(),
+            const MenuLock(),
+          ],
+
+          // 点中间展开完整顶栏/底栏
+          const ReaderAppBar(),
+          if (loadingState == ReaderLoadState.success) const ReaderBottom(),
         ],
       ),
       drawer: Drawer(
