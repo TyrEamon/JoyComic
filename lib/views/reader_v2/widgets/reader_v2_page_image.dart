@@ -218,13 +218,17 @@ final class _ReaderV2PageImageState extends State<ReaderV2PageImage>
             ),
           );
           if (!useFallbackWidth) return image;
-          return OverflowBox(
-            alignment: Alignment.topLeft,
-            minWidth: width,
-            maxWidth: width,
-            minHeight: height,
-            maxHeight: height,
-            child: image,
+          return SizedBox(
+            width: constraints.maxWidth.isFinite ? constraints.maxWidth : 0,
+            height: height,
+            child: OverflowBox(
+              alignment: Alignment.topLeft,
+              minWidth: width,
+              maxWidth: width,
+              minHeight: height,
+              maxHeight: height,
+              child: image,
+            ),
           );
         }
         return SizedBox(

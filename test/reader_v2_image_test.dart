@@ -123,18 +123,22 @@ void main() {
     Widget buildAtWidth(double width) => MaterialApp(
       home: MediaQuery(
         data: const MediaQueryData(size: Size(440, 956)),
-        child: Align(
-          alignment: Alignment.topLeft,
-          child: SizedBox(
-            width: width,
-            child: ReaderV2PageImage(
-              key: const ValueKey('retained-page'),
-              page: page,
-              session: session,
-              scheduler: scheduler,
-              priority: ReaderV2Priority.visible,
-              bytesLoader: (_, _) async => _png,
-            ),
+        child: SingleChildScrollView(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: width,
+                child: ReaderV2PageImage(
+                  key: const ValueKey('retained-page'),
+                  page: page,
+                  session: session,
+                  scheduler: scheduler,
+                  priority: ReaderV2Priority.visible,
+                  bytesLoader: (_, _) async => _png,
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -156,5 +160,9 @@ void main() {
     expect(rawImage.width, 440);
     expect(rawImage.height, 440);
     expect(tester.getSize(find.byType(RawImage)), const Size(440, 440));
+    final pageSize = tester.getSize(find.byType(ReaderV2PageImage));
+    expect(pageSize.width, 0);
+    expect(pageSize.height, 440);
+    expect(pageSize.height.isFinite, isTrue);
   });
 }
