@@ -175,7 +175,7 @@ class _ReaderContent extends StatelessWidget {
           : const HorizontalList(),
     );
 
-    // 列表保持 Column+Expanded 出图结构；chrome 叠在上面。
+    // 列表：Haka 式 ScrollablePositionedList + 按宽高比撑开的 ReaderImage；chrome 叠在上面。
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(

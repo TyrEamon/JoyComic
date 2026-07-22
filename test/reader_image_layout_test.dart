@@ -10,8 +10,17 @@ void main() {
     expect(image.fit, BoxFit.contain);
   });
 
-  test('ReaderImage is StatelessWidget', () {
+  test('ReaderImage is StatefulWidget (Haka-style paint path)', () {
     const image = ReaderImage(url: 'https://example.com/a.webp');
-    expect(image, isA<StatelessWidget>());
+    expect(image, isA<StatefulWidget>());
+  });
+
+  test('ReaderImageSizeCache stores and clears sizes', () {
+    ReaderImageSizeCache.clear();
+    expect(ReaderImageSizeCache.get('k'), isNull);
+    ReaderImageSizeCache.put('k', 100, 200);
+    expect(ReaderImageSizeCache.get('k'), const Size(100, 200));
+    ReaderImageSizeCache.clear();
+    expect(ReaderImageSizeCache.get('k'), isNull);
   });
 }
