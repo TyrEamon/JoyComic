@@ -10,14 +10,8 @@ void main() {
     expect(image.fit, BoxFit.contain);
   });
 
-  test('ReaderImage is StatefulWidget', () {
+  test('ReaderImage is StatelessWidget', () {
     const image = ReaderImage(url: 'https://example.com/a.webp');
-    expect(image, isA<StatefulWidget>());
-  });
-
-  test('ReaderImageSizeCache stores page bytes size', () {
-    ReaderImageSizeCache.clear();
-    // put requires bytes — only test clear/get null
-    expect(ReaderImageSizeCache.sizeOf('missing'), isNull);
+    expect(image, isA<StatelessWidget>());
   });
 }

@@ -1,17 +1,17 @@
-/// 竖直连续模式。
+/// 竖直连续模式 —— 对齐真机能出图的诊断列表结构。
 ///
-/// 列表项必须有**非零固定槽位**（真机 S17 layout=0x0 黑屏根因）。
-/// 出图路径：createPageImageProvider → Image，无 InteractiveViewer。
+/// 每页固定高度槽 + createPageImageProvider + 系统 Image。
+/// 不用 InteractiveViewer、不用 Image.memory 自研状态机。
 library;
 
 import 'package:flutter/material.dart';
 
 import '../../../../foundation/reader_config.dart';
+import '../../image_pipeline/page_image_provider.dart';
 import '../../providers/list_state_provider.dart';
 import '../../providers/reader_provider.dart' hide ReaderImage;
 import '../../utils/image_preload_controller.dart';
 import '../../utils/reader_pipeline.dart';
-import '../reader_image.dart';
 import 'gesture.dart';
 
 /// 竖直连续模式。
@@ -29,8 +29,8 @@ class _VerticalListState extends State<VerticalList> {
   bool _loggedOpen = false;
   final Set<int> _tileLogged = <int>{};
 
-  /// 每页布局高度（逻辑像素）。
-  final Map<int, double> _heights = <int, double>{};
+  /// 诊断版能出图的固定页高（逻辑像素）。
+  static const double _kPageSlotHeight = 520;
 
   @override
   void initState() {
@@ -55,50 +55,18 @@ class _VerticalListState extends State<VerticalList> {
     super.dispose();
   }
 
-  /// 默认占位高：约 4:3 竖图，且永不 < 200。
-  double _defaultHeight(double width) {
-    final h = width / (3 / 4);
-    if (!h.isFinite || h < 200) return 520;
-    return h;
-  }
-
-  double _heightOf(int index, double width) {
-    final h = _heights[index] ?? _defaultHeight(width);
-    if (!h.isFinite || h < 1) return _defaultHeight(width);
-    return h;
-  }
-
-  int _pageAtOffset(double offset, double width, int count) {
-    if (count <= 0) return 0;
-    var y = 0.0;
-    for (var i = 0; i < count; i++) {
-      final h = _heightOf(i, width);
-      if (offset < y + h) return i;
-      y += h;
-    }
-    return count - 1;
-  }
-
   void _onScroll() {
     if (!_scrollController.hasClients) return;
     final count = context.reader.images.length;
     if (count == 0) return;
-    final w = MediaQuery.sizeOf(context).width;
-    final index = _pageAtOffset(_scrollController.offset, w, count);
+    final index = (_scrollController.offset / _kPageSlotHeight)
+        .floor()
+        .clamp(0, count - 1);
     if (index != _lastPage) {
       _lastPage = index;
       _preloadController?.onAnchorChanged([index]);
       context.reader.onPageNoChanged(index);
     }
-  }
-
-  void _onImageSize(int index, int layoutW, int layoutH) {
-    if (layoutW <= 1 || layoutH <= 1) return;
-    final h = layoutH.toDouble();
-    final prev = _heights[index];
-    if (prev != null && (prev - h).abs() < 1.0) return;
-    if (!mounted) return;
-    setState(() => _heights[index] = h);
   }
 
   @override
@@ -107,100 +75,141 @@ class _VerticalListState extends State<VerticalList> {
     final pageCount = context.selector((p) => p.pageCount);
     final images = context.selector((p) => p.images);
     final traceId = context.reader.traceId;
+    final mq = MediaQuery.sizeOf(context);
 
-    // 列表交叉轴宽度：优先约束，再 MediaQuery，再 390。
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        double imageWidth = 0;
-        if (constraints.hasBoundedWidth &&
-            constraints.maxWidth.isFinite &&
-            constraints.maxWidth > 1) {
-          imageWidth = constraints.maxWidth;
-        } else {
-          final mq = MediaQuery.sizeOf(context).width;
-          imageWidth = mq > 1 ? mq : 390;
-        }
+    if (!_loggedOpen) {
+      _loggedOpen = true;
+      ReaderPipeline.listBuild(pageCount: pageCount, mq: mq);
+    }
 
-        if (!_loggedOpen) {
-          _loggedOpen = true;
-          ReaderPipeline.listBuild(
-            pageCount: pageCount,
-            mq: Size(imageWidth, MediaQuery.sizeOf(context).height),
-          );
-        }
-
-        return GestureWrapper(
-          openOrCloseToolbar: context.reader.openOrCloseToolbar,
-          jumpOffset: (delta) {
-            if (!_scrollController.hasClients) return;
-            final target = (_scrollController.offset + delta).clamp(
-              0.0,
-              _scrollController.position.maxScrollExtent,
-            );
-            _scrollController.animateTo(
-              target,
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeOut,
-            );
-          },
-          child: ColoredBox(
-            color: Colors.black,
-            child: ListView.builder(
-              controller: _scrollController,
-              physics: physics,
-              // ignore: deprecated_member_use
-              cacheExtent: MediaQuery.sizeOf(context).height * 3,
-              padding: EdgeInsets.zero,
-              itemCount: pageCount + 1,
-              itemBuilder: (context, index) {
-                if (index == pageCount) {
-                  return const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 32),
-                    child: Text(
-                      '本章完',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white54,
-                      ),
-                    ),
-                  );
-                }
-
-                final item = images[index];
-                if (_tileLogged.add(index)) {
-                  ReaderPipeline.tileBuild(index, cacheKey: item.cacheKey);
-                }
-                final layoutH = _heightOf(index, imageWidth);
-
-                // 与诊断版相同：外层强制宽高，内层 Image。
-                return SizedBox(
-                  width: imageWidth,
-                  height: layoutH,
-                  child: ReaderImage(
-                    key: ValueKey(item.cacheKey),
-                    url: item.url,
-                    cacheKey: item.cacheKey,
-                    headers: item.headers,
-                    fallbackUrls: item.fallbackUrls,
-                    bytesTransformer: item.bytesTransformer,
-                    width: imageWidth,
-                    height: layoutH,
-                    fit: BoxFit.contain,
-                    filterQuality: FilterQuality.medium,
-                    traceId: traceId,
-                    imageIndex: index,
-                    onImageSizeChanged: (pw, ph) {
-                      _onImageSize(index, pw, ph);
-                    },
-                  ),
-                );
-              },
-            ),
-          ),
+    return GestureWrapper(
+      openOrCloseToolbar: context.reader.openOrCloseToolbar,
+      jumpOffset: (delta) {
+        if (!_scrollController.hasClients) return;
+        final target = (_scrollController.offset + delta).clamp(
+          0.0,
+          _scrollController.position.maxScrollExtent,
+        );
+        _scrollController.animateTo(
+          target,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
         );
       },
+      // 深蓝底：若用户看到蓝底 = 列表在画（与诊断版一致）
+      child: ColoredBox(
+        color: const Color(0xFF0D47A1),
+        child: ListView.builder(
+          controller: _scrollController,
+          physics: physics,
+          // ignore: deprecated_member_use
+          cacheExtent: mq.height * 3,
+          padding: EdgeInsets.zero,
+          itemCount: pageCount + 1,
+          itemBuilder: (context, index) {
+            if (index == pageCount) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(vertical: 32),
+                child: Text(
+                  '本章完',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white70,
+                  ),
+                ),
+              );
+            }
+
+            final item = images[index];
+            if (_tileLogged.add(index)) {
+              ReaderPipeline.tileBuild(index, cacheKey: item.cacheKey);
+            }
+
+            final provider = createPageImageProvider(
+              url: item.url,
+              cacheKey: item.cacheKey,
+              fallbackUrls: item.fallbackUrls,
+              headers: item.headers,
+              bytesTransformer: item.bytesTransformer,
+              traceId: traceId,
+              imageIndex: index,
+            );
+
+            // === 与 49069ac 诊断版同构（当时截图已证明能出图）===
+            return Container(
+              width: double.infinity,
+              height: _kPageSlotHeight,
+              color: index.isEven
+                  ? const Color(0xFF1565C0)
+                  : const Color(0xFF2E7D32),
+              margin: const EdgeInsets.only(bottom: 2),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(
+                    color: Colors.black87,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    child: Text(
+                      '第${index + 1}/$pageCount',
+                      style: const TextStyle(
+                        color: Colors.yellow,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Image(
+                      image: provider,
+                      fit: BoxFit.contain,
+                      alignment: Alignment.topCenter,
+                      gaplessPlayback: true,
+                      filterQuality: FilterQuality.low,
+                      loadingBuilder: (context, child, progress) {
+                        if (progress == null) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (!context.mounted) return;
+                            ReaderPipeline.widgetFrame(
+                              index,
+                              layoutW: mq.width,
+                              layoutH: _kPageSlotHeight,
+                            );
+                          });
+                          return child;
+                        }
+                        return const Center(
+                          child: SizedBox(
+                            width: 28,
+                            height: 28,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 3,
+                            ),
+                          ),
+                        );
+                      },
+                      errorBuilder: (context, error, stack) {
+                        ReaderPipeline.widgetError(index, error: error);
+                        return Center(
+                          child: Text(
+                            '图失败 #$index',
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
     );
   }
 }
