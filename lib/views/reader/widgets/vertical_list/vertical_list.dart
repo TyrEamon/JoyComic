@@ -1,4 +1,7 @@
-/// 竖直连续模式：图贴图、真实高度缓存、滚动藏 UI、双指缩放。
+/// 竖直连续模式。
+///
+/// 列表 + 标准 [Image]（[createPageImageProvider] 负责下载与 JM 重组）。
+/// 不使用 InteractiveViewer 包裹整表（会再次黑屏）。
 library;
 
 import 'package:flutter/material.dart';
@@ -24,8 +27,9 @@ class _VerticalListState extends State<VerticalList> {
   ImagePreloadController? _preloadController;
   int _lastPage = 0;
   bool _loggedOpen = false;
+  final Set<int> _tileLogged = <int>{};
 
-  /// 每页布局高度（逻辑像素），用于精确页码。
+  /// 每页布局高度（逻辑像素），用于页码估算。
   final Map<int, double> _heights = <int, double>{};
 
   @override
@@ -51,7 +55,7 @@ class _VerticalListState extends State<VerticalList> {
     super.dispose();
   }
 
-  double _defaultHeight(double width) => width / (3 / 4); // 4:3 竖图占位
+  double _defaultHeight(double width) => width / (3 / 4);
 
   double _heightOf(int index, double width) {
     return _heights[index] ?? _defaultHeight(width);
@@ -84,9 +88,10 @@ class _VerticalListState extends State<VerticalList> {
   void _onImageSize(int index, int pxW, int pxH, double layoutW) {
     if (pxW <= 0 || pxH <= 0 || layoutW <= 0) return;
     final h = layoutW * pxH / pxW;
-    if (_heights[index] != null && (_heights[index]! - h).abs() < 0.5) {
-      return;
-    }
+    final prev = _heights[index];
+    if (prev != null && (prev - h).abs() < 1.0) return;
+    // 避免每帧 setState：仅高度变化时更新
+    if (!mounted) return;
     setState(() => _heights[index] = h);
   }
 
@@ -129,7 +134,6 @@ class _VerticalListState extends State<VerticalList> {
           // ignore: deprecated_member_use
           cacheExtent: MediaQuery.sizeOf(context).height * 3,
           padding: EdgeInsets.zero,
-          // 相邻图零间距
           itemCount: pageCount + 1,
           itemBuilder: (context, index) {
             if (index == pageCount) {
@@ -148,6 +152,9 @@ class _VerticalListState extends State<VerticalList> {
             }
 
             final item = images[index];
+            if (_tileLogged.add(index)) {
+              ReaderPipeline.tileBuild(index, cacheKey: item.cacheKey);
+            }
             final layoutH = _heightOf(index, imageWidth);
 
             return ReaderImage(

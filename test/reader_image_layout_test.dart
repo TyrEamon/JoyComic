@@ -10,9 +10,9 @@ void main() {
     expect(image.fit, BoxFit.fitWidth);
   });
 
-  test('ReaderImage is StatefulWidget with size cache', () {
+  test('ReaderImage is StatelessWidget stock Image path', () {
     const image = ReaderImage(url: 'https://example.com/a.webp');
-    expect(image, isA<StatefulWidget>());
+    expect(image, isA<StatelessWidget>());
   });
 
   test('ReaderImageSizeCache stores pixel size', () {
