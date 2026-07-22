@@ -21,11 +21,13 @@ final class ReaderV2Scheduler {
   final List<_ReaderV2Job> _queue = <_ReaderV2Job>[];
   final Map<String, Future<Object?>> _shared = <String, Future<Object?>>{};
   int _activeCount = 0;
+  int _maxObservedActive = 0;
   int _sequence = 0;
   bool _disposed = false;
   Completer<void>? _idleCompleter;
 
   int get activeCount => _activeCount;
+  int get maxObservedActive => _maxObservedActive;
   int get queuedCount => _queue.length;
   Future<void> get idle => _activeCount == 0 && _queue.isEmpty
       ? Future<void>.value()
@@ -85,6 +87,9 @@ final class ReaderV2Scheduler {
     while (_activeCount < maxConcurrent && _queue.isNotEmpty) {
       final job = _queue.removeAt(0);
       _activeCount += 1;
+      if (_activeCount > _maxObservedActive) {
+        _maxObservedActive = _activeCount;
+      }
       unawaited(_run(job));
     }
   }

@@ -185,6 +185,7 @@ class _ReaderContent extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
+        fit: StackFit.expand,
         children: [
           Positioned.fill(
             child: switch (loadingState) {
