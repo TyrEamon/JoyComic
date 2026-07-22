@@ -32,6 +32,61 @@ Size resolveVerticalReaderViewportSize(
   return Size(availableWidth * factor, availableHeight);
 }
 
+/// Keeps the actual scrolling viewport paintable when an ancestor temporarily
+/// reports a zero-width probe constraint.
+class VerticalReaderViewport extends StatelessWidget {
+  const VerticalReaderViewport({
+    super.key,
+    required this.size,
+    required this.child,
+  });
+
+  final Size size;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final hasUsableWidth =
+            constraints.maxWidth.isFinite && constraints.maxWidth > 1;
+        final hasUsableHeight =
+            constraints.maxHeight.isFinite && constraints.maxHeight > 1;
+        if (hasUsableWidth && hasUsableHeight) {
+          return Align(
+            alignment: Alignment.topCenter,
+            child: SizedBox.fromSize(size: size, child: child),
+          );
+        }
+
+        final mediaWidth = MediaQuery.sizeOf(context).width;
+        final canvasWidth = mediaWidth.isFinite && mediaWidth > size.width
+            ? mediaWidth
+            : size.width;
+        return SizedBox(
+          width: constraints.maxWidth.isFinite
+              ? constraints.maxWidth
+              : size.width,
+          height: constraints.maxHeight.isFinite
+              ? constraints.maxHeight
+              : size.height,
+          child: OverflowBox(
+            alignment: Alignment.topLeft,
+            minWidth: canvasWidth,
+            maxWidth: canvasWidth,
+            minHeight: size.height,
+            maxHeight: size.height,
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: SizedBox.fromSize(size: size, child: child),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class VerticalList extends StatefulWidget {
   const VerticalList({super.key});
 
@@ -217,57 +272,53 @@ class _VerticalListState extends State<VerticalList> {
               });
             }
 
-            return Align(
-              alignment: Alignment.topCenter,
-              child: SizedBox(
-                width: viewportSize.width,
-                height: viewportSize.height,
-                child: ListView.builder(
-                  controller: _scrollController,
-                  padding: EdgeInsets.zero,
-                  physics: physics,
-                  scrollCacheExtent: ScrollCacheExtent.pixels(mq.height * 2),
-                  itemCount: pageCount + 1,
-                  addAutomaticKeepAlives: false,
-                  itemBuilder: (context, index) {
-                    if (index == pageCount) {
-                      return const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 32),
-                        child: Text(
-                          '本章完',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white54,
-                          ),
+            return VerticalReaderViewport(
+              size: viewportSize,
+              child: ListView.builder(
+                controller: _scrollController,
+                padding: EdgeInsets.zero,
+                physics: physics,
+                scrollCacheExtent: ScrollCacheExtent.pixels(mq.height * 2),
+                itemCount: pageCount + 1,
+                addAutomaticKeepAlives: false,
+                itemBuilder: (context, index) {
+                  if (index == pageCount) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 32),
+                      child: Text(
+                        '本章完',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white54,
                         ),
-                      );
-                    }
-
-                    final item = images[index];
-                    if (index < 5) {
-                      ReaderPipeline.tileBuild(index, cacheKey: item.cacheKey);
-                    }
-                    return KeyedSubtree(
-                      key: _itemKeys[index],
-                      child: ReaderImage(
-                        key: ValueKey(item.cacheKey),
-                        url: item.url,
-                        cacheKey: item.cacheKey,
-                        headers: item.headers,
-                        fallbackUrls: item.fallbackUrls,
-                        bytesTransformer: item.bytesTransformer,
-                        cacheWidth: cacheWidth,
-                        placeholderHeight: _pageHeight(index),
-                        fit: BoxFit.contain,
-                        alignment: Alignment.topCenter,
-                        traceId: traceId,
-                        imageIndex: index,
                       ),
                     );
-                  },
-                ),
+                  }
+
+                  final item = images[index];
+                  if (index < 5) {
+                    ReaderPipeline.tileBuild(index, cacheKey: item.cacheKey);
+                  }
+                  return KeyedSubtree(
+                    key: _itemKeys[index],
+                    child: ReaderImage(
+                      key: ValueKey(item.cacheKey),
+                      url: item.url,
+                      cacheKey: item.cacheKey,
+                      headers: item.headers,
+                      fallbackUrls: item.fallbackUrls,
+                      bytesTransformer: item.bytesTransformer,
+                      cacheWidth: cacheWidth,
+                      placeholderHeight: _pageHeight(index),
+                      fit: BoxFit.contain,
+                      alignment: Alignment.topCenter,
+                      traceId: traceId,
+                      imageIndex: index,
+                    ),
+                  );
+                },
               ),
             );
           },
