@@ -141,8 +141,8 @@ final class ReaderV2Scheduler {
   void dispose() {
     if (_disposed) return;
     _disposed = true;
-    session.removeCancelListener(_onSessionCancelled);
     if (!session.isCancelled) session.cancel('scheduler disposed');
+    session.removeCancelListener(_onSessionCancelled);
     _completeIdleIfNeeded();
   }
 

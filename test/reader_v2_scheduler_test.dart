@@ -129,4 +129,36 @@ void main() {
     await queuedCancelled;
     expect(session.events.where((event) => event.stage == 'cancel').length, 1);
   });
+  test('disposing scheduler rejects queued work', () async {
+    final session = ReaderV2Session(traceId: 'dispose');
+    final scheduler = ReaderV2Scheduler(session: session, maxConcurrent: 1);
+    final gate = Completer<void>();
+    final active = scheduler.schedule<void>(
+      key: 'active-dispose',
+      page: 0,
+      priority: ReaderV2Priority.visible,
+      task: () => gate.future,
+    );
+    final queued = scheduler.schedule<void>(
+      key: 'queued-dispose',
+      page: 1,
+      priority: ReaderV2Priority.preload,
+      task: () async {},
+    );
+    final activeCancelled = expectLater(
+      active,
+      throwsA(isA<ReaderV2Cancelled>()),
+    );
+    final queuedCancelled = expectLater(
+      queued,
+      throwsA(isA<ReaderV2Cancelled>()),
+    );
+
+    await Future<void>.delayed(Duration.zero);
+    scheduler.dispose();
+    gate.complete();
+
+    await activeCancelled;
+    await queuedCancelled.timeout(const Duration(seconds: 1));
+  });
 }
