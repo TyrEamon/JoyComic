@@ -43,6 +43,7 @@ final class _ReaderV2PageImageState extends State<ReaderV2PageImage>
   ImageInfo? _info;
   Object? _error;
   BoxConstraints? _lastConstraints;
+  bool _frameworkFrameLogged = false;
 
   @override
   void initState() {
@@ -65,18 +66,13 @@ final class _ReaderV2PageImageState extends State<ReaderV2PageImage>
         !identical(oldWidget.scheduler, widget.scheduler)) {
       _replaceInfo(null);
       _error = null;
+      _frameworkFrameLogged = false;
       _resolve();
     }
   }
 
   void _resolve() {
-    final base = ReaderV2ImageProvider(
-      page: widget.page,
-      session: widget.session,
-      scheduler: widget.scheduler,
-      priority: widget.priority,
-      bytesLoader: widget.bytesLoader,
-    );
+    final base = _buildImageProvider();
     final provider = ScrollAwareImageProvider(
       context: _scrollContext,
       imageProvider: base,
@@ -118,6 +114,16 @@ final class _ReaderV2PageImageState extends State<ReaderV2PageImage>
       },
     );
     stream.addListener(_listener!);
+  }
+
+  ReaderV2ImageProvider _buildImageProvider() {
+    return ReaderV2ImageProvider(
+      page: widget.page,
+      session: widget.session,
+      scheduler: widget.scheduler,
+      priority: widget.priority,
+      bytesLoader: widget.bytesLoader,
+    );
   }
 
   void _detach() {
@@ -206,15 +212,27 @@ final class _ReaderV2PageImageState extends State<ReaderV2PageImage>
           final image = SizedBox(
             width: width,
             height: height,
-            child: RawImage(
+            child: Image(
               key: _rawImageKey,
-              image: info.image,
+              image: _buildImageProvider(),
               width: width,
               height: height,
               fit: fixedHeight == null ? BoxFit.fitWidth : widget.fit,
               alignment: Alignment.topCenter,
               filterQuality: FilterQuality.medium,
-              scale: info.scale,
+              gaplessPlayback: true,
+              excludeFromSemantics: true,
+              frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+                if (frame != null && !_frameworkFrameLogged) {
+                  _frameworkFrameLogged = true;
+                  widget.session.record(
+                    'paint-widget',
+                    page: widget.page.index,
+                    detail: 'Image frame=$frame sync=$wasSynchronouslyLoaded',
+                  );
+                }
+                return child;
+              },
             ),
           );
           if (!useFallbackWidth) return image;

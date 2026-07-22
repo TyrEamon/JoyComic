@@ -48,7 +48,7 @@ void main() {
     },
   );
 
-  testWidgets('page image has a non-zero loading slot then paints RawImage', (
+  testWidgets('page image has a non-zero loading slot then paints Image', (
     tester,
   ) async {
     final gate = Completer<Uint8List>();
@@ -81,24 +81,28 @@ void main() {
       tester.getSize(find.byType(ReaderV2PageImage)).height,
       greaterThan(0),
     );
-    expect(find.byType(RawImage), findsNothing);
+    expect(find.byType(Image), findsNothing);
 
     gate.complete(_png);
     await tester.runAsync(() async {
       await Future<void>.delayed(const Duration(milliseconds: 100));
     });
-    for (var i = 0; i < 5 && find.byType(RawImage).evaluate().isEmpty; i++) {
+    for (var i = 0; i < 5 && find.byType(Image).evaluate().isEmpty; i++) {
       await tester.pump();
     }
     expect(
-      find.byType(RawImage),
+      find.byType(Image),
       findsOneWidget,
       reason: session.events.map((event) => event.stage).join(' | '),
     );
-    final rawImage = tester.widget<RawImage>(find.byType(RawImage));
+    final rawImage = tester.widget<Image>(find.byType(Image));
     expect(rawImage.width, 200);
     expect(rawImage.height, 200);
     expect(session.events.any((event) => event.stage == 'frame'), isTrue);
+    expect(
+      session.events.any((event) => event.stage == 'paint-widget'),
+      isTrue,
+    );
     await tester.pump();
     final layout = session.events.where((event) => event.stage == 'layout');
     expect(layout, hasLength(1));
@@ -148,18 +152,18 @@ void main() {
     await tester.runAsync(() async {
       await Future<void>.delayed(const Duration(milliseconds: 100));
     });
-    for (var i = 0; i < 6 && find.byType(RawImage).evaluate().isEmpty; i++) {
+    for (var i = 0; i < 6 && find.byType(Image).evaluate().isEmpty; i++) {
       await tester.pump();
     }
-    expect(find.byType(RawImage), findsOneWidget);
+    expect(find.byType(Image), findsOneWidget);
 
     await tester.pumpWidget(buildAtWidth(0));
     await tester.pump();
 
-    final rawImage = tester.widget<RawImage>(find.byType(RawImage));
+    final rawImage = tester.widget<Image>(find.byType(Image));
     expect(rawImage.width, 440);
     expect(rawImage.height, 440);
-    expect(tester.getSize(find.byType(RawImage)), const Size(440, 440));
+    expect(tester.getSize(find.byType(Image)), const Size(440, 440));
     final pageSize = tester.getSize(find.byType(ReaderV2PageImage));
     expect(pageSize.width, 0);
     expect(pageSize.height, 440);
