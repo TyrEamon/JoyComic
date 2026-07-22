@@ -1,9 +1,12 @@
 /// 竖直连续沉浸阅读。
 ///
-/// 出图关键（真机已验证，勿删）：
-/// 非零高度槽 + [Column] + [Expanded] + 系统 [Image]。
+/// ## 真机铁律（多次黑屏验证）
+/// 1. 必须：非零高度槽 + [Column] + [Expanded] + 系统 [Image]
+/// 2. 禁止：解码后 [setState] 改槽高（会重建 tile → 黑屏）
+/// 3. 禁止：整表 [InteractiveViewer]
+/// 4. 禁止：去掉 Expanded 只留裸 Image
 ///
-/// 沉浸：黑底、全宽 [BoxFit.fitWidth]、按像素宽高比算槽高（减少黑边）。
+/// 沉浸：黑底、全宽 [BoxFit.fitWidth]、槽高 = 屏宽×固定比例（构建时算一次，不动态改）。
 library;
 
 import 'package:flutter/material.dart';
@@ -31,14 +34,11 @@ class _VerticalListState extends State<VerticalList> {
   bool _loggedOpen = false;
   final Set<int> _tileLogged = <int>{};
 
-  /// 每页槽高（逻辑像素）。先用默认比，解码后按真实宽高比更新。
-  final Map<int, double> _slotHeights = <int, double>{};
+  /// 高/宽。常见 JM 页约 960×1355 ≈ 1.41；用固定比例避免解码后改高度。
+  static const double _kSlotAspect = 1.41;
 
-  /// 默认高/宽（接近常见漫画 960×1355 ≈ 1.41）。
-  static const double _kDefaultAspect = 1.41;
-
-  /// 最小槽高：过小在部分机型上仍可能异常。
-  static const double _kMinSlot = 200;
+  /// 绝对下限（逻辑像素）。
+  static const double _kMinSlot = 400;
 
   @override
   void initState() {
@@ -63,27 +63,14 @@ class _VerticalListState extends State<VerticalList> {
     super.dispose();
   }
 
-  double _defaultSlot(double width) {
-    final h = width * _kDefaultAspect;
-    if (!h.isFinite || h < _kMinSlot) return 520;
-    return h;
-  }
-
-  double _slotOf(int index, double width) {
-    final h = _slotHeights[index] ?? _defaultSlot(width);
-    if (!h.isFinite || h < _kMinSlot) return _defaultSlot(width);
-    return h;
-  }
-
-  int _pageAtOffset(double offset, double width, int count) {
-    if (count <= 0) return 0;
-    var y = 0.0;
-    for (var i = 0; i < count; i++) {
-      final h = _slotOf(i, width);
-      if (offset < y + h) return i;
-      y += h;
+  /// 全页统一槽高：只依赖屏宽，**永不**因单页解码 setState。
+  double _slotHeight(double width) {
+    final h = width * _kSlotAspect;
+    if (!h.isFinite || h < _kMinSlot) {
+      // 与能出图诊断版同量级
+      return 520;
     }
-    return count - 1;
+    return h;
   }
 
   void _onScroll() {
@@ -91,22 +78,13 @@ class _VerticalListState extends State<VerticalList> {
     final count = context.reader.images.length;
     if (count == 0) return;
     final w = MediaQuery.sizeOf(context).width;
-    final index = _pageAtOffset(_scrollController.offset, w, count);
+    final slot = _slotHeight(w > 1 ? w : 390);
+    final index = (_scrollController.offset / slot).floor().clamp(0, count - 1);
     if (index != _lastPage) {
       _lastPage = index;
       _preloadController?.onAnchorChanged([index]);
       context.reader.onPageNoChanged(index);
     }
-  }
-
-  void _onPixelSize(int index, int pxW, int pxH, double layoutW) {
-    if (pxW <= 0 || pxH <= 0 || layoutW <= 1) return;
-    final h = layoutW * pxH / pxW;
-    if (!h.isFinite || h < _kMinSlot) return;
-    final prev = _slotHeights[index];
-    if (prev != null && (prev - h).abs() < 1.0) return;
-    if (!mounted) return;
-    setState(() => _slotHeights[index] = h);
   }
 
   @override
@@ -117,10 +95,15 @@ class _VerticalListState extends State<VerticalList> {
     final traceId = context.reader.traceId;
     final mq = MediaQuery.sizeOf(context);
     final width = mq.width > 1 ? mq.width : 390.0;
+    final slotH = _slotHeight(width);
 
     if (!_loggedOpen) {
       _loggedOpen = true;
       ReaderPipeline.listBuild(pageCount: pageCount, mq: mq);
+      ReaderPipeline.mark(
+        ReaderStage.listBuild,
+        detail: 'slotH=${slotH.toStringAsFixed(1)} aspect=$_kSlotAspect',
+      );
     }
 
     return GestureWrapper(
@@ -177,10 +160,9 @@ class _VerticalListState extends State<VerticalList> {
               imageIndex: index,
             );
 
-            final slotH = _slotOf(index, width);
-
-            // 能出图结构：固定非零高 + Column + Expanded(Image)。
-            // fitWidth：横向铺满；槽高按宽高比时上下黑边最小。
+            // ========== 能出图铁律结构（e82905f / a747864）==========
+            // SizedBox(非零高) → ColoredBox → Column → Expanded → Image
+            // 勿删 Expanded；勿在解码后改 height 触发整表 setState。
             return SizedBox(
               width: double.infinity,
               height: slotH,
@@ -190,13 +172,49 @@ class _VerticalListState extends State<VerticalList> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Expanded(
-                      child: _PageImage(
-                        provider: provider,
-                        pageIndex: index,
-                        layoutW: width,
-                        layoutH: slotH,
-                        onPixelSize: (pw, ph) {
-                          _onPixelSize(index, pw, ph, width);
+                      child: Image(
+                        image: provider,
+                        // 横向铺满；槽高按固定比例，上下黑边远小于 contain+矮槽
+                        fit: BoxFit.fitWidth,
+                        width: double.infinity,
+                        alignment: Alignment.topCenter,
+                        gaplessPlayback: true,
+                        filterQuality: FilterQuality.medium,
+                        excludeFromSemantics: true,
+                        loadingBuilder: (context, child, progress) {
+                          if (progress == null) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (!context.mounted) return;
+                              ReaderPipeline.widgetFrame(
+                                index,
+                                layoutW: width,
+                                layoutH: slotH,
+                              );
+                            });
+                            return child;
+                          }
+                          return const Center(
+                            child: SizedBox(
+                              width: 28,
+                              height: 28,
+                              child: CircularProgressIndicator(
+                                color: Colors.white54,
+                                strokeWidth: 3,
+                              ),
+                            ),
+                          );
+                        },
+                        errorBuilder: (context, error, stack) {
+                          ReaderPipeline.widgetError(index, error: error);
+                          return Center(
+                            child: Text(
+                              '加载失败 第${index + 1}页',
+                              style: const TextStyle(
+                                color: Colors.white54,
+                                fontSize: 13,
+                              ),
+                            ),
+                          );
                         },
                       ),
                     ),
@@ -207,127 +225,6 @@ class _VerticalListState extends State<VerticalList> {
           },
         ),
       ),
-    );
-  }
-}
-
-/// 单页 Image + 一次性尺寸探测（共享 ImageCache，不另开下载）。
-class _PageImage extends StatefulWidget {
-  const _PageImage({
-    required this.provider,
-    required this.pageIndex,
-    required this.layoutW,
-    required this.layoutH,
-    required this.onPixelSize,
-  });
-
-  final ImageProvider provider;
-  final int pageIndex;
-  final double layoutW;
-  final double layoutH;
-  final void Function(int pxW, int pxH) onPixelSize;
-
-  @override
-  State<_PageImage> createState() => _PageImageState();
-}
-
-class _PageImageState extends State<_PageImage> {
-  ImageStream? _stream;
-  ImageStreamListener? _listener;
-  bool _sizeSent = false;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _attachSizeListener();
-  }
-
-  @override
-  void didUpdateWidget(covariant _PageImage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.provider != widget.provider) {
-      _detach();
-      _sizeSent = false;
-      _attachSizeListener();
-    }
-  }
-
-  @override
-  void dispose() {
-    _detach();
-    super.dispose();
-  }
-
-  void _detach() {
-    if (_stream != null && _listener != null) {
-      _stream!.removeListener(_listener!);
-    }
-    _stream = null;
-    _listener = null;
-  }
-
-  void _attachSizeListener() {
-    if (_sizeSent) return;
-    final stream = widget.provider.resolve(
-      createLocalImageConfiguration(context),
-    );
-    late final ImageStreamListener listener;
-    listener = ImageStreamListener((info, _) {
-      if (_sizeSent) return;
-      final w = info.image.width;
-      final h = info.image.height;
-      if (w > 0 && h > 0) {
-        _sizeSent = true;
-        widget.onPixelSize(w, h);
-      }
-    }, onError: (_, __) {});
-    _stream = stream;
-    _listener = listener;
-    stream.addListener(listener);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Image(
-      image: widget.provider,
-      fit: BoxFit.fitWidth,
-      width: double.infinity,
-      alignment: Alignment.topCenter,
-      gaplessPlayback: true,
-      filterQuality: FilterQuality.medium,
-      excludeFromSemantics: true,
-      loadingBuilder: (context, child, progress) {
-        if (progress == null) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!context.mounted) return;
-            ReaderPipeline.widgetFrame(
-              widget.pageIndex,
-              layoutW: widget.layoutW,
-              layoutH: widget.layoutH,
-            );
-          });
-          return child;
-        }
-        return const Center(
-          child: SizedBox(
-            width: 28,
-            height: 28,
-            child: CircularProgressIndicator(
-              color: Colors.white54,
-              strokeWidth: 3,
-            ),
-          ),
-        );
-      },
-      errorBuilder: (context, error, stack) {
-        ReaderPipeline.widgetError(widget.pageIndex, error: error);
-        return Center(
-          child: Text(
-            '加载失败 第${widget.pageIndex + 1}页',
-            style: const TextStyle(color: Colors.white54, fontSize: 13),
-          ),
-        );
-      },
     );
   }
 }
