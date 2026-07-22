@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderBox, RenderImage;
 
 import '../core/reader_v2_scheduler.dart';
 import '../core/reader_v2_session.dart';
@@ -33,29 +34,19 @@ final class ReaderV2PageImage extends StatefulWidget {
   State<ReaderV2PageImage> createState() => _ReaderV2PageImageState();
 }
 
-final class _ReaderV2PageImageState extends State<ReaderV2PageImage>
-    with WidgetsBindingObserver {
-  late DisposableBuildContext<State<ReaderV2PageImage>> _scrollContext;
-  final GlobalKey _rawImageKey = GlobalKey();
-  ImageStream? _stream;
-  ImageStreamListener? _listener;
-  ImageStreamCompleterHandle? _keepAlive;
-  ImageInfo? _info;
-  Object? _error;
+final class _ReaderV2PageImageState extends State<ReaderV2PageImage> {
+  GlobalKey _imageKey = GlobalKey();
+  late ReaderV2ImageProvider _provider;
   BoxConstraints? _lastConstraints;
   bool _frameworkFrameLogged = false;
+  double? _naturalAspectRatio;
+  int? _loggedErrorGeneration;
+  int _retryGeneration = 0;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _scrollContext = DisposableBuildContext<State<ReaderV2PageImage>>(this);
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _resolve();
+    _provider = _buildImageProvider();
   }
 
   @override
@@ -64,56 +55,13 @@ final class _ReaderV2PageImageState extends State<ReaderV2PageImage>
     if (oldWidget.page.cacheKey != widget.page.cacheKey ||
         oldWidget.session.traceId != widget.session.traceId ||
         !identical(oldWidget.scheduler, widget.scheduler)) {
-      _replaceInfo(null);
-      _error = null;
       _frameworkFrameLogged = false;
-      _resolve();
+      _naturalAspectRatio = null;
+      _loggedErrorGeneration = null;
+      _retryGeneration = 0;
+      _imageKey = GlobalKey();
+      _provider = _buildImageProvider();
     }
-  }
-
-  void _resolve() {
-    final base = _buildImageProvider();
-    final provider = ScrollAwareImageProvider(
-      context: _scrollContext,
-      imageProvider: base,
-    );
-    final stream = provider.resolve(
-      createLocalImageConfiguration(
-        context,
-        size: widget.height == null
-            ? null
-            : Size(MediaQuery.sizeOf(context).width, widget.height!),
-      ),
-    );
-    if (_stream?.key == stream.key) return;
-    _detach();
-    _stream = stream;
-    _listener = ImageStreamListener(
-      (info, synchronousCall) {
-        if (!mounted || widget.session.isCancelled) return;
-        _replaceInfo(info);
-        widget.onImageSize?.call(
-          Size(info.image.width.toDouble(), info.image.height.toDouble()),
-        );
-        widget.session.record(
-          'frame',
-          page: widget.page.index,
-          detail: '${info.image.width}x${info.image.height}',
-        );
-        setState(() => _error = null);
-        _recordLayoutAfterFrame(info);
-      },
-      onError: (Object error, StackTrace? stackTrace) {
-        if (!mounted || widget.session.isCancelled) return;
-        widget.session.record(
-          'image-error',
-          page: widget.page.index,
-          detail: '$error',
-        );
-        setState(() => _error = error);
-      },
-    );
-    stream.addListener(_listener!);
   }
 
   ReaderV2ImageProvider _buildImageProvider() {
@@ -126,46 +74,76 @@ final class _ReaderV2PageImageState extends State<ReaderV2PageImage>
     );
   }
 
-  void _detach() {
-    final stream = _stream;
-    final listener = _listener;
-    if (stream != null && listener != null) stream.removeListener(listener);
-    _keepAlive?.dispose();
-    _keepAlive = null;
-    _listener = null;
-    _stream = null;
-  }
-
-  void _replaceInfo(ImageInfo? next) {
-    final old = _info;
-    _info = next;
-    if (old != null && !identical(old, next)) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => old.dispose());
-    }
-  }
-
-  void _recordLayoutAfterFrame(ImageInfo info) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !identical(_info, info)) return;
-      final widgetRenderObject = context.findRenderObject();
-      final rawRenderObject = _rawImageKey.currentContext?.findRenderObject();
-      final widgetBox = widgetRenderObject is RenderBox
-          ? widgetRenderObject
-          : null;
-      final rawBox = rawRenderObject is RenderBox ? rawRenderObject : null;
-      final constraints = _lastConstraints;
-      widget.session.record(
-        'layout',
-        page: widget.page.index,
-        detail: [
-          'constraints=${_formatConstraints(constraints)}',
-          'widget=${_formatSize(widgetBox)}',
-          'raw=${_formatSize(rawBox)}',
-          'attached=${rawBox?.attached ?? false}',
-          'hasSize=${rawBox?.hasSize ?? false}',
-        ].join(' '),
-      );
+  Future<void> _retry() async {
+    await _provider.evict();
+    if (!mounted || widget.session.isCancelled) return;
+    setState(() {
+      _retryGeneration += 1;
+      _frameworkFrameLogged = false;
+      _loggedErrorGeneration = null;
+      _imageKey = GlobalKey();
+      _provider = _buildImageProvider();
     });
+  }
+
+  void _recordFrameAndLayout() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || widget.session.isCancelled) return;
+      final imageRenderObject = _imageKey.currentContext?.findRenderObject();
+      final renderImage = imageRenderObject is RenderImage
+          ? imageRenderObject
+          : null;
+      final decoded = renderImage?.image;
+      var resized = false;
+      if (decoded != null) {
+        final aspectRatio = decoded.width / decoded.height;
+        widget.onImageSize?.call(
+          Size(decoded.width.toDouble(), decoded.height.toDouble()),
+        );
+        widget.session.record(
+          'frame',
+          page: widget.page.index,
+          detail: '${decoded.width}x${decoded.height}',
+        );
+        if (widget.height == null &&
+            aspectRatio.isFinite &&
+            aspectRatio > 0 &&
+            _naturalAspectRatio != aspectRatio) {
+          resized = true;
+          setState(() => _naturalAspectRatio = aspectRatio);
+        }
+      }
+      if (resized) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _recordLayout());
+      } else {
+        _recordLayout();
+      }
+    });
+  }
+
+  void _recordLayout() {
+    if (!mounted || widget.session.isCancelled) return;
+    final widgetRenderObject = context.findRenderObject();
+    final imageRenderObject = _imageKey.currentContext?.findRenderObject();
+    final widgetBox = widgetRenderObject is RenderBox
+        ? widgetRenderObject
+        : null;
+    final imageBox = imageRenderObject is RenderBox ? imageRenderObject : null;
+    final constraints = _lastConstraints;
+    final global = imageBox?.localToGlobal(Offset.zero);
+    widget.session.record(
+      'layout',
+      page: widget.page.index,
+      detail: [
+        'constraints=${_formatConstraints(constraints)}',
+        'widget=${_formatSize(widgetBox)}',
+        'image=${_formatSize(imageBox)}',
+        'global=${global?.dx},${global?.dy}',
+        'attached=${imageBox?.attached ?? false}',
+        'hasSize=${imageBox?.hasSize ?? false}',
+        'render=${imageRenderObject.runtimeType}',
+      ].join(' '),
+    );
   }
 
   static String _formatConstraints(BoxConstraints? constraints) {
@@ -181,15 +159,6 @@ final class _ReaderV2PageImageState extends State<ReaderV2PageImage>
   }
 
   @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _detach();
-    _replaceInfo(null);
-    _scrollContext.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -201,76 +170,93 @@ final class _ReaderV2PageImageState extends State<ReaderV2PageImage>
         final width = useFallbackWidth
             ? (mediaWidth.isFinite && mediaWidth > 1 ? mediaWidth : 390.0)
             : constrainedWidth;
-        final fixedHeight = widget.height;
-        final info = _info;
-        if (info != null) {
-          final height =
-              fixedHeight ??
-              width *
-                  info.image.height.toDouble() /
-                  info.image.width.toDouble();
-          final image = SizedBox(
-            width: width,
-            height: height,
-            child: Image(
-              key: _rawImageKey,
-              image: _buildImageProvider(),
-              width: width,
-              height: height,
-              fit: fixedHeight == null ? BoxFit.fitWidth : widget.fit,
-              alignment: Alignment.topCenter,
-              filterQuality: FilterQuality.medium,
-              gaplessPlayback: true,
-              excludeFromSemantics: true,
-              frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-                if (frame != null && !_frameworkFrameLogged) {
-                  _frameworkFrameLogged = true;
-                  widget.session.record(
-                    'paint-widget',
-                    page: widget.page.index,
-                    detail: 'Image frame=$frame sync=$wasSynchronouslyLoaded',
-                  );
-                }
-                return child;
-              },
-            ),
-          );
-          if (!useFallbackWidth) return image;
-          return SizedBox(
-            width: constraints.maxWidth.isFinite ? constraints.maxWidth : 0,
-            height: height,
-            child: OverflowBox(
-              alignment: Alignment.topLeft,
-              minWidth: width,
-              maxWidth: width,
-              minHeight: height,
-              maxHeight: height,
-              child: image,
-            ),
-          );
-        }
-        return SizedBox(
+        final naturalAspectRatio = _naturalAspectRatio;
+        final height =
+            widget.height ??
+            (naturalAspectRatio == null
+                ? widget.placeholderHeight
+                : width / naturalAspectRatio);
+        final image = SizedBox(
           width: width,
-          height: fixedHeight ?? widget.placeholderHeight,
+          height: height,
           child: ColoredBox(
             color: Colors.black,
-            child: Center(
-              child: _error == null
-                  ? const SizedBox.square(
-                      dimension: 28,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 3,
-                        color: Colors.white54,
-                      ),
-                    )
-                  : TextButton(
-                      onPressed: () {
-                        setState(() => _error = null);
-                        _resolve();
-                      },
-                      child: const Text('重试'),
-                    ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: Image(
+                    key: _imageKey,
+                    image: _provider,
+                    width: width,
+                    height: height,
+                    fit: widget.height == null ? BoxFit.fitWidth : widget.fit,
+                    alignment: Alignment.topCenter,
+                    filterQuality: FilterQuality.medium,
+                    gaplessPlayback: true,
+                    excludeFromSemantics: true,
+                    frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+                      if (frame == null) {
+                        return const Center(
+                          child: SizedBox.square(
+                            dimension: 28,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 3,
+                              color: Colors.white54,
+                            ),
+                          ),
+                        );
+                      }
+                      if (!_frameworkFrameLogged) {
+                        _frameworkFrameLogged = true;
+                        widget.session.record(
+                          'paint-widget',
+                          page: widget.page.index,
+                          detail:
+                              'Image frame=$frame sync=$wasSynchronouslyLoaded '
+                              'stream=single',
+                        );
+                        _recordFrameAndLayout();
+                      }
+                      return child;
+                    },
+                    errorBuilder: (context, error, stackTrace) {
+                      if (widget.session.isCancelled) {
+                        return const SizedBox.shrink();
+                      }
+                      if (_loggedErrorGeneration != _retryGeneration) {
+                        _loggedErrorGeneration = _retryGeneration;
+                        widget.session.record(
+                          'image-error',
+                          page: widget.page.index,
+                          detail: '$error',
+                        );
+                      }
+                      return Center(
+                        child: TextButton(
+                          key: ValueKey('reader-v2-retry-$_retryGeneration'),
+                          onPressed: _retry,
+                          child: const Text('重试'),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
+          ),
+        );
+        if (!useFallbackWidth) return image;
+        return SizedBox(
+          width: constraints.maxWidth.isFinite ? constraints.maxWidth : 0,
+          height: height,
+          child: OverflowBox(
+            alignment: Alignment.topLeft,
+            minWidth: width,
+            maxWidth: width,
+            minHeight: height,
+            maxHeight: height,
+            child: image,
           ),
         );
       },

@@ -48,10 +48,11 @@ void main() {
     },
   );
 
-  testWidgets('page image has a non-zero loading slot then paints Image', (
+  testWidgets('page image keeps one framework Image mounted while loading', (
     tester,
   ) async {
     final gate = Completer<Uint8List>();
+    var loads = 0;
     final session = ReaderV2Session(traceId: 'widget');
     final scheduler = ReaderV2Scheduler(session: session, maxConcurrent: 1);
     const page = ReaderV2Page(
@@ -70,7 +71,10 @@ void main() {
               session: session,
               scheduler: scheduler,
               priority: ReaderV2Priority.visible,
-              bytesLoader: (_, _) => gate.future,
+              bytesLoader: (_, _) {
+                loads += 1;
+                return gate.future;
+              },
             ),
           ),
         ),
@@ -81,13 +85,28 @@ void main() {
       tester.getSize(find.byType(ReaderV2PageImage)).height,
       greaterThan(0),
     );
-    expect(find.byType(Image), findsNothing);
+    expect(find.byType(Image), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(ReaderV2PageImage),
+        matching: find.byType(Column),
+      ),
+      findsOneWidget,
+    );
+    final loadingImageElement = tester.element(find.byType(Image));
+    expect(
+      find.descendant(
+        of: find.byType(ReaderV2PageImage),
+        matching: find.byType(Expanded),
+      ),
+      findsOneWidget,
+    );
 
     gate.complete(_png);
     await tester.runAsync(() async {
       await Future<void>.delayed(const Duration(milliseconds: 100));
     });
-    for (var i = 0; i < 5 && find.byType(Image).evaluate().isEmpty; i++) {
+    for (var i = 0; i < 5; i++) {
       await tester.pump();
     }
     expect(
@@ -98,6 +117,8 @@ void main() {
     final rawImage = tester.widget<Image>(find.byType(Image));
     expect(rawImage.width, 200);
     expect(rawImage.height, 200);
+    expect(tester.element(find.byType(Image)), same(loadingImageElement));
+    expect(loads, 1);
     expect(session.events.any((event) => event.stage == 'frame'), isTrue);
     expect(
       session.events.any((event) => event.stage == 'paint-widget'),
@@ -107,7 +128,7 @@ void main() {
     final layout = session.events.where((event) => event.stage == 'layout');
     expect(layout, hasLength(1));
     expect(layout.single.detail, contains('widget=200.0x200.0'));
-    expect(layout.single.detail, contains('raw=200.0x200.0'));
+    expect(layout.single.detail, contains('image=200.0x200.0'));
     expect(layout.single.detail, contains('attached=true'));
     expect(layout.single.detail, contains('hasSize=true'));
   });
@@ -140,6 +161,7 @@ void main() {
                   scheduler: scheduler,
                   priority: ReaderV2Priority.visible,
                   bytesLoader: (_, _) async => _png,
+                  placeholderHeight: 440,
                 ),
               ),
             ],
@@ -168,5 +190,97 @@ void main() {
     expect(pageSize.width, 0);
     expect(pageSize.height, 440);
     expect(pageSize.height.isFinite, isTrue);
+  });
+
+  testWidgets('page image retry creates a fresh framework image stream', (
+    tester,
+  ) async {
+    var loads = 0;
+    final session = ReaderV2Session(traceId: 'retry');
+    final scheduler = ReaderV2Scheduler(session: session, maxConcurrent: 1);
+    addTearDown(scheduler.dispose);
+    const page = ReaderV2Page(
+      index: 0,
+      url: 'https://example.test/retry.png',
+      cacheKey: 'retry-page',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SizedBox(
+          width: 200,
+          child: ReaderV2PageImage(
+            page: page,
+            session: session,
+            scheduler: scheduler,
+            priority: ReaderV2Priority.visible,
+            bytesLoader: (_, _) async {
+              loads += 1;
+              if (loads == 1) throw StateError('first load failed');
+              return _png;
+            },
+            placeholderHeight: 200,
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    expect(find.text('重试'), findsOneWidget);
+    expect(loads, 1);
+
+    await tester.tap(find.text('重试'));
+    await tester.pump();
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    for (var i = 0; i < 5; i++) {
+      await tester.pump();
+    }
+
+    expect(loads, 2);
+    expect(find.text('重试'), findsNothing);
+    expect(session.events.any((event) => event.stage == 'frame'), isTrue);
+  });
+
+  testWidgets('cancelled page image suppresses retry UI and error logs', (
+    tester,
+  ) async {
+    final gate = Completer<Uint8List>();
+    final session = ReaderV2Session(traceId: 'cancel-error');
+    final scheduler = ReaderV2Scheduler(session: session, maxConcurrent: 1);
+    addTearDown(scheduler.dispose);
+    const page = ReaderV2Page(
+      index: 0,
+      url: 'https://example.test/cancel.png',
+      cacheKey: 'cancel-page',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SizedBox(
+          width: 200,
+          child: ReaderV2PageImage(
+            page: page,
+            session: session,
+            scheduler: scheduler,
+            priority: ReaderV2Priority.visible,
+            bytesLoader: (_, _) => gate.future,
+            placeholderHeight: 200,
+          ),
+        ),
+      ),
+    );
+
+    session.cancel('test cancellation');
+    gate.completeError(StateError('late failure'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('重试'), findsNothing);
+    expect(
+      session.events.where((event) => event.stage == 'image-error'),
+      isEmpty,
+    );
   });
 }
