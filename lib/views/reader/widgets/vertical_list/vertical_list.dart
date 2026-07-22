@@ -1,7 +1,8 @@
-/// 竖直连续模式 —— 对齐真机能出图的诊断列表结构。
+/// 竖直连续模式。
 ///
-/// 每页固定高度槽 + createPageImageProvider + 系统 Image。
-/// 不用 InteractiveViewer、不用 Image.memory 自研状态机。
+/// 出图关键结构（真机已验证）：
+/// 固定非零高度槽 + [createPageImageProvider] + 系统 [Image]（fit contain）。
+/// 不用 InteractiveViewer、不用自研 Image.memory 状态机。
 library;
 
 import 'package:flutter/material.dart';
@@ -29,7 +30,7 @@ class _VerticalListState extends State<VerticalList> {
   bool _loggedOpen = false;
   final Set<int> _tileLogged = <int>{};
 
-  /// 诊断版能出图的固定页高（逻辑像素）。
+  /// 非零页槽高度。诊断版 520 能出图；过小/0 会导致真机黑屏。
   static const double _kPageSlotHeight = 520;
 
   @override
@@ -96,9 +97,8 @@ class _VerticalListState extends State<VerticalList> {
           curve: Curves.easeOut,
         );
       },
-      // 深蓝底：若用户看到蓝底 = 列表在画（与诊断版一致）
       child: ColoredBox(
-        color: const Color(0xFF0D47A1),
+        color: Colors.black,
         child: ListView.builder(
           controller: _scrollController,
           physics: physics,
@@ -116,7 +116,7 @@ class _VerticalListState extends State<VerticalList> {
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
-                    color: Colors.white70,
+                    color: Colors.white54,
                   ),
                 ),
               );
@@ -137,74 +137,54 @@ class _VerticalListState extends State<VerticalList> {
               imageIndex: index,
             );
 
-            // === 与 49069ac 诊断版同构（当时截图已证明能出图）===
-            return Container(
+            // 能出图的槽位结构：固定高度 + Image 填满（黑底无彩条）。
+            return SizedBox(
               width: double.infinity,
               height: _kPageSlotHeight,
-              color: index.isEven
-                  ? const Color(0xFF1565C0)
-                  : const Color(0xFF2E7D32),
-              margin: const EdgeInsets.only(bottom: 2),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Container(
-                    color: Colors.black87,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    child: Text(
-                      '第${index + 1}/$pageCount',
-                      style: const TextStyle(
-                        color: Colors.yellow,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
+              child: ColoredBox(
+                color: Colors.black,
+                child: Image(
+                  image: provider,
+                  fit: BoxFit.contain,
+                  alignment: Alignment.topCenter,
+                  gaplessPlayback: true,
+                  filterQuality: FilterQuality.medium,
+                  loadingBuilder: (context, child, progress) {
+                    if (progress == null) {
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (!context.mounted) return;
+                        ReaderPipeline.widgetFrame(
+                          index,
+                          layoutW: mq.width,
+                          layoutH: _kPageSlotHeight,
+                        );
+                      });
+                      return child;
+                    }
+                    return const Center(
+                      child: SizedBox(
+                        width: 28,
+                        height: 28,
+                        child: CircularProgressIndicator(
+                          color: Colors.white54,
+                          strokeWidth: 3,
+                        ),
                       ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Image(
-                      image: provider,
-                      fit: BoxFit.contain,
-                      alignment: Alignment.topCenter,
-                      gaplessPlayback: true,
-                      filterQuality: FilterQuality.low,
-                      loadingBuilder: (context, child, progress) {
-                        if (progress == null) {
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (!context.mounted) return;
-                            ReaderPipeline.widgetFrame(
-                              index,
-                              layoutW: mq.width,
-                              layoutH: _kPageSlotHeight,
-                            );
-                          });
-                          return child;
-                        }
-                        return const Center(
-                          child: SizedBox(
-                            width: 28,
-                            height: 28,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 3,
-                            ),
-                          ),
-                        );
-                      },
-                      errorBuilder: (context, error, stack) {
-                        ReaderPipeline.widgetError(index, error: error);
-                        return Center(
-                          child: Text(
-                            '图失败 #$index',
-                            style: const TextStyle(color: Colors.white),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
+                    );
+                  },
+                  errorBuilder: (context, error, stack) {
+                    ReaderPipeline.widgetError(index, error: error);
+                    return Center(
+                      child: Text(
+                        '加载失败 第${index + 1}页',
+                        style: const TextStyle(
+                          color: Colors.white54,
+                          fontSize: 13,
+                        ),
+                      ),
+                    );
+                  },
+                ),
               ),
             );
           },
