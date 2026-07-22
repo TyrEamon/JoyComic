@@ -75,14 +75,6 @@ class _VerticalListState extends State<VerticalList> {
     return h;
   }
 
-  double _offsetOfPage(int page, double width) {
-    var y = 0.0;
-    for (var i = 0; i < page; i++) {
-      y += _slotOf(i, width);
-    }
-    return y;
-  }
-
   int _pageAtOffset(double offset, double width, int count) {
     if (count <= 0) return 0;
     var y = 0.0;

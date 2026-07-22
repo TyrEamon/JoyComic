@@ -2,7 +2,6 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:joycomic/theme/app_theme_context.dart';
 
 import '../providers/reader_provider.dart' hide ReaderImage;
 import '../utils/reader_utils.dart';
