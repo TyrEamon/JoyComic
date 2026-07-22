@@ -1,7 +1,7 @@
 /// 竖直连续模式。
 ///
-/// 列表 + 标准 [Image]（[createPageImageProvider] 负责下载与 JM 重组）。
-/// 不使用 InteractiveViewer 包裹整表（会再次黑屏）。
+/// 列表项必须有**非零固定槽位**（真机 S17 layout=0x0 黑屏根因）。
+/// 出图路径：createPageImageProvider → Image，无 InteractiveViewer。
 library;
 
 import 'package:flutter/material.dart';
@@ -29,7 +29,7 @@ class _VerticalListState extends State<VerticalList> {
   bool _loggedOpen = false;
   final Set<int> _tileLogged = <int>{};
 
-  /// 每页布局高度（逻辑像素），用于页码估算。
+  /// 每页布局高度（逻辑像素）。
   final Map<int, double> _heights = <int, double>{};
 
   @override
@@ -55,10 +55,17 @@ class _VerticalListState extends State<VerticalList> {
     super.dispose();
   }
 
-  double _defaultHeight(double width) => width / (3 / 4);
+  /// 默认占位高：约 4:3 竖图，且永不 < 200。
+  double _defaultHeight(double width) {
+    final h = width / (3 / 4);
+    if (!h.isFinite || h < 200) return 520;
+    return h;
+  }
 
   double _heightOf(int index, double width) {
-    return _heights[index] ?? _defaultHeight(width);
+    final h = _heights[index] ?? _defaultHeight(width);
+    if (!h.isFinite || h < 1) return _defaultHeight(width);
+    return h;
   }
 
   int _pageAtOffset(double offset, double width, int count) {
@@ -85,12 +92,11 @@ class _VerticalListState extends State<VerticalList> {
     }
   }
 
-  void _onImageSize(int index, int pxW, int pxH, double layoutW) {
-    if (pxW <= 0 || pxH <= 0 || layoutW <= 0) return;
-    final h = layoutW * pxH / pxW;
+  void _onImageSize(int index, int layoutW, int layoutH) {
+    if (layoutW <= 1 || layoutH <= 1) return;
+    final h = layoutH.toDouble();
     final prev = _heights[index];
     if (prev != null && (prev - h).abs() < 1.0) return;
-    // 避免每帧 setState：仅高度变化时更新
     if (!mounted) return;
     setState(() => _heights[index] = h);
   }
@@ -101,82 +107,100 @@ class _VerticalListState extends State<VerticalList> {
     final pageCount = context.selector((p) => p.pageCount);
     final images = context.selector((p) => p.images);
     final traceId = context.reader.traceId;
-    final screenW = MediaQuery.sizeOf(context).width;
-    final imageWidth = screenW > 1 ? screenW : 390.0;
 
-    if (!_loggedOpen) {
-      _loggedOpen = true;
-      ReaderPipeline.listBuild(
-        pageCount: pageCount,
-        mq: MediaQuery.sizeOf(context),
-      );
-    }
+    // 列表交叉轴宽度：优先约束，再 MediaQuery，再 390。
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        double imageWidth = 0;
+        if (constraints.hasBoundedWidth &&
+            constraints.maxWidth.isFinite &&
+            constraints.maxWidth > 1) {
+          imageWidth = constraints.maxWidth;
+        } else {
+          final mq = MediaQuery.sizeOf(context).width;
+          imageWidth = mq > 1 ? mq : 390;
+        }
 
-    return GestureWrapper(
-      openOrCloseToolbar: context.reader.openOrCloseToolbar,
-      jumpOffset: (delta) {
-        if (!_scrollController.hasClients) return;
-        final target = (_scrollController.offset + delta).clamp(
-          0.0,
-          _scrollController.position.maxScrollExtent,
-        );
-        _scrollController.animateTo(
-          target,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-        );
-      },
-      child: ColoredBox(
-        color: Colors.black,
-        child: ListView.builder(
-          controller: _scrollController,
-          physics: physics,
-          // ignore: deprecated_member_use
-          cacheExtent: MediaQuery.sizeOf(context).height * 3,
-          padding: EdgeInsets.zero,
-          itemCount: pageCount + 1,
-          itemBuilder: (context, index) {
-            if (index == pageCount) {
-              return const Padding(
-                padding: EdgeInsets.symmetric(vertical: 32),
-                child: Text(
-                  '本章完',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white54,
-                  ),
-                ),
-              );
-            }
+        if (!_loggedOpen) {
+          _loggedOpen = true;
+          ReaderPipeline.listBuild(
+            pageCount: pageCount,
+            mq: Size(imageWidth, MediaQuery.sizeOf(context).height),
+          );
+        }
 
-            final item = images[index];
-            if (_tileLogged.add(index)) {
-              ReaderPipeline.tileBuild(index, cacheKey: item.cacheKey);
-            }
-            final layoutH = _heightOf(index, imageWidth);
-
-            return ReaderImage(
-              key: ValueKey(item.cacheKey),
-              url: item.url,
-              cacheKey: item.cacheKey,
-              headers: item.headers,
-              fallbackUrls: item.fallbackUrls,
-              bytesTransformer: item.bytesTransformer,
-              width: imageWidth,
-              height: layoutH,
-              fit: BoxFit.fitWidth,
-              filterQuality: FilterQuality.medium,
-              traceId: traceId,
-              imageIndex: index,
-              onImageSizeChanged: (pw, ph) {
-                _onImageSize(index, pw, ph, imageWidth);
-              },
+        return GestureWrapper(
+          openOrCloseToolbar: context.reader.openOrCloseToolbar,
+          jumpOffset: (delta) {
+            if (!_scrollController.hasClients) return;
+            final target = (_scrollController.offset + delta).clamp(
+              0.0,
+              _scrollController.position.maxScrollExtent,
+            );
+            _scrollController.animateTo(
+              target,
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
             );
           },
-        ),
-      ),
+          child: ColoredBox(
+            color: Colors.black,
+            child: ListView.builder(
+              controller: _scrollController,
+              physics: physics,
+              // ignore: deprecated_member_use
+              cacheExtent: MediaQuery.sizeOf(context).height * 3,
+              padding: EdgeInsets.zero,
+              itemCount: pageCount + 1,
+              itemBuilder: (context, index) {
+                if (index == pageCount) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 32),
+                    child: Text(
+                      '本章完',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white54,
+                      ),
+                    ),
+                  );
+                }
+
+                final item = images[index];
+                if (_tileLogged.add(index)) {
+                  ReaderPipeline.tileBuild(index, cacheKey: item.cacheKey);
+                }
+                final layoutH = _heightOf(index, imageWidth);
+
+                // 与诊断版相同：外层强制宽高，内层 Image。
+                return SizedBox(
+                  width: imageWidth,
+                  height: layoutH,
+                  child: ReaderImage(
+                    key: ValueKey(item.cacheKey),
+                    url: item.url,
+                    cacheKey: item.cacheKey,
+                    headers: item.headers,
+                    fallbackUrls: item.fallbackUrls,
+                    bytesTransformer: item.bytesTransformer,
+                    width: imageWidth,
+                    height: layoutH,
+                    fit: BoxFit.contain,
+                    filterQuality: FilterQuality.medium,
+                    traceId: traceId,
+                    imageIndex: index,
+                    onImageSizeChanged: (pw, ph) {
+                      _onImageSize(index, pw, ph);
+                    },
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      },
     );
   }
 }

@@ -1,7 +1,8 @@
-/// 阅读器单图：与已验证出图版本相同的标准路径。
+/// 阅读器单图。
 ///
-/// [createPageImageProvider] → 系统 [Image]。
-/// 不做 InteractiveViewer、不二次 ImageStream 订阅。
+/// 真机日志铁证：S17 已收到帧但 layout=0x0 → 黑屏。
+/// 诊断版能出图是因为固定了非零槽位。这里强制 SizedBox(width, height>0)
+/// 包住系统 [Image]，与能出图路径一致。
 library;
 
 import 'package:flutter/material.dart';
@@ -10,7 +11,7 @@ import '../image_pipeline/page_image_provider.dart';
 import '../utils/reader_image_provider.dart' show ReaderImageBytesTransformer;
 import '../utils/reader_pipeline.dart';
 
-/// 像素尺寸缓存（仅占位，避免列表高度乱跳）。
+/// 像素宽高比缓存（key → Size(pxW, pxH)）。
 class ReaderImageSizeCache {
   ReaderImageSizeCache._();
 
@@ -65,20 +66,36 @@ class ReaderImage extends StatelessWidget {
 
   static void clearSizeCache() => ReaderImageSizeCache.clear();
 
+  /// 永远返回 > 1 的布局宽。
+  static double safeWidth(BuildContext context, double? preferred) {
+    if (preferred != null && preferred.isFinite && preferred > 1) {
+      return preferred;
+    }
+    final mq = MediaQuery.sizeOf(context).width;
+    if (mq.isFinite && mq > 1) return mq;
+    return 390;
+  }
+
+  /// 永远返回 > 1 的布局高。
+  static double safeHeight(double width, double? preferred, String cacheKey) {
+    if (preferred != null && preferred.isFinite && preferred > 1) {
+      return preferred;
+    }
+    final cached = ReaderImageSizeCache.get(cacheKey);
+    if (cached != null && cached.width > 0 && cached.height > 0) {
+      final h = width * cached.height / cached.width;
+      if (h.isFinite && h > 1) return h;
+    }
+    // 默认 3:4 竖图占位（与诊断版固定 520 同理：非零）
+    final h = width / (3 / 4);
+    return h.isFinite && h > 1 ? h : 520;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final screenW = MediaQuery.sizeOf(context).width;
-    final w = (width != null && width!.isFinite && width! > 1)
-        ? width!
-        : (screenW > 1 ? screenW : 390.0);
     final key = cacheKey ?? url;
-    final cached = ReaderImageSizeCache.get(key);
-    final aspect = (cached != null && cached.width > 0 && cached.height > 0)
-        ? cached.width / cached.height
-        : 3 / 4;
-    final placeholderH = (height != null && height!.isFinite && height! > 1)
-        ? height!
-        : w / aspect;
+    final w = safeWidth(context, width);
+    final h = safeHeight(w, height, key);
     final idx = imageIndex ?? -1;
 
     final provider = createPageImageProvider(
@@ -91,55 +108,46 @@ class ReaderImage extends StatelessWidget {
       imageIndex: imageIndex,
     );
 
-    return Image(
-      image: provider,
+    // 强制非零槽位——诊断版能出图的关键差异。
+    return SizedBox(
       width: w,
-      fit: fit,
-      alignment: alignment is Alignment
-          ? alignment as Alignment
-          : Alignment.topCenter,
-      filterQuality: filterQuality,
-      gaplessPlayback: true,
-      excludeFromSemantics: true,
-      loadingBuilder: (context, child, progress) {
-        if (progress == null) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!context.mounted) return;
-            final box = context.findRenderObject() as RenderBox?;
-            final sz = box?.size;
-            if (sz != null &&
-                sz.width > 1 &&
-                sz.height > 1 &&
-                ReaderImageSizeCache.get(key) == null) {
-              // 用布局比例缓存占位（非二次解码）
-              ReaderImageSizeCache.put(
-                key,
-                sz.width.round(),
-                sz.height.round(),
-              );
-              onImageSizeChanged?.call(sz.width.round(), sz.height.round());
-            }
-            ReaderPipeline.widgetFrame(
-              idx,
-              layoutW: sz?.width ?? w,
-              layoutH: sz?.height ?? placeholderH,
-            );
-          });
-          return child;
-        }
-        ReaderPipeline.widgetLoading(
-          idx,
-          loaded: progress.cumulativeBytesLoaded,
-          total: progress.expectedTotalBytes,
-        );
-        final total = progress.expectedTotalBytes;
-        final value = (total != null && total > 0)
-            ? (progress.cumulativeBytesLoaded / total).clamp(0.0, 1.0)
-            : null;
-        return SizedBox(
-          width: w,
-          height: placeholderH,
-          child: ColoredBox(
+      height: h,
+      child: Image(
+        image: provider,
+        width: w,
+        height: h,
+        fit: BoxFit.contain,
+        alignment: Alignment.topCenter,
+        filterQuality: filterQuality,
+        gaplessPlayback: true,
+        excludeFromSemantics: true,
+        loadingBuilder: (context, child, progress) {
+          if (progress == null) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!context.mounted) return;
+              final box = context.findRenderObject() as RenderBox?;
+              final sz = box?.size;
+              final lw = (sz != null && sz.width > 1) ? sz.width : w;
+              final lh = (sz != null && sz.height > 1) ? sz.height : h;
+              ReaderPipeline.widgetFrame(idx, layoutW: lw, layoutH: lh);
+              // 用布局比例更新缓存，供下次占位
+              if (lw > 1 && lh > 1) {
+                ReaderImageSizeCache.put(key, lw.round(), lh.round());
+                onImageSizeChanged?.call(lw.round(), lh.round());
+              }
+            });
+            return child;
+          }
+          ReaderPipeline.widgetLoading(
+            idx,
+            loaded: progress.cumulativeBytesLoaded,
+            total: progress.expectedTotalBytes,
+          );
+          final total = progress.expectedTotalBytes;
+          final value = (total != null && total > 0)
+              ? (progress.cumulativeBytesLoaded / total).clamp(0.0, 1.0)
+              : null;
+          return ColoredBox(
             color: Colors.black,
             child: Center(
               child: SizedBox(
@@ -152,21 +160,20 @@ class ReaderImage extends StatelessWidget {
                 ),
               ),
             ),
-          ),
-        );
-      },
-      errorBuilder: (context, error, stack) {
-        ReaderPipeline.widgetError(idx, error: error);
-        return SizedBox(
-          width: w,
-          height: placeholderH,
-          child: ColoredBox(
+          );
+        },
+        errorBuilder: (context, error, stack) {
+          ReaderPipeline.widgetError(idx, error: error);
+          return ColoredBox(
             color: const Color(0xFF1A1A1A),
             child: Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.broken_image_outlined, color: Colors.white54),
+                  const Icon(
+                    Icons.broken_image_outlined,
+                    color: Colors.white54,
+                  ),
                   const SizedBox(height: 8),
                   Text(
                     '加载失败 第${idx + 1}页',
@@ -175,9 +182,9 @@ class ReaderImage extends StatelessWidget {
                 ],
               ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }
