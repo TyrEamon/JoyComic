@@ -979,6 +979,28 @@ class _FakeJmState implements JmState {
   void setShunts(List<JmShunt> value) => shunts = value;
 }
 
+/// Domain warmup / selectDomain probes POST `/login` with body `&`.
+/// Auth regression counters must ignore those so production 401 accounting stays stable.
+bool _isJmDomainProbe(
+  RequestOptions options,
+  Stream<Uint8List>? requestStream,
+) {
+  if (options.method.toUpperCase() != 'POST') return false;
+  if (options.uri.path != '/login') return false;
+  final data = options.data;
+  if (data == '&') return true;
+  if (data is String && data == '&') return true;
+  return false;
+}
+
+Future<ResponseBody> _jmDomainProbeResponse() async => ResponseBody.fromString(
+  jsonEncode(<String, dynamic>{'errorMsg': '請先登入會員'}),
+  401,
+  headers: <String, List<String>>{
+    Headers.contentTypeHeader: <String>['application/json'],
+  },
+);
+
 class _SequenceAdapter implements HttpClientAdapter {
   _SequenceAdapter(this.statuses);
 
@@ -991,6 +1013,9 @@ class _SequenceAdapter implements HttpClientAdapter {
     Stream<Uint8List>? requestStream,
     Future<void>? cancelFuture,
   ) async {
+    if (_isJmDomainProbe(options, requestStream)) {
+      return _jmDomainProbeResponse();
+    }
     final index = requestCount < statuses.length
         ? requestCount
         : statuses.length - 1;
@@ -1049,6 +1074,9 @@ class _PerPathAuthAdapter implements HttpClientAdapter {
     Stream<Uint8List>? requestStream,
     Future<void>? cancelFuture,
   ) async {
+    if (_isJmDomainProbe(options, requestStream)) {
+      return _jmDomainProbeResponse();
+    }
     final path = options.uri.path;
     final attempt = (_attempts[path] ?? 0) + 1;
     _attempts[path] = attempt;
@@ -1080,6 +1108,9 @@ class _AlwaysUnauthorizedAdapter implements HttpClientAdapter {
     Stream<Uint8List>? requestStream,
     Future<void>? cancelFuture,
   ) async {
+    if (_isJmDomainProbe(options, requestStream)) {
+      return _jmDomainProbeResponse();
+    }
     final path = options.uri.path;
     _attempts[path] = (_attempts[path] ?? 0) + 1;
     return ResponseBody.fromString(
@@ -1108,6 +1139,9 @@ class _StaggeredUnauthorizedAdapter implements HttpClientAdapter {
     Stream<Uint8List>? requestStream,
     Future<void>? cancelFuture,
   ) async {
+    if (_isJmDomainProbe(options, requestStream)) {
+      return _jmDomainProbeResponse();
+    }
     final path = options.uri.path;
     final attempt = (_attempts[path] ?? 0) + 1;
     _attempts[path] = attempt;
@@ -1167,6 +1201,9 @@ class _DelayedRetry401Adapter implements HttpClientAdapter {
     Stream<Uint8List>? requestStream,
     Future<void>? cancelFuture,
   ) async {
+    if (_isJmDomainProbe(options, requestStream)) {
+      return _jmDomainProbeResponse();
+    }
     final path = options.uri.path;
     final attempt = (_attempts[path] ?? 0) + 1;
     _attempts[path] = attempt;

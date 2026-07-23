@@ -20,10 +20,12 @@ import '../../foundation/source_credential_store.dart';
 import '../json_value.dart';
 import '../res.dart';
 import '../source_state.dart';
+import 'jm_endpoint_health.dart';
 import 'jm_headers.dart';
 import 'jm_image.dart';
 import 'jm_models.dart';
 import 'jm_parsing.dart';
+import 'jm_request_cache.dart';
 import 'jm_video_models.dart';
 
 export 'jm_models.dart';
@@ -315,10 +317,14 @@ class JmNetwork {
     JmGetRequest? getRequest,
     JmPostRequest? postRequest,
     SourceCredentialStore? credentialStore,
+    JmEndpointHealth? endpointHealth,
+    JmRequestCache? requestCache,
   }) : _dioFactory = dioFactory ?? Dio.new,
        _getRequest = getRequest,
        _postRequest = postRequest,
-       _credentialStore = credentialStore ?? SourceCredentialStore();
+       _credentialStore = credentialStore ?? SourceCredentialStore(),
+       _endpointHealth = endpointHealth ?? JmEndpointHealth(),
+       _requestCache = requestCache ?? JmRequestCache();
 
   static JmNetwork? _cache;
 
@@ -327,11 +333,15 @@ class JmNetwork {
     JmGetRequest? getRequest,
     JmPostRequest? postRequest,
     SourceCredentialStore? credentialStore,
+    JmEndpointHealth? endpointHealth,
+    JmRequestCache? requestCache,
   }) {
     if (dioFactory == null &&
         getRequest == null &&
         postRequest == null &&
-        credentialStore == null) {
+        credentialStore == null &&
+        endpointHealth == null &&
+        requestCache == null) {
       return _cache ??= JmNetwork._create();
     }
     return JmNetwork._create(
@@ -339,6 +349,8 @@ class JmNetwork {
       getRequest: getRequest,
       postRequest: postRequest,
       credentialStore: credentialStore,
+      endpointHealth: endpointHealth,
+      requestCache: requestCache,
     );
   }
 
@@ -346,6 +358,8 @@ class JmNetwork {
   final JmGetRequest? _getRequest;
   final JmPostRequest? _postRequest;
   final SourceCredentialStore _credentialStore;
+  final JmEndpointHealth _endpointHealth;
+  final JmRequestCache _requestCache;
 
   SourceCredentialStore get credentialStore => _credentialStore;
   JmLoginProfile? _lastLoginProfile;
@@ -585,12 +599,20 @@ class JmNetwork {
   /// 每次 attempt 使用独立 [time]（fresh token/time）。瞬态失败（网络/超时/
   /// 空体/解析/Dio 抛出的 403 等）返回 null 并轮换下一域；401 与其它业务
   /// Res 不轮换。真正成功（!error）时把可用 host 写回 [JmState.apiBaseUrl]。
+  ///
+  /// 首次生产路径会经 [_ensureDomainWarmup] 共享一次 `/login` 探测，避免并发
+  /// 不同 GET 各自在失效首选域上串行空转。登录/鉴权操作跳过 warmup。
+  /// 候选顺序经 [_endpointHealth.order] 重排：成功 host 优先，冷却中的靠后。
+  /// 传输层 null 记为失败冷却；业务 Res（含 401）不冷却。
   Future<Res<dynamic>> _withDomainFailover(
     String url,
     Future<Res<dynamic>?> Function(String, int) attempt, {
     bool waitForLogin = true,
   }) async {
-    final candidates = _domainCandidates;
+    if (waitForLogin && !_ownsAuthenticationOperation) {
+      await _ensureDomainWarmup();
+    }
+    final candidates = _endpointHealth.order(_domainCandidates);
     Res<dynamic>? last = const Res(null, errorMessage: '所有域名均不可用');
     for (final d in candidates) {
       if (waitForLogin) await _waitForAuthenticationOperations();
@@ -601,14 +623,61 @@ class JmNetwork {
         // Mirror verifier: cache the first host that completed a non-error hop.
         // 401 / empty-data business Res still stop rotation but are not success.
         if (!res.error) {
+          _endpointHealth.recordSuccess(d);
           _rememberSuccessfulApiHost(d);
+        } else {
+          // Business-level Res (401 / empty data / decoded errors): do not cool.
+          _endpointHealth.recordBusinessResponse(d, isBusinessError: true);
         }
         return res;
       }
+      // Transport / empty / parse failure: cool the host and try the next.
+      _endpointHealth.recordFailure(d, FailureClass.network);
       Log.w('JM failover: $url', error: 'domain: $d');
       last = res ?? last;
     }
     return last!;
+  }
+
+  /// First-use domain probe shared across concurrent production requests.
+  ///
+  /// Single-flight sequential `/login` probes (body `&`, same as [selectDomain]).
+  /// The first host that returns 401 is a reachable API endpoint: it is recorded
+  /// as success and persisted so waiting callers reorder before failover.
+  /// Skipped when a known-good host already exists, during login/auth zones, or
+  /// when [waitForLogin] is false (login POST path). Injected [getRequest] never
+  /// reaches this path.
+  Future<void> _ensureDomainWarmup() {
+    final candidates = _domainCandidates;
+    if (candidates.isEmpty) return Future<void>.value();
+    if (_endpointHealth.hasAnyKnownSuccess(candidates)) {
+      return Future<void>.value();
+    }
+    return _endpointHealth.singleFlight('domain-warmup', () async {
+      // Re-check after joining the flight: another waiter may have finished.
+      final ordered = _endpointHealth.order(candidates);
+      if (_endpointHealth.hasAnyKnownSuccess(ordered)) return;
+
+      final time = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final dio = _dioFactory(buildApiOptions(time, post: true));
+      dio.options.validateStatus = (_) => true;
+      try {
+        for (final domain in ordered) {
+          try {
+            final res = await dio.post('https://$domain/login', data: '&');
+            if (res.statusCode == 401) {
+              _endpointHealth.recordSuccess(domain);
+              _rememberSuccessfulApiHost(domain);
+              return;
+            }
+          } catch (_) {
+            // Probe failure: try the next candidate.
+          }
+        }
+      } finally {
+        dio.close(force: true);
+      }
+    });
   }
 
   /// Persist a working API host so the next request prefers it (verifier parity).
@@ -627,20 +696,70 @@ class JmNetwork {
     state?.setApiBaseUrl('https://$clean');
   }
 
+  /// Public GET entry. When [cacheTtl] is non-null, non-retry, and the path is
+  /// an allowlisted public endpoint, successful responses are stored in the
+  /// process-local [JmRequestCache]. Auth / favorite / private GETs omit TTL.
   Future<Res<dynamic>> get(
     String url, {
     bool isRetry = false,
     int? requestAuthGeneration,
+    Duration? cacheTtl,
   }) async {
+    final cacheKey = cacheTtl != null && !isRetry
+        ? _publicGetCacheKey(url)
+        : null;
+    if (cacheKey != null) {
+      final hit = _requestCache.get(cacheKey);
+      if (hit != null) return hit;
+    }
+
     final request = _getRequest;
-    if (request != null) return request(url);
+    if (request != null) {
+      final res = await request(url);
+      if (cacheKey != null && !res.error) {
+        _requestCache.put(cacheKey, res, cacheTtl!);
+      }
+      return res;
+    }
     final generation = requestAuthGeneration ?? _authGeneration;
     final res = await _withDomainFailover(
       url,
       (u, t) =>
           _doGet(u, t, isRetry: isRetry, requestAuthGeneration: generation),
     );
+    if (cacheKey != null && !res.error) {
+      _requestCache.put(cacheKey, res, cacheTtl!);
+    }
     return res;
+  }
+
+  /// Cache key: normalized path + query + optional account isolation.
+  /// Never includes token / AVS / password values.
+  String? _publicGetCacheKey(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return null;
+    final path = uri.path.isEmpty ? '/' : uri.path;
+    // Private / auth / write-ish GETs are never cached even if a TTL is passed.
+    if (_isPrivateOrAuthGetPath(path)) return null;
+    final query = uri.hasQuery ? '?${uri.query}' : '';
+    final account = state?.username?.trim();
+    final accountPart = (account != null && account.isNotEmpty)
+        ? account
+        : 'anonymous';
+    // Account-safe public GETs still isolate by username so two sessions on the
+    // same device do not share cached payloads that may embed personal fields.
+    return 'jm:get:$path$query:$accountPart';
+  }
+
+  bool _isPrivateOrAuthGetPath(String path) {
+    const blocked = <String>{
+      '/login',
+      '/favorite',
+      '/favorite_folder',
+      '/comment',
+      '/like',
+    };
+    return blocked.contains(path);
   }
 
   Future<Res<dynamic>> post(
@@ -674,43 +793,51 @@ class JmNetwork {
   /// 在候选域名中并发探测可用者：对 `/login` post `&`，返回 401 视作可用。
   ///
   /// 登录前用于快速锁定一个可用接口域名写入 [JmState.apiBaseUrl]。
+  /// 相同 [domains] 列表的并发调用经 [_endpointHealth.singleFlight] 合并为一次探测。
   Future<int?> selectDomain(
     List<String> domains, {
     Duration timeout = const Duration(seconds: 8),
   }) async {
     if (domains.isEmpty) return null;
+    final flightKey = 'select-domain:${domains.join(',')}';
+    return _endpointHealth.singleFlight(flightKey, () async {
+      final time = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final dio = _dioFactory(buildApiOptions(time, post: true));
+      dio.options.validateStatus = (_) => true;
+      final completer = Completer<int?>();
+      var remaining = domains.length;
+      void complete(int? value) {
+        if (!completer.isCompleted) completer.complete(value);
+      }
 
-    final time = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    final dio = _dioFactory(buildApiOptions(time, post: true));
-    dio.options.validateStatus = (_) => true;
-    final completer = Completer<int?>();
-    var remaining = domains.length;
-    void complete(int? value) {
-      if (!completer.isCompleted) completer.complete(value);
-    }
+      final timer = Timer(timeout, () => complete(null));
+      for (var index = 0; index < domains.length; index++) {
+        final domain = domains[index];
+        () async {
+          try {
+            final res = await dio.post('https://$domain/login', data: '&');
+            if (res.statusCode == 401) {
+              // /login 401 means the API host is reachable: prioritize it for
+              // waiting production requests (do not cool).
+              _endpointHealth.recordSuccess(domain);
+              complete(index);
+            }
+          } catch (_) {
+            // A failed probe only contributes to the all-failed result.
+          } finally {
+            remaining--;
+            if (remaining == 0) complete(null);
+          }
+        }();
+      }
 
-    final timer = Timer(timeout, () => complete(null));
-    for (var index = 0; index < domains.length; index++) {
-      final domain = domains[index];
-      () async {
-        try {
-          final res = await dio.post('https://$domain/login', data: '&');
-          if (res.statusCode == 401) complete(index);
-        } catch (_) {
-          // A failed probe only contributes to the all-failed result.
-        } finally {
-          remaining--;
-          if (remaining == 0) complete(null);
-        }
-      }();
-    }
-
-    try {
-      return await completer.future;
-    } finally {
-      timer.cancel();
-      dio.close(force: true);
-    }
+      try {
+        return await completer.future;
+      } finally {
+        timer.cancel();
+        dio.close(force: true);
+      }
+    });
   }
 
   /// 拉取禁漫 `/setting`，解析动态分流项与图床域名。
@@ -719,7 +846,10 @@ class JmNetwork {
   /// `main_web_host`→[JmState.apiBaseUrl]（主接入域），并返回解析后的 JSON。
   /// 响应解密复用 [get]，无需重复实现 AES 逻辑。
   Future<Res<Map<String, dynamic>>> fetchSetting() async {
-    final res = await get('$baseUrl/setting');
+    final res = await get(
+      '$baseUrl/setting',
+      cacheTtl: const Duration(minutes: 5),
+    );
     if (res.error) return Res(null, errorMessage: res.errorMessage);
     final rawJson = res.data;
     if (rawJson is! Map) {
@@ -755,7 +885,10 @@ class JmNetwork {
   /// `?app_img_shunt=${key}`。响应经 [get] 自动解密。
   Future<String?> getShuntImgHost(int key) async {
     final qs = key == jmExpressShuntKey ? 'express=on' : 'app_img_shunt=$key';
-    final res = await get('$baseUrl/setting?$qs');
+    final res = await get(
+      '$baseUrl/setting?$qs',
+      cacheTtl: const Duration(minutes: 5),
+    );
     if (res.error || res.data is! Map) return null;
     final host = jsonString(jsonMap(res.data)['img_host']);
     final clean = host.replaceAll(RegExp(r'^https?://'), '');
@@ -1027,7 +1160,7 @@ class JmNetwork {
     } else {
       url = '$baseUrl/search?&search_query=$kw&o=$order';
     }
-    final res = await get(url);
+    final res = await get(url, cacheTtl: const Duration(seconds: 45));
     if (res.error) return Res(null, errorMessage: res.errorMessage);
     final rawData = res.data;
     if (rawData is! Map) {
@@ -1047,7 +1180,10 @@ class JmNetwork {
 
   /// 获取一级分类及其子分类。
   Future<Res<List<JmCategory>>> getCategories() async {
-    final res = await get('$baseUrl/categories');
+    final res = await get(
+      '$baseUrl/categories',
+      cacheTtl: const Duration(seconds: 45),
+    );
     if (res.error) return Res(null, errorMessage: res.errorMessage);
     if (res.data is! Map) {
       return const Res(null, errorMessage: '分类解析失败');
@@ -1068,7 +1204,10 @@ class JmNetwork {
     final uri = Uri.parse('$baseUrl/categories/filter').replace(
       queryParameters: {'o': order, 'c': category, 'page': page.toString()},
     );
-    final res = await get(uri.toString());
+    final res = await get(
+      uri.toString(),
+      cacheTtl: const Duration(seconds: 45),
+    );
     if (res.error) return Res(null, errorMessage: res.errorMessage);
     if (res.data is! Map) {
       return const Res(null, errorMessage: '分类漫画解析失败');
@@ -1108,7 +1247,10 @@ class JmNetwork {
 
   /// 获取首页分区。
   Future<Res<List<JmHomeSection>>> getHomeSections() async {
-    final res = await get('$baseUrl/promote?page=0');
+    final res = await get(
+      '$baseUrl/promote?page=0',
+      cacheTtl: const Duration(minutes: 2),
+    );
     if (res.error) return Res(null, errorMessage: res.errorMessage);
     if (res.data is! List) {
       return const Res(null, errorMessage: '首页分区解析失败');
@@ -1155,10 +1297,10 @@ class JmNetwork {
       return const Res(null, errorMessage: '分区 id 无效');
     }
     final apiPage = page < 1 ? 0 : page - 1;
-    final uri = Uri.parse('$baseUrl/promote_list').replace(
-      queryParameters: {'id': promoteId, 'page': apiPage.toString()},
-    );
-    final res = await get(uri.toString());
+    final uri = Uri.parse(
+      '$baseUrl/promote_list',
+    ).replace(queryParameters: {'id': promoteId, 'page': apiPage.toString()});
+    final res = await get(uri.toString(), cacheTtl: const Duration(minutes: 2));
     if (res.error) return Res(null, errorMessage: res.errorMessage);
     if (res.data is! Map) {
       return const Res(null, errorMessage: '分区列表解析失败');
@@ -1179,8 +1321,16 @@ class JmNetwork {
   }
 
   /// 专辑（漫画）详情。
+  ///
+  /// `/album` 含 liked/favorite 等个性化字段：已登录用户（[JmState.username]
+  /// 非空）禁止命中公开 TTL 缓存，确保每次拉取最新收藏/点赞状态。
   Future<Res<JmComicInfo>> getComicInfo(String id) async {
-    final res = await get('$baseUrl/album?id=$id');
+    final username = state?.username?.trim();
+    final loggedIn = username != null && username.isNotEmpty;
+    final res = await get(
+      '$baseUrl/album?id=$id',
+      cacheTtl: loggedIn ? null : const Duration(minutes: 2),
+    );
     if (res.error) {
       if (res.errorMessage?.contains('Empty data') ?? false) {
         return Res(null, errorMessage: '漫画不存在: id = $id');
@@ -1201,7 +1351,10 @@ class JmNetwork {
   /// 未购买精品专辑时 chapter 仍通常返回完整 images；若为空则用 [pageHint]
   ///（来自 album.total_photos）按 `00001.webp` 顺序拼 CDN 路径。
   Future<Res<List<String>>> getChapter(String id, {int? pageHint}) async {
-    final res = await get('$baseUrl/chapter?id=$id');
+    final res = await get(
+      '$baseUrl/chapter?id=$id',
+      cacheTtl: const Duration(minutes: 1),
+    );
     if (res.error) {
       final fallback = _cdnSequentialPages(id, pageHint);
       if (fallback != null) return Res(fallback);
@@ -1219,13 +1372,7 @@ class JmNetwork {
       if (fallback != null) return Res(fallback);
       return const Res(null, errorMessage: '章节图片为空');
     }
-    return Res(
-      _resolveJmPageImages(
-        names,
-        id,
-        _effectiveImageBaseUrl(),
-      ),
-    );
+    return Res(_resolveJmPageImages(names, id, _effectiveImageBaseUrl()));
   }
 
   /// 优先返回详情接口内联页；冷缓存先刷新详情，再按需回退章节端点。
@@ -1259,11 +1406,7 @@ class JmNetwork {
 
     if (inlinePages != null && inlinePages.isNotEmpty) {
       return Res(
-        _resolveJmPageImages(
-          inlinePages,
-          comicId,
-          _effectiveImageBaseUrl(),
-        ),
+        _resolveJmPageImages(inlinePages, comicId, _effectiveImageBaseUrl()),
       );
     }
 
@@ -1354,7 +1497,10 @@ class JmNetwork {
       if (searchQuery.trim().isNotEmpty) 'search_query': searchQuery.trim(),
     };
     final uri = Uri.parse('$baseUrl/videos').replace(queryParameters: query);
-    final res = await get(uri.toString());
+    final res = await get(
+      uri.toString(),
+      cacheTtl: const Duration(seconds: 30),
+    );
     if (res.error) {
       return Res(null, errorMessage: res.errorMessage);
     }
@@ -1398,7 +1544,10 @@ class JmNetwork {
       final uri = Uri.parse(
         '$baseUrl/video',
       ).replace(queryParameters: <String, String>{parameter: videoId});
-      final res = await get(uri.toString());
+      final res = await get(
+        uri.toString(),
+        cacheTtl: const Duration(seconds: 30),
+      );
       if (res.error) {
         lastFailure = res;
         continue;
@@ -1420,7 +1569,10 @@ class JmNetwork {
   }
 
   Future<Res<List<JmVideoItem>>> getLatestHanime() async {
-    final res = await get('$baseUrl/latest_hanime');
+    final res = await get(
+      '$baseUrl/latest_hanime',
+      cacheTtl: const Duration(seconds: 45),
+    );
     if (res.error) return Res(null, errorMessage: res.errorMessage);
     final data = res.data;
     final rawList = switch (data) {
@@ -1453,7 +1605,10 @@ class JmNetwork {
   ///
   /// 响应为 JSON 字符串数组，如 `["校园","恋爱","同人"]`。
   Future<Res<List<String>>> getHotTags() async {
-    final res = await get('$baseUrl/hot_tags');
+    final res = await get(
+      '$baseUrl/hot_tags',
+      cacheTtl: const Duration(seconds: 45),
+    );
     if (res.error) return Res(null, errorMessage: res.errorMessage);
     return Res(jsonStringList(res.data));
   }
