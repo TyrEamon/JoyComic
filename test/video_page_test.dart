@@ -112,6 +112,17 @@ void main() {
     expect(description, contains('buffering=false'));
   });
 
+  test('zero-size initialized media is treated as non-renderable', () {
+    const value = VideoPlayerValue(
+      duration: Duration(minutes: 5),
+      size: Size.zero,
+      isInitialized: true,
+      isBuffering: true,
+    );
+
+    expect(isNativeVideoRenderable(value), isFalse);
+  });
+
   test('public HTTP subframes require resolved-public approval', () async {
     final checkedHosts = <String>[];
     Future<bool> approve(Uri uri) async {

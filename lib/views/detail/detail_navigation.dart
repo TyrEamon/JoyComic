@@ -30,6 +30,20 @@ String detailCommentsRoute({
 }) =>
     '/detail/${Uri.encodeComponent(sourceKey)}/${Uri.encodeComponent(comicId)}/comments';
 
+/// Selects the first chapter for a new reading session.
+///
+/// Sources may expose chapters newest-first, so list position is not a
+/// reliable indication of the first chapter. The typed order is the source
+/// of truth instead.
+ReaderChapter selectStartReadingChapter(List<ReaderChapter> chapters) {
+  if (chapters.isEmpty) {
+    throw ArgumentError.value(chapters, 'chapters', 'must not be empty');
+  }
+  return chapters.reduce(
+    (first, chapter) => chapter.order < first.order ? chapter : first,
+  );
+}
+
 void openDetailKeywordSearch(
   BuildContext context, {
   required String sourceKey,
@@ -87,7 +101,7 @@ void openDetailReader(
           orElse: () => chapters.last,
         )
       : record == null
-      ? chapters.last
+      ? selectStartReadingChapter(chapters)
       : chapters.firstWhere(
           (chapter) => chapter.id == record.chapterId,
           orElse: () => chapters.last,

@@ -493,6 +493,15 @@ String describeNativeVideoState(
       'playing=${value.isPlaying} buffering=${value.isBuffering}';
 }
 
+bool isNativeVideoRenderable(VideoPlayerValue value) {
+  final size = value.size;
+  return value.isInitialized &&
+      !value.hasError &&
+      size.width > 0 &&
+      size.height > 0 &&
+      value.aspectRatio > 0;
+}
+
 class NativeVideoPlayer extends StatefulWidget {
   const NativeVideoPlayer({
     super.key,
@@ -550,6 +559,18 @@ class _NativeVideoPlayerState extends State<NativeVideoPlayer> {
           source: widget.source,
         ),
       );
+      if (!isNativeVideoRenderable(controller.value)) {
+        Log.w(
+          'Video native media is not renderable',
+          error: describeNativeVideoState(
+            controller.value,
+            viewType: controller.viewType,
+            source: widget.source,
+          ),
+        );
+        _reportFailure();
+        return;
+      }
       await controller.play();
       Log.i('Video native playing', _describeRemoteUri(widget.source));
       if (mounted &&
