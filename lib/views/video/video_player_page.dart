@@ -196,8 +196,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   }
 
   Future<bool> _isRemoteUriAllowed(Uri uri) async {
-    final checker = widget.remoteUriChecker ?? isResolvedPublicHttpUri;
-    return checker(uri);
+    final checker = widget.remoteUriChecker;
+    if (checker != null) return checker(uri);
+    return isJmPlaybackRemoteUriAllowed(uri);
   }
 
   @override
@@ -815,7 +816,7 @@ class _ExtractingVideoWebViewState extends State<ExtractingVideoWebView> {
 
   Future<void> _loadInitialPage(Uri initial) async {
     final requestGeneration = _navigationApprovals.beginRequest();
-    if (!await isResolvedPublicHttpUri(initial) ||
+    if (!await isJmPlaybackRemoteUriAllowed(initial) ||
         !mounted ||
         requestGeneration != _navigationApprovals.generation) {
       _fail('initial page DNS or lifecycle check failed');
@@ -842,7 +843,7 @@ class _ExtractingVideoWebViewState extends State<ExtractingVideoWebView> {
     final requestGeneration = _navigationApprovals.beginRequest();
     if (!_pendingHosts.add('$host#$requestGeneration')) return;
     try {
-      if (!await isResolvedPublicHttpUri(uri) ||
+      if (!await isJmPlaybackRemoteUriAllowed(uri) ||
           !mounted ||
           _completed ||
           requestGeneration != _navigationApprovals.generation ||
@@ -1043,6 +1044,40 @@ bool isPublicRemoteHttpUri(Uri uri) {
     return false;
   }
   return _isPublicIpLiteral(host);
+}
+
+bool isTrustedJmPlaybackHost(String rawHost) {
+  final host = rawHost.toLowerCase().replaceFirst(RegExp(r'\.$'), '');
+  final configuredHost = Uri.tryParse(JmNetwork().baseUrl)?.host;
+  final imageHosts = <String>{
+    for (final raw in jmBuiltInImgUrls)
+      if (Uri.tryParse(raw)?.host case final imageHost?) imageHost,
+  };
+  final hosts = <String>{
+    '18comic.vip',
+    'iiooxx.rocks',
+    ...jmBuiltInDomains,
+    ...imageHosts,
+    if (configuredHost != null && configuredHost.isNotEmpty)
+      configuredHost.toLowerCase(),
+  };
+  return hosts.any((allowed) {
+    final normalized = allowed.toLowerCase().replaceFirst(RegExp(r'\.$'), '');
+    return host == normalized || host.endsWith('.$normalized');
+  });
+}
+
+Future<bool> isJmPlaybackRemoteUriAllowed(
+  Uri uri, {
+  RemoteVideoUriChecker? dnsChecker,
+}) async {
+  if (!isPublicRemoteHttpUri(uri)) return false;
+  // These hosts are returned by the authenticated JM API/page itself. Do not
+  // make playback depend on a best-effort client DNS lookup: iOS networking
+  // can temporarily report a lookup failure while AVPlayer/WKWebView can
+  // resolve the same HTTPS host normally.
+  if (isTrustedJmPlaybackHost(uri.host)) return true;
+  return (dnsChecker ?? isResolvedPublicHttpUri)(uri);
 }
 
 Future<bool> isResolvedPublicHttpUri(Uri uri) async {

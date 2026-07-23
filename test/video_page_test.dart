@@ -404,6 +404,59 @@ void main() {
     );
   });
 
+  test('trusted JM playback hosts do not depend on DNS preflight', () async {
+    var dnsChecks = 0;
+    Future<bool> unavailableDns(Uri _) async {
+      dnsChecks += 1;
+      return false;
+    }
+
+    expect(
+      await isJmPlaybackRemoteUriAllowed(
+        Uri.parse(
+          'https://ms18comic-2.iiooxx.rocks/video_path_m3u8/6638/index.m3u8',
+        ),
+        dnsChecker: unavailableDns,
+      ),
+      isTrue,
+    );
+    expect(
+      await isJmPlaybackRemoteUriAllowed(
+        Uri.parse('https://18comic.vip/video/6638'),
+        dnsChecker: unavailableDns,
+      ),
+      isTrue,
+    );
+    expect(dnsChecks, 0);
+  });
+
+  test(
+    'unknown playback hosts remain DNS checked and private URLs fail',
+    () async {
+      var dnsChecks = 0;
+      Future<bool> unavailableDns(Uri _) async {
+        dnsChecks += 1;
+        return false;
+      }
+
+      expect(
+        await isJmPlaybackRemoteUriAllowed(
+          Uri.parse('https://unknown.example/video.m3u8'),
+          dnsChecker: unavailableDns,
+        ),
+        isFalse,
+      );
+      expect(
+        await isJmPlaybackRemoteUriAllowed(
+          Uri.parse('http://127.0.0.1/private.m3u8'),
+          dnsChecker: unavailableDns,
+        ),
+        isFalse,
+      );
+      expect(dnsChecks, 1);
+    },
+  );
+
   test('WebView navigation remains inside trusted JM public hosts', () {
     final initial = Uri.parse('https://18comic.vip/video/v1');
     expect(isTrustedJmPageUri(initial, initial: initial), isTrue);
