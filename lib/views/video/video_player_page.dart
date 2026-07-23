@@ -20,9 +20,17 @@ import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 import '../../foundation/log.dart';
 import '../../network/jm/jm_network.dart';
 import '../../network/res.dart';
+import '../../theme/app_safe_area.dart';
+import '../../theme/app_spacing.dart';
 
 typedef JmVideoDetailLoader = Future<Res<JmVideoDetail>> Function(String id);
 typedef DirectVideoPlayerBuilder =
+    Widget Function(
+      BuildContext context,
+      String source,
+      VoidCallback onFailure,
+    );
+typedef DirectHlsWebViewBuilder =
     Widget Function(
       BuildContext context,
       String source,
@@ -143,6 +151,7 @@ class VideoPlayerPage extends StatefulWidget {
     this.initialBacklink = '',
     this.loader,
     this.directPlayerBuilder,
+    this.directHlsWebViewBuilder,
     this.webViewBuilder,
     this.externalLauncher,
     this.remoteUriChecker,
@@ -156,6 +165,7 @@ class VideoPlayerPage extends StatefulWidget {
   final String initialBacklink;
   final JmVideoDetailLoader? loader;
   final DirectVideoPlayerBuilder? directPlayerBuilder;
+  final DirectHlsWebViewBuilder? directHlsWebViewBuilder;
   final VideoWebViewBuilder? webViewBuilder;
   final ExternalVideoLauncher? externalLauncher;
   final RemoteVideoUriChecker? remoteUriChecker;
@@ -171,6 +181,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   JmVideoDetail? _detail;
   String? _error;
   String? _extractedSource;
+  String? _directFallbackSource;
   bool _loading = true;
   bool _useWebView = false;
   bool _webFailed = false;
@@ -277,6 +288,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     _detail = null;
     _error = null;
     _extractedSource = null;
+    _directFallbackSource = null;
     _acceptedExtractionSources.clear();
     _pendingExtractionSession = null;
     _queuedExtractionSource = null;
@@ -331,6 +343,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
                   icon: const Icon(Icons.open_in_new),
                   label: const Text('浏览器打开'),
                 ),
+                SizedBox(
+                  height: bottomContentInset(context, spacing: AppSpacing.xs),
+                ),
               ],
             ),
     );
@@ -350,6 +365,22 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         source: source,
         onFailure: onFailure,
       );
+    }
+    final directFallback = _directFallbackSource;
+    if (_useWebView && directFallback != null && directFallback.isNotEmpty) {
+      final builder = widget.directHlsWebViewBuilder;
+      if (builder != null) {
+        return builder(context, directFallback, _onDirectWebFailure);
+      }
+      // Existing widget-test/custom integrations only provide the extracting
+      // builder. Production uses the dedicated local direct-HLS document.
+      if (widget.webViewBuilder == null) {
+        return DirectHlsVideoWebView(
+          key: videoWebViewKey('direct:${directFallback.hashCode}'),
+          source: directFallback,
+          onFailure: _onDirectWebFailure,
+        );
+      }
     }
     if (_webFailed) {
       return Center(
@@ -380,7 +411,10 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     if (failed.isNotEmpty) _failedSources.add(failed);
     Log.w('Video native fallback', error: _describeRemoteUri(failed));
     if (_activeExtractedSource == failed) _activeExtractedSource = null;
-    setState(() => _useWebView = true);
+    setState(() {
+      _directFallbackSource = failed.isEmpty ? null : failed;
+      _useWebView = true;
+    });
     _processQueuedExtraction(session);
   }
 
@@ -422,6 +456,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       _activeExtractedSource = valid.toString();
       setState(() {
         _extractedSource = valid.toString();
+        _directFallbackSource = null;
         _useWebView = false;
         _webFailed = false;
       });
@@ -436,6 +471,15 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   void _onWebFailure() {
     Log.w('Video WebView fallback failed', error: 'id=${widget.videoId}');
     if (mounted) setState(() => _webFailed = true);
+  }
+
+  void _onDirectWebFailure() {
+    final source = _directFallbackSource;
+    Log.w(
+      'Video direct HLS fallback failed',
+      error: source == null ? 'missing-source' : _describeRemoteUri(source),
+    );
+    if (mounted) setState(() => _directFallbackSource = null);
   }
 
   Future<void> _openExternal() async {
@@ -696,6 +740,155 @@ class _NativeVideoPlayerState extends State<NativeVideoPlayer> {
         ),
       ],
     );
+  }
+}
+
+String buildDirectHlsVideoHtml(String source) {
+  final encodedSource = base64Encode(utf8.encode(source));
+  return '''<!doctype html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <style>
+    html,body { margin:0; width:100%; height:100%; background:#000; overflow:hidden; }
+    video { width:100%; height:100%; object-fit:contain; background:#000; }
+  </style>
+</head>
+<body>
+  <video id="player" controls autoplay playsinline preload="metadata"></video>
+  <script>
+    (() => {
+      const player = document.getElementById('player');
+      const send = (event, detail = '') => {
+        try {
+          VideoBridge.postMessage(JSON.stringify({
+            type: 'direct_hls', event, detail: String(detail).slice(0, 64)
+          }));
+        } catch (_) {}
+      };
+      ['loadedmetadata','canplay','playing','waiting','stalled'].forEach(event => {
+        player.addEventListener(event, () => send(event, player.readyState));
+      });
+      player.addEventListener('error', () => send('error', player.error ? player.error.code : 0));
+      player.src = atob('$encodedSource');
+      player.load();
+      const promise = player.play();
+      if (promise && promise.catch) promise.catch(() => send('autoplay-blocked'));
+    })();
+  </script>
+</body>
+</html>''';
+}
+
+class DirectHlsVideoWebView extends StatefulWidget {
+  const DirectHlsVideoWebView({
+    super.key,
+    required this.source,
+    required this.onFailure,
+  });
+
+  final String source;
+  final VoidCallback onFailure;
+
+  @override
+  State<DirectHlsVideoWebView> createState() => _DirectHlsVideoWebViewState();
+}
+
+class _DirectHlsVideoWebViewState extends State<DirectHlsVideoWebView> {
+  WebViewController? _controller;
+  bool _failed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final source = safeRemoteHttpUri(widget.source);
+    if (source == null) {
+      scheduleMicrotask(() => _fail('invalid source'));
+      return;
+    }
+    final controller = WebViewController.fromPlatformCreationParams(
+      videoWebViewCreationParams(
+        useWebKit: WebViewPlatform.instance is WebKitWebViewPlatform,
+      ),
+    );
+    if (controller.platform is AndroidWebViewController) {
+      unawaited(
+        (controller.platform as AndroidWebViewController)
+            .setMediaPlaybackRequiresUserGesture(false),
+      );
+    }
+    _controller = controller
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..addJavaScriptChannel(
+        'VideoBridge',
+        onMessageReceived: (message) {
+          if (_failed) return;
+          try {
+            final decoded = jsonDecode(message.message);
+            if (decoded is! Map || decoded['type'] != 'direct_hls') return;
+            final event = decoded['event']?.toString() ?? 'unknown';
+            final detail = decoded['detail']?.toString() ?? '';
+            if (!const <String>{
+              'loadedmetadata',
+              'canplay',
+              'playing',
+              'waiting',
+              'stalled',
+              'error',
+              'autoplay-blocked',
+            }.contains(event)) {
+              return;
+            }
+            Log.i(
+              'Video direct HLS event',
+              'event=$event detail=${detail.substring(0, detail.length.clamp(0, 64))}',
+            );
+            if (event == 'error') _fail('media error $detail');
+          } catch (_) {
+            _fail('invalid bridge message');
+          }
+        },
+      )
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onNavigationRequest: (request) => request.url == 'about:blank'
+              ? NavigationDecision.navigate
+              : NavigationDecision.prevent,
+          onWebResourceError: (error) {
+            if (shouldFailWebViewForResourceError(error)) {
+              _fail('resource ${error.errorCode}');
+            }
+          },
+        ),
+      );
+    Log.i('Video direct HLS load', _describeRemoteUri(source.toString()));
+    unawaited(
+      controller.loadHtmlString(
+        buildDirectHlsVideoHtml(source.toString()),
+        baseUrl: 'https://18comic.vip/',
+      ),
+    );
+  }
+
+  void _fail(String reason) {
+    if (_failed || !mounted) return;
+    _failed = true;
+    Log.w('Video direct HLS failed', error: reason);
+    widget.onFailure();
+  }
+
+  @override
+  void dispose() {
+    Log.i('Video direct HLS dispose');
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = _controller;
+    return controller == null
+        ? const SizedBox.shrink()
+        : WebViewWidget(controller: controller);
   }
 }
 

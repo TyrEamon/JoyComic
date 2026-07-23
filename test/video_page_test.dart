@@ -112,6 +112,18 @@ void main() {
     expect(description, contains('buffering=false'));
   });
 
+  test(
+    'direct HLS HTML embeds a local player without leaking query values',
+    () {
+      const source = 'https://cdn.example/a.m3u8?token=secret';
+      final html = buildDirectHlsVideoHtml(source);
+      expect(html, contains('<video'));
+      expect(html, contains('playsinline'));
+      expect(html, contains('loadedmetadata'));
+      expect(html, isNot(contains('token=secret')));
+    },
+  );
+
   test('zero-size initialized media is treated as non-renderable', () {
     const value = VideoPlayerValue(
       duration: Duration(minutes: 5),
@@ -348,6 +360,49 @@ void main() {
       find.text('web:https://18comic.vip/video/direct-id'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('native playback failure can use direct HLS WebView fallback', (
+    tester,
+  ) async {
+    VoidCallback? failPlayback;
+    String? directFallbackSource;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VideoPlayerPage(
+          remoteUriChecker: (_) async => true,
+          videoId: 'direct-fallback-id',
+          loader: (_) async => Res(
+            JmVideoDetail(
+              id: 'direct-fallback-id',
+              title: 'Direct fallback',
+              description: '',
+              photo: '',
+              videoSrc: 'https://cdn.example/video.m3u8?token=secret',
+              fullUrl: 'https://18comic.vip/video/direct-fallback-id',
+              tags: const <String>[],
+              backlink: '',
+              relatedVideos: const <JmVideoItem>[],
+            ),
+          ),
+          directPlayerBuilder: (_, __, onFailure) {
+            failPlayback = onFailure;
+            return const Text('native-player');
+          },
+          directHlsWebViewBuilder: (_, source, onFailure) {
+            directFallbackSource = source;
+            return const Text('direct-hls-web');
+          },
+          webViewBuilder: (_, url, __) => Text('web:$url'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    failPlayback!();
+    await tester.pumpAndSettle();
+
+    expect(find.text('direct-hls-web'), findsOneWidget);
+    expect(directFallbackSource, 'https://cdn.example/video.m3u8?token=secret');
   });
 
   testWidgets('relative API video source resolves against the video page', (
