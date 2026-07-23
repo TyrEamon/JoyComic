@@ -51,4 +51,22 @@ void main() {
     cache.clear();
     expect(cache.get('b'), isNull);
   });
+
+  test(
+    'cached JSON data is detached from caller-owned mutable collections',
+    () {
+      final cache = JmRequestCache();
+      final images = <dynamic>['first.webp'];
+      final payload = <String, dynamic>{'images': images};
+      cache.put('album', Res<dynamic>(payload), const Duration(minutes: 1));
+
+      images[0] = 'mutated.webp';
+      payload['extra'] = true;
+
+      final cached = cache.get('album')!.data as Map;
+      expect(cached['images'], const <dynamic>['first.webp']);
+      expect(cached.containsKey('extra'), isFalse);
+      expect(() => cached['new'] = true, throwsUnsupportedError);
+    },
+  );
 }

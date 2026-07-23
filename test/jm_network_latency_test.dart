@@ -155,11 +155,34 @@ void main() {
 
       expect(first.error, isFalse);
       expect(second.error, isFalse);
-      expect(
-        identical(first.data, second.data) || second.data == first.data,
-        isTrue,
-      );
+      expect(first.data, containsPair('n', 1));
+      expect(second.data, containsPair('n', 1));
+      expect(identical(first.data, second.data), isFalse);
       expect(networkCalls, 1);
+    },
+  );
+
+  test(
+    'injected GET transport only caches when a cache is also injected',
+    () async {
+      var networkCalls = 0;
+      final network = JmNetwork(
+        getRequest: (_) async {
+          networkCalls++;
+          return Res<dynamic>(<String, dynamic>{'n': networkCalls});
+        },
+      );
+
+      await network.get(
+        'https://api.example/setting',
+        cacheTtl: const Duration(minutes: 5),
+      );
+      await network.get(
+        'https://api.example/setting',
+        cacheTtl: const Duration(minutes: 5),
+      );
+
+      expect(networkCalls, 2);
     },
   );
 

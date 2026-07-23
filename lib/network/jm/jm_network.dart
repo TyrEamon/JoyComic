@@ -324,6 +324,7 @@ class JmNetwork {
        _postRequest = postRequest,
        _credentialStore = credentialStore ?? SourceCredentialStore(),
        _endpointHealth = endpointHealth ?? JmEndpointHealth(),
+       _cacheInjectedRequests = getRequest == null || requestCache != null,
        _requestCache = requestCache ?? JmRequestCache();
 
   static JmNetwork? _cache;
@@ -359,6 +360,7 @@ class JmNetwork {
   final JmPostRequest? _postRequest;
   final SourceCredentialStore _credentialStore;
   final JmEndpointHealth _endpointHealth;
+  final bool _cacheInjectedRequests;
   final JmRequestCache _requestCache;
 
   SourceCredentialStore get credentialStore => _credentialStore;
@@ -705,7 +707,7 @@ class JmNetwork {
     int? requestAuthGeneration,
     Duration? cacheTtl,
   }) async {
-    final cacheKey = cacheTtl != null && !isRetry
+    final cacheKey = cacheTtl != null && !isRetry && _cacheInjectedRequests
         ? _publicGetCacheKey(url)
         : null;
     if (cacheKey != null) {

@@ -36,7 +36,11 @@ class JmRequestCache {
     if (value.error) return;
     if (ttl <= Duration.zero) return;
     _entries.remove(key);
-    _entries[key] = (expiresAt: _clock().add(ttl), value: value);
+    final snapshot = Res<dynamic>(
+      _freezeJson(value.dataOrNull),
+      subData: _freezeJson(value.subData),
+    );
+    _entries[key] = (expiresAt: _clock().add(ttl), value: snapshot);
     while (_entries.length > maxEntries) {
       _entries.remove(_entries.keys.first);
     }
@@ -45,4 +49,16 @@ class JmRequestCache {
   void remove(String key) => _entries.remove(key);
 
   void clear() => _entries.clear();
+
+  static dynamic _freezeJson(dynamic value) {
+    if (value is Map) {
+      return Map<dynamic, dynamic>.unmodifiable({
+        for (final entry in value.entries) entry.key: _freezeJson(entry.value),
+      });
+    }
+    if (value is Iterable) {
+      return List<dynamic>.unmodifiable(value.map(_freezeJson));
+    }
+    return value;
+  }
 }
