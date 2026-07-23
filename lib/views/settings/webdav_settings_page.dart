@@ -9,6 +9,7 @@ import '../../foundation/webdav_client.dart';
 import '../../foundation/webdav_config_store.dart';
 import '../../foundation/webdav_sync.dart';
 import '../../theme/app_spacing.dart';
+import '../../theme/app_safe_area.dart';
 
 class WebDavSettingsPage extends StatefulWidget {
   const WebDavSettingsPage({super.key, this.configStore});
@@ -195,7 +196,12 @@ class _WebDavSettingsPageState extends State<WebDavSettingsPage> {
       body: _loadingConfig
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.all(AppSpacing.md),
+              padding: EdgeInsets.fromLTRB(
+                AppSpacing.md,
+                AppSpacing.md,
+                AppSpacing.md,
+                bottomContentInset(context),
+              ),
               children: [
                 const _FieldLabel('服务器地址'),
                 TextField(

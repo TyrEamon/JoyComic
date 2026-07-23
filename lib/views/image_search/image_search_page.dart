@@ -15,6 +15,7 @@ import '../../foundation/sauce_nao_config_store.dart';
 import '../../foundation/sauce_nao_search.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
+import '../../theme/app_safe_area.dart';
 import '../common/widgets/comic_grid.dart';
 import '../common/widgets/empty_state.dart';
 
@@ -334,7 +335,9 @@ class _ImageSearchPageState extends State<ImageSearchPage> {
                     ),
             ),
           ],
-          const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.xl)),
+          SliverToBoxAdapter(
+            child: SizedBox(height: bottomContentInset(context)),
+          ),
         ],
       ),
     );

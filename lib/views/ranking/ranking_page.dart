@@ -8,6 +8,7 @@ import 'package:joycomic/theme/app_theme_context.dart';
 import '../../comic_source/comic_source.dart';
 import '../../network/base_comic.dart';
 import '../../theme/app_spacing.dart';
+import '../../theme/app_safe_area.dart';
 import '../common/source_content_models.dart';
 import '../common/widgets/comic_grid.dart';
 import '../common/widgets/source_login_prompt.dart';
@@ -242,6 +243,12 @@ class _RankingPageState extends State<RankingPage>
               ? const Center(child: Text('暂无排行内容'))
               : ComicGrid(
                   items: data.items,
+                  padding: EdgeInsets.fromLTRB(
+                    AppSpacing.md,
+                    AppSpacing.sm,
+                    AppSpacing.md,
+                    bottomContentInset(context),
+                  ),
                   onItemTap: (item) => context.push(
                     '/detail/${item.sourceKey ?? 'jm'}/${item.id}',
                   ),

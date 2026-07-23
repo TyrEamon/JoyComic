@@ -25,6 +25,7 @@ import '../../foundation/reader_config.dart';
 import '../../foundation/webdav_config_store.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
+import '../../theme/app_safe_area.dart';
 import '../common/source_account_profile.dart';
 import '../common/source_account_sheet.dart';
 
@@ -210,7 +211,10 @@ class _SettingsPageState extends State<SettingsPage> {
         backgroundColor: context.pageBackground,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+        padding: EdgeInsets.only(
+          top: AppSpacing.sm,
+          bottom: bottomContentInset(context),
+        ),
         child: Column(
           children: [
             _SettingsGroup(

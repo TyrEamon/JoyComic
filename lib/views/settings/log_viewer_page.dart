@@ -11,6 +11,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../foundation/log.dart';
 import '../../theme/app_radius.dart';
+import '../../theme/app_safe_area.dart';
 import '../../theme/app_spacing.dart';
 
 class LogViewerPage extends StatefulWidget {
@@ -202,9 +203,7 @@ class _LogViewerPageState extends State<LogViewerPage> {
                       )
                     : const Icon(Icons.ios_share_rounded),
                 label: Text(
-                  _exporting
-                      ? '正在导出…'
-                      : '一键导出为 TXT（${filtered.length} 条）',
+                  _exporting ? '正在导出…' : '一键导出为 TXT（${filtered.length} 条）',
                 ),
               ),
             ),
@@ -260,7 +259,12 @@ class _LogViewerPageState extends State<LogViewerPage> {
                     ),
                   )
                 : ListView.separated(
-                    padding: const EdgeInsets.all(AppSpacing.sm),
+                    padding: EdgeInsets.fromLTRB(
+                      AppSpacing.sm,
+                      AppSpacing.sm,
+                      AppSpacing.sm,
+                      bottomContentInset(context),
+                    ),
                     itemCount: filtered.length,
                     separatorBuilder: (_, __) =>
                         const SizedBox(height: AppSpacing.xs),

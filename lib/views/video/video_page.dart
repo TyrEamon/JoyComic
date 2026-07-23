@@ -9,6 +9,7 @@ import '../../network/jm/jm_headers.dart';
 import '../../network/jm/jm_network.dart';
 import '../../network/res.dart';
 import '../../theme/app_spacing.dart';
+import '../../theme/app_safe_area.dart';
 
 typedef JmVideoLoader =
     Future<Res<({List<JmVideoItem> items, int total})>> Function({
@@ -203,7 +204,12 @@ class _VideoPageState extends State<VideoPage>
           ),
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.all(AppSpacing.md),
+              padding: EdgeInsets.fromLTRB(
+                AppSpacing.md,
+                AppSpacing.md,
+                AppSpacing.md,
+                bottomContentInset(context),
+              ),
               child: _items.length < _total
                   ? FilledButton.tonal(
                       key: const Key('video-load-more'),

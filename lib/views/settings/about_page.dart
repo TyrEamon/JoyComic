@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart' as launcher;
 
 import '../../foundation/app_package_info.dart';
+import '../../theme/app_safe_area.dart';
+import '../../theme/app_spacing.dart';
 
 const String joyComicGithubUrl = 'https://github.com/xiaoqi419/JoyComic';
 
@@ -81,7 +83,12 @@ class _AboutContent extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('关于 JoyComic')),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 20, 16, 32),
+        padding: EdgeInsets.fromLTRB(
+          AppSpacing.md,
+          AppSpacing.lg,
+          AppSpacing.md,
+          bottomContentInset(context),
+        ),
         children: [
           Center(
             child: Column(

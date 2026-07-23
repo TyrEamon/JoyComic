@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../theme/app_spacing.dart';
+import '../../theme/app_safe_area.dart';
 import '../../theme/app_theme_context.dart';
 import 'detail_navigation.dart';
 import 'detail_view_model.dart';
@@ -63,9 +64,9 @@ class _DetailChaptersScaffold extends StatelessWidget {
           ),
         ),
         DetailLoadState.success => ListView(
-          padding: const EdgeInsets.only(
+          padding: EdgeInsets.only(
             top: AppSpacing.md,
-            bottom: AppSpacing.xl,
+            bottom: bottomContentInset(context),
           ),
           children: [
             ChapterGrid(

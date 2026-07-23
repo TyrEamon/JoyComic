@@ -14,6 +14,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../comic_source/comic_source.dart';
 import '../../network/base_comic.dart';
+import '../../theme/app_safe_area.dart';
 import '../../theme/app_spacing.dart';
 import '../common/widgets/comic_card.dart';
 
@@ -168,9 +169,11 @@ class _TempSearchPageState extends State<TempSearchPage> {
             AppSpacing.sm * 2) /
         3;
     return GridView.builder(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.md,
-        vertical: AppSpacing.sm,
+      padding: EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.sm,
+        AppSpacing.md,
+        bottomContentInset(context),
       ),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,

@@ -6,6 +6,7 @@ import 'package:joycomic/theme/app_theme_context.dart';
 
 import '../../foundation/reader_config.dart';
 import '../../theme/app_radius.dart';
+import '../../theme/app_safe_area.dart';
 import '../../theme/app_spacing.dart';
 import '../reader/state/read_mode.dart';
 
@@ -62,7 +63,10 @@ class _ReaderSettingsPageState extends State<ReaderSettingsPage> {
         backgroundColor: context.pageBackground,
       ),
       body: ListView(
-        padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+        padding: EdgeInsets.only(
+          top: AppSpacing.sm,
+          bottom: bottomContentInset(context),
+        ),
         children: [
           _Group(
             title: '默认阅读模式',

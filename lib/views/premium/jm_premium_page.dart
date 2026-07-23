@@ -14,6 +14,7 @@ import '../../comic_source/comic_source.dart';
 import '../../network/jm/jm_network.dart';
 import '../../network/res.dart';
 import '../../theme/app_spacing.dart';
+import '../../theme/app_safe_area.dart';
 import '../common/widgets/comic_grid.dart';
 import '../common/widgets/empty_state.dart';
 import '../common/widgets/loading_grid.dart';
@@ -62,10 +63,9 @@ class _JmPremiumPageState extends State<JmPremiumPage>
   late final TabController _tab = TabController(
     length: JmPremiumTab.values.length,
     vsync: this,
-    initialIndex: JmPremiumTab.values.indexOf(widget.initialTab).clamp(
-      0,
-      JmPremiumTab.values.length - 1,
-    ),
+    initialIndex: JmPremiumTab.values
+        .indexOf(widget.initialTab)
+        .clamp(0, JmPremiumTab.values.length - 1),
   );
 
   final List<JmComicBrief> _comics = <JmComicBrief>[];
@@ -129,11 +129,7 @@ class _JmPremiumPageState extends State<JmPremiumPage>
       _total = null;
       _comics.clear();
     });
-    final result = await _loader(
-      tab: _currentTab,
-      page: 1,
-      order: _order,
-    );
+    final result = await _loader(tab: _currentTab, page: 1, order: _order);
     if (!mounted || generation != _generation) return;
     setState(() {
       _loading = false;
@@ -235,7 +231,8 @@ class _JmPremiumPageState extends State<JmPremiumPage>
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
                 itemCount: _sortOptions.length,
-                separatorBuilder: (_, __) => const SizedBox(width: AppSpacing.sm),
+                separatorBuilder: (_, __) =>
+                    const SizedBox(width: AppSpacing.sm),
                 itemBuilder: (context, index) {
                   final option = _sortOptions[index];
                   final selected = option.key == _sortKey;
@@ -259,17 +256,19 @@ class _JmPremiumPageState extends State<JmPremiumPage>
       return const LoadingGrid();
     }
     if (_error != null && _comics.isEmpty) {
-      return EmptyState(
-        title: _error!,
-        actionLabel: '重试',
-        onAction: _reload,
-      );
+      return EmptyState(title: _error!, actionLabel: '重试', onAction: _reload);
     }
     if (_comics.isEmpty) {
       return EmptyState(title: '暂无内容', actionLabel: '刷新', onAction: _reload);
     }
     return ComicGrid(
       items: _gridItems,
+      padding: EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.sm,
+        AppSpacing.md,
+        bottomContentInset(context),
+      ),
       loading: _loadingMore,
       hasMore: _hasMore,
       onRefresh: _reload,

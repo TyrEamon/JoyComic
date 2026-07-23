@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../theme/app_spacing.dart';
+import '../../theme/app_safe_area.dart';
 import '../../theme/app_theme_context.dart';
 import 'detail_view_model.dart';
 import 'widgets/comment_composer.dart';
@@ -95,8 +96,7 @@ class _DetailCommentsScaffold extends StatelessWidget {
                   padding: EdgeInsets.only(
                     top: AppSpacing.md,
                     // Keep the composer / last comments above the home indicator.
-                    bottom:
-                        MediaQuery.paddingOf(context).bottom + AppSpacing.md,
+                    bottom: bottomContentInset(context, spacing: AppSpacing.md),
                   ),
                   children: [
                     CommentSection(

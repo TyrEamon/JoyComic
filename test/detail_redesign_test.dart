@@ -54,7 +54,10 @@ void main() {
           sectionSpacing: AppSpacing.md,
         );
 
-        expect(geometry.titleBandBottom, lessThanOrEqualTo(geometry.coverBottom));
+        expect(
+          geometry.titleBandBottom,
+          lessThanOrEqualTo(geometry.coverBottom),
+        );
         expect(geometry.titleBandTop, greaterThanOrEqualTo(76));
         expect(geometry.titleBandBottom, greaterThan(geometry.titleBandTop));
         expect(
@@ -131,9 +134,9 @@ void main() {
           MaterialApp(
             theme: AppTheme.light(),
             builder: (context, child) => MediaQuery(
-              data: MediaQuery.of(context).copyWith(
-                padding: const EdgeInsets.only(top: 24),
-              ),
+              data: MediaQuery.of(
+                context,
+              ).copyWith(padding: const EdgeInsets.only(top: 24)),
               child: child!,
             ),
             home: const Scaffold(
@@ -188,44 +191,43 @@ void main() {
     },
   );
 
-  testWidgets(
-    'synopsis uses full width with trailing expand overlay',
-    (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: AppTheme.light(),
-          home: const Scaffold(
-            body: SizedBox(
-              width: 280,
-              child: SynopsisBlock(
-                text:
-                    '第一行很长很长很长很长很长很长很长。第二行很长很长很长很长很长很长很长。第三行很长很长很长很长很长很长很长。第四行很长很长很长很长很长很长很长。第五行继续加长确保会超过三行折叠。',
-              ),
+  testWidgets('synopsis uses full width with trailing expand overlay', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: const Scaffold(
+          body: SizedBox(
+            width: 280,
+            child: SynopsisBlock(
+              text:
+                  '第一行很长很长很长很长很长很长很长。第二行很长很长很长很长很长很长很长。第三行很长很长很长很长很长很长很长。第四行很长很长很长很长很长很长很长。第五行继续加长确保会超过三行折叠。',
             ),
           ),
         ),
-      );
-      await tester.pump();
-      await tester.pump();
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
 
-      expect(find.text('展开'), findsOneWidget);
-      final bodyText = tester.widget<Text>(find.textContaining('第一行'));
-      expect(bodyText.maxLines, 3);
+    expect(find.text('展开'), findsOneWidget);
+    final bodyText = tester.widget<Text>(find.textContaining('第一行'));
+    expect(bodyText.maxLines, 3);
 
-      final textRect = tester.getRect(find.textContaining('第一行'));
-      final toggleRect = tester.getRect(find.text('展开'));
-      // Body spans the content width; expand sits on the trailing edge.
-      expect(textRect.width, greaterThanOrEqualTo(200));
-      expect(toggleRect.right, closeTo(textRect.right, 8));
-      expect(toggleRect.bottom, lessThanOrEqualTo(textRect.bottom + 4));
-      // Hit target is at least 44 logical px via the control.
-      final toggleControl = tester.getRect(
-        find.byKey(const ValueKey('synopsis-toggle')),
-      );
-      expect(toggleControl.height, greaterThanOrEqualTo(44));
-      expect(toggleControl.width, greaterThanOrEqualTo(44));
-    },
-  );
+    final textRect = tester.getRect(find.textContaining('第一行'));
+    final toggleRect = tester.getRect(find.text('展开'));
+    // Body spans the content width; expand sits on the trailing edge.
+    expect(textRect.width, greaterThanOrEqualTo(200));
+    expect(toggleRect.right, closeTo(textRect.right, 8));
+    expect(toggleRect.bottom, lessThanOrEqualTo(textRect.bottom + 4));
+    // Hit target is at least 44 logical px via the control.
+    final toggleControl = tester.getRect(
+      find.byKey(const ValueKey('synopsis-toggle')),
+    );
+    expect(toggleControl.height, greaterThanOrEqualTo(44));
+    expect(toggleControl.width, greaterThanOrEqualTo(44));
+  });
 
   testWidgets(
     'recent chapter header aligns 全部章节 with the section title baseline',
@@ -250,10 +252,7 @@ void main() {
       final titleRect = tester.getRect(find.text('最近章节'));
       final actionRect = tester.getRect(find.text('全部章节'));
       // Optical vertical alignment: centers should be close (no TextButton drop).
-      expect(
-        (titleRect.center.dy - actionRect.center.dy).abs(),
-        lessThan(6),
-      );
+      expect((titleRect.center.dy - actionRect.center.dy).abs(), lessThan(6));
     },
   );
 
@@ -618,11 +617,7 @@ void main() {
                   cover: null,
                   author: 'Author',
                 ),
-                RecommendItem(
-                  id: '2',
-                  title: '短标题',
-                  cover: null,
-                ),
+                RecommendItem(id: '2', title: '短标题', cover: null),
               ],
             ),
           ),
@@ -635,32 +630,25 @@ void main() {
       );
       expect(longTitle.maxLines, 2);
 
-      final carousel = tester.getRect(
-        find.byType(RecommendationCarousel),
-      );
+      final carousel = tester.getRect(find.byType(RecommendationCarousel));
       // List height is fixed so mixed one/two-line titles stay stable.
-      final listSizedBox = tester.widgetList<SizedBox>(find.byType(SizedBox)).where(
-        (box) => box.height == 250 || box.height == 230 || box.height == 210,
-      );
+      final listSizedBox = tester
+          .widgetList<SizedBox>(find.byType(SizedBox))
+          .where(
+            (box) =>
+                box.height == 250 || box.height == 230 || box.height == 210,
+          );
       expect(listSizedBox, isNotEmpty);
       expect(carousel.height, greaterThan(180));
     },
   );
 
-  test(
-    'detail page appends system bottom inset to the design end spacing',
-    () {
-      final source = File(
-        'lib/views/detail/detail_page.dart',
-      ).readAsStringSync();
-      expect(source, contains("ValueKey('detail-bottom-safe-padding')"));
-      expect(
-        source,
-        contains('MediaQuery.paddingOf(context).bottom + AppSpacing.xl'),
-      );
-      expect(source, isNot(contains('StickyActionBar')));
-    },
-  );
+  test('detail page appends system bottom inset to the design end spacing', () {
+    final source = File('lib/views/detail/detail_page.dart').readAsStringSync();
+    expect(source, contains("ValueKey('detail-bottom-safe-padding')"));
+    expect(source, contains('bottomContentInset(context)'));
+    expect(source, isNot(contains('StickyActionBar')));
+  });
 
   testWidgets('approved composition renders without overflow at breakpoints', (
     tester,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../comic_source/comic_source.dart';
 import '../../foundation/app_data.dart';
+import '../../theme/app_safe_area.dart';
 import '../../theme/app_spacing.dart';
 
 class SourceManagerPage extends StatefulWidget {
@@ -54,7 +55,10 @@ class _SourceManagerPageState extends State<SourceManagerPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('源管理')),
       body: ListView(
-        padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+        padding: EdgeInsets.only(
+          top: AppSpacing.sm,
+          bottom: bottomContentInset(context),
+        ),
         children: <Widget>[
           const Padding(
             padding: EdgeInsets.fromLTRB(

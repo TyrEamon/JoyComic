@@ -22,6 +22,7 @@ import 'package:go_router/go_router.dart';
 import '../../comic_source/comic_source.dart';
 import '../../database/search_history_helper.dart';
 import '../../foundation/log.dart';
+import '../../theme/app_safe_area.dart';
 import '../../theme/app_spacing.dart';
 import '../common/utils/source_login_guard.dart';
 import '../common/widgets/comic_grid.dart';
@@ -274,6 +275,12 @@ class _SearchPageState extends State<SearchPage> {
                         .toList(),
               onLoadMore: _hasMore ? _loadMore : null,
               hasMore: _hasMore,
+              padding: EdgeInsets.fromLTRB(
+                AppSpacing.md,
+                AppSpacing.sm,
+                AppSpacing.md,
+                bottomContentInset(context),
+              ),
               onItemTap: (i) => _onItemTap(i),
             ),
           ),
@@ -407,7 +414,12 @@ class _SearchHomeState extends State<_SearchHome> {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.all(AppSpacing.md),
+      padding: EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.md,
+        AppSpacing.md,
+        bottomContentInset(context),
+      ),
       children: [
         Row(
           children: [

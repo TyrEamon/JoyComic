@@ -16,6 +16,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../comic_source/comic_source.dart';
 import '../../theme/app_spacing.dart';
+import '../../theme/app_safe_area.dart';
 import 'detail_navigation.dart';
 import 'detail_view_model.dart';
 import 'widgets/comment_preview.dart';
@@ -385,8 +386,7 @@ class _ContentState extends State<_Content> {
                 // System bottom inset + design spacing; no fixed action bar.
                 SizedBox(
                   key: const ValueKey('detail-bottom-safe-padding'),
-                  height:
-                      MediaQuery.paddingOf(context).bottom + AppSpacing.xl,
+                  height: bottomContentInset(context),
                 ),
               ],
             ),

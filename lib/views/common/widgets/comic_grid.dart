@@ -29,6 +29,7 @@ class ComicGrid extends StatefulWidget {
     this.emptyTitle = '暂无内容',
     this.shrinkWrap = false,
     this.physics,
+    this.padding,
   });
 
   final List<ComicGridItem> items;
@@ -44,6 +45,7 @@ class ComicGrid extends StatefulWidget {
   final String emptyTitle;
   final bool shrinkWrap;
   final ScrollPhysics? physics;
+  final EdgeInsetsGeometry? padding;
 
   @override
   State<ComicGrid> createState() => _ComicGridState();
@@ -74,10 +76,12 @@ class _ComicGridState extends State<ComicGrid> {
           (widget.onRefresh == null
               ? null
               : const AlwaysScrollableScrollPhysics()),
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.md,
-        vertical: AppSpacing.sm,
-      ),
+      padding:
+          widget.padding ??
+          const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.sm,
+          ),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: widget.crossAxisCount,
         mainAxisSpacing: AppSpacing.md,

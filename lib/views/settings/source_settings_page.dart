@@ -8,6 +8,7 @@ import '../../network/jm/jm_network.dart';
 import '../../network/picacg/picacg_network.dart';
 import '../../network/source_state.dart';
 import '../../theme/app_radius.dart';
+import '../../theme/app_safe_area.dart';
 import '../../theme/app_spacing.dart';
 
 typedef JmShuntTester =
@@ -95,7 +96,12 @@ class _SourceSettingsPageState extends State<SourceSettingsPage> {
         backgroundColor: context.pageBackground,
       ),
       body: ListView(
-        padding: const EdgeInsets.all(AppSpacing.md),
+        padding: EdgeInsets.fromLTRB(
+          AppSpacing.md,
+          AppSpacing.md,
+          AppSpacing.md,
+          bottomContentInset(context),
+        ),
         children: isJm ? _buildJmSettings(context) : _buildPicacgSettings(),
       ),
     );

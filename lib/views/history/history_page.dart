@@ -9,6 +9,7 @@ import '../../comic_source/comic_source.dart';
 import '../../database/read_record_helper.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
+import '../../theme/app_safe_area.dart';
 import '../common/utils/source_login_guard.dart';
 import '../common/widgets/comic_cover.dart';
 import '../common/widgets/empty_state.dart';
@@ -131,11 +132,11 @@ class _HistoryPageState extends State<HistoryPage> {
               onRefresh: () async => _controller.load(),
               child: ListView.separated(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(
+                padding: EdgeInsets.fromLTRB(
                   AppSpacing.md,
                   AppSpacing.sm,
                   AppSpacing.md,
-                  AppSpacing.xl,
+                  bottomContentInset(context),
                 ),
                 itemCount: records.length,
                 separatorBuilder: (_, _) =>
