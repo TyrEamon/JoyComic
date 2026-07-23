@@ -724,7 +724,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
 }
 
 VideoViewType nativeVideoViewType(TargetPlatform platform) {
-  if (platform == TargetPlatform.iOS || platform == TargetPlatform.macOS) {
+  if (platform == TargetPlatform.macOS) {
     return VideoViewType.platformView;
   }
   return VideoViewType.textureView;

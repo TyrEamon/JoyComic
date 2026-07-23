@@ -8,6 +8,7 @@ import 'database/joy_database.dart';
 import 'foundation/download_manager.dart';
 import 'foundation/app_data.dart';
 import 'foundation/log.dart';
+import 'foundation/video_backend.dart';
 import 'theme/app_theme.dart';
 import 'views/auth/login_page.dart';
 import 'views/common/source_content_page.dart';
@@ -37,13 +38,14 @@ import 'views/video/video_player_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Log.initialize();
+  registerVideoBackend();
   // JM recombined pages decode to multi‑MB bitmaps; keep more live frames so
   // vertical continuous mode does not thrash ImageCache mid-scroll (black tiles).
   final imageCache = PaintingBinding.instance.imageCache;
   imageCache.maximumSize = 200;
   imageCache.maximumSizeBytes = 400 << 20; // 400 MiB
   await AppData.instance.init();
-  await Log.initialize();
   await JoyDatabase.instance.initialize();
   FavoriteNotifier.instance.loadFromDb();
   registerBuiltInSources();

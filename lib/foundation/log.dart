@@ -37,12 +37,74 @@ class JoyLogEntry {
   String toString() => '[$time][$level]\n$message\n$error\n$stackTrace';
 }
 
+void appendBoundedDiagnosticEntry(
+  List<JoyLogEntry> entries,
+  JoyLogEntry entry, {
+  int maxEntries = 80,
+}) {
+  if (maxEntries <= 0) {
+    entries.clear();
+    return;
+  }
+  entries.add(entry);
+  final overflow = entries.length - maxEntries;
+  if (overflow > 0) entries.removeRange(0, overflow);
+}
+
+List<JoyLogEntry> mergeDiagnosticLogs(
+  Iterable<JoyLogEntry> persisted,
+  Iterable<JoyLogEntry> videoSnapshot,
+) {
+  final unique = <String, JoyLogEntry>{};
+  for (final entry in <JoyLogEntry>[...persisted, ...videoSnapshot]) {
+    final key = jsonEncode(<Object?>[
+      entry.time,
+      entry.level,
+      entry.message,
+      entry.error,
+      entry.stackTrace,
+    ]);
+    unique.putIfAbsent(key, () => entry);
+  }
+  final merged = unique.values.toList(growable: false)
+    ..sort((left, right) => left.time.compareTo(right.time));
+  return List<JoyLogEntry>.unmodifiable(merged);
+}
+
 /// 全局日志门面。
 class Log {
   Log._();
 
   static Logger _logger = Logger();
   static late String _logsPath;
+  static const int _maxVideoDiagnosticEntries = 80;
+  static final List<JoyLogEntry> _videoDiagnostics = <JoyLogEntry>[];
+
+  static String _timestamp() =>
+      Jiffy.now().format(pattern: 'yyyy-MM-dd HH:mm:ss');
+
+  static String _messageWithData(String message, dynamic data) =>
+      '$message${data != null ? '\n$data' : ''}';
+
+  static void _captureVideoDiagnostic(
+    String level,
+    String message, {
+    Object? error,
+    StackTrace? stackTrace,
+  }) {
+    if (!message.startsWith('Video ')) return;
+    appendBoundedDiagnosticEntry(
+      _videoDiagnostics,
+      JoyLogEntry(
+        level: level,
+        message: message,
+        error: error?.toString(),
+        stackTrace: stackTrace?.toString(),
+        time: _timestamp(),
+      ),
+      maxEntries: _maxVideoDiagnosticEntries,
+    );
+  }
 
   /// 在应用启动时初始化。
   static Future<void> initialize() async {
@@ -74,29 +136,33 @@ class Log {
   /// 读取全部已持久化的日志。
   static Future<List<JoyLogEntry>> getLogs() async {
     try {
+      final persisted = <JoyLogEntry>[];
       final path = p.join(_logsPath, 'latest.log');
       final file = File(path);
-      if (!await file.exists()) return [];
+      if (await file.exists()) {
+        final content = await file.readAsString();
+        final entries = content
+            .split('<<<LOG_START>>>')
+            .where((entry) => entry.contains('<<<LOG_END>>>'));
 
-      final content = await file.readAsString();
-      final entries = content
-          .split('<<<LOG_START>>>')
-          .where((e) => e.contains('<<<LOG_END>>>'));
-
-      return entries.map((e) {
-        final jsonStr = e.replaceAll('<<<LOG_END>>>', '').trim();
-        final json = jsonDecode(jsonStr) as Map<String, dynamic>;
-        return JoyLogEntry(
-          level: json['level'] ?? '',
-          message: json['message'] ?? '',
-          error: json['error']?.toString(),
-          stackTrace: json['stackTrace']?.toString(),
-          time: json['time'] ?? '',
-        );
-      }).toList();
+        for (final entry in entries) {
+          final jsonStr = entry.replaceAll('<<<LOG_END>>>', '').trim();
+          final json = jsonDecode(jsonStr) as Map<String, dynamic>;
+          persisted.add(
+            JoyLogEntry(
+              level: json['level'] ?? '',
+              message: json['message'] ?? '',
+              error: json['error']?.toString(),
+              stackTrace: json['stackTrace']?.toString(),
+              time: json['time'] ?? '',
+            ),
+          );
+        }
+      }
+      return mergeDiagnosticLogs(persisted, _videoDiagnostics);
     } catch (e, st) {
       _logger.e('Failed to get logs', error: e, stackTrace: st);
-      return [];
+      return List<JoyLogEntry>.unmodifiable(_videoDiagnostics);
     }
   }
 
@@ -157,6 +223,7 @@ class Log {
 
   /// 清除所有日志。
   static Future<void> clear() async {
+    _videoDiagnostics.clear();
     await _logger.close();
     final dir = Directory(_logsPath);
     if (await dir.exists()) {
@@ -176,33 +243,57 @@ class Log {
   }) => _logger.t(message, error: error, stackTrace: stackTrace, time: time);
 
   /// debug — 开发调试用。
-  static void d(String message, [dynamic data]) =>
-      _logger.d('$message${data != null ? '\n$data' : ''}');
+  static void d(String message, [dynamic data]) {
+    _logger.d(_messageWithData(message, data));
+  }
 
   /// info — 关键流程记录。
-  static void i(String message, [dynamic data]) =>
-      _logger.i('$message${data != null ? '\n$data' : ''}');
+  static void i(String message, [dynamic data]) {
+    final text = _messageWithData(message, data);
+    _captureVideoDiagnostic('info', text);
+    _logger.i(text);
+  }
 
   /// warn — 警告。
-  static void w(String message, {Object? error, StackTrace? stackTrace}) =>
-      _logger.w(message, error: error, stackTrace: stackTrace);
+  static void w(String message, {Object? error, StackTrace? stackTrace}) {
+    _captureVideoDiagnostic(
+      'warning',
+      message,
+      error: error,
+      stackTrace: stackTrace,
+    );
+    _logger.w(message, error: error, stackTrace: stackTrace);
+  }
 
   /// error — 异常。
-  static void e(String message, {Object? error, StackTrace? stackTrace}) =>
-      _logger.e(message, error: error, stackTrace: stackTrace);
+  static void e(String message, {Object? error, StackTrace? stackTrace}) {
+    _captureVideoDiagnostic(
+      'error',
+      message,
+      error: error,
+      stackTrace: stackTrace,
+    );
+    _logger.e(message, error: error, stackTrace: stackTrace);
+  }
 
   /// fatal — 致命错误。
-  static void f(String message, {Object? error, StackTrace? stackTrace}) =>
-      _logger.f(message, error: error, stackTrace: stackTrace);
+  static void f(String message, {Object? error, StackTrace? stackTrace}) {
+    _captureVideoDiagnostic(
+      'fatal',
+      message,
+      error: error,
+      stackTrace: stackTrace,
+    );
+    _logger.f(message, error: error, stackTrace: stackTrace);
+  }
 }
 
 /// JSON 格式的日志打印机（与文件解析格式一致）。
 class _JoyPrinter extends LogPrinter {
   @override
   List<String> log(LogEvent event) {
-    final now = Jiffy.now().format(pattern: 'yyyy-MM-dd HH:mm:ss');
     final json = {
-      'time': now,
+      'time': Log._timestamp(),
       'level': event.level.name,
       'message': event.message.toString(),
       'error': event.error?.toString(),

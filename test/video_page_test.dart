@@ -94,8 +94,8 @@ void main() {
     expect(videoWebViewPlaybackPolicy.requiresUserAction, isFalse);
   });
 
-  test('iOS and macOS select the native platform view backend', () {
-    expect(nativeVideoViewType(TargetPlatform.iOS), VideoViewType.platformView);
+  test('iOS uses FVP texture while macOS keeps the platform view', () {
+    expect(nativeVideoViewType(TargetPlatform.iOS), VideoViewType.textureView);
     expect(
       nativeVideoViewType(TargetPlatform.macOS),
       VideoViewType.platformView,
@@ -119,7 +119,7 @@ void main() {
       platform: TargetPlatform.iOS,
     );
     addTearDown(controller.dispose);
-    expect(controller.viewType, VideoViewType.platformView);
+    expect(controller.viewType, VideoViewType.textureView);
   });
 
   test('native video diagnostics describe media and render state', () {
