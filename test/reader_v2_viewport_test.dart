@@ -189,6 +189,13 @@ void main() {
       );
       await tester.pump();
       expect(find.byType(ReaderV2PageImage), findsWidgets, reason: mode.name);
+      expect(
+        tester
+            .widgetList<ReaderV2PageImage>(find.byType(ReaderV2PageImage))
+            .every((image) => image.alignment == Alignment.center),
+        isTrue,
+        reason: '${mode.name} should center every paged image',
+      );
     }
   });
 }

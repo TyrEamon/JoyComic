@@ -133,6 +133,73 @@ void main() {
     expect(layout.single.detail, contains('hasSize=true'));
   });
 
+  testWidgets('fixed-height paged image honors centered alignment', (
+    tester,
+  ) async {
+    final session = ReaderV2Session(traceId: 'paged-alignment');
+    final scheduler = ReaderV2Scheduler(session: session, maxConcurrent: 1);
+    addTearDown(scheduler.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SizedBox(
+          width: 300,
+          height: 600,
+          child: ReaderV2PageImage(
+            page: const ReaderV2Page(
+              index: 0,
+              url: 'https://example.test/paged.png',
+              cacheKey: 'paged-alignment-page',
+            ),
+            session: session,
+            scheduler: scheduler,
+            priority: ReaderV2Priority.visible,
+            bytesLoader: (_, _) async => _png,
+            height: 600,
+            alignment: Alignment.center,
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      tester.widget<Image>(find.byType(Image)).alignment,
+      Alignment.center,
+    );
+  });
+
+  testWidgets('flowing page image remains top aligned by default', (
+    tester,
+  ) async {
+    final session = ReaderV2Session(traceId: 'flow-alignment');
+    final scheduler = ReaderV2Scheduler(session: session, maxConcurrent: 1);
+    addTearDown(scheduler.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SizedBox(
+          width: 300,
+          child: ReaderV2PageImage(
+            page: const ReaderV2Page(
+              index: 0,
+              url: 'https://example.test/flow.png',
+              cacheKey: 'flow-alignment-page',
+            ),
+            session: session,
+            scheduler: scheduler,
+            priority: ReaderV2Priority.visible,
+            bytesLoader: (_, _) async => _png,
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      tester.widget<Image>(find.byType(Image)).alignment,
+      Alignment.topCenter,
+    );
+  });
+
   testWidgets('page image escapes a zero-width positioned-list probe', (
     tester,
   ) async {

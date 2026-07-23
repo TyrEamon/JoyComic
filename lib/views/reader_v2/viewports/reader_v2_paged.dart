@@ -125,6 +125,7 @@ class _ReaderV2PagedState extends State<ReaderV2Paged> {
         height: constraints.maxHeight,
         placeholderHeight: constraints.maxHeight,
         fit: BoxFit.contain,
+        alignment: Alignment.center,
         onImageSize: (size) => widget.controller.recordImageSize(page, size),
       ),
     );

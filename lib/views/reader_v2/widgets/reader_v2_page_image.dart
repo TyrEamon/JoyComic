@@ -18,6 +18,7 @@ final class ReaderV2PageImage extends StatefulWidget {
     this.height,
     this.placeholderHeight = 300,
     this.fit = BoxFit.contain,
+    this.alignment = Alignment.topCenter,
   });
 
   final ReaderV2Page page;
@@ -29,6 +30,7 @@ final class ReaderV2PageImage extends StatefulWidget {
   final double? height;
   final double placeholderHeight;
   final BoxFit fit;
+  final AlignmentGeometry alignment;
 
   @override
   State<ReaderV2PageImage> createState() => _ReaderV2PageImageState();
@@ -191,7 +193,7 @@ final class _ReaderV2PageImageState extends State<ReaderV2PageImage> {
                     width: width,
                     height: height,
                     fit: widget.height == null ? BoxFit.fitWidth : widget.fit,
-                    alignment: Alignment.topCenter,
+                    alignment: widget.alignment,
                     filterQuality: FilterQuality.medium,
                     gaplessPlayback: true,
                     excludeFromSemantics: true,

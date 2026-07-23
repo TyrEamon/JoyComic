@@ -12,7 +12,10 @@ import 'package:joycomic/theme/app_theme_context.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_flutter_android/webview_flutter_android.dart';
+import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 
+import '../../foundation/log.dart';
 import '../../network/jm/jm_network.dart';
 import '../../network/res.dart';
 
@@ -62,6 +65,64 @@ class NavigationApprovalTracker {
 }
 
 bool isMainFrameNavigation(NavigationRequest request) => request.isMainFrame;
+
+Future<bool> shouldAllowVideoSubframeNavigation(
+  NavigationRequest request, {
+  RemoteVideoUriChecker? remoteUriChecker,
+}) async {
+  if (request.isMainFrame) return false;
+  if (request.url == 'about:blank') return true;
+  final uri = safeRemoteHttpUri(request.url);
+  if (uri == null) return false;
+  return (remoteUriChecker ?? isResolvedPublicHttpUri)(uri);
+}
+
+const videoWebViewPlaybackPolicy = (
+  allowsInlineMediaPlayback: true,
+  requiresUserAction: false,
+);
+
+PlatformWebViewControllerCreationParams videoWebViewCreationParams({
+  required bool useWebKit,
+}) {
+  if (useWebKit) {
+    return WebKitWebViewControllerCreationParams(
+      allowsInlineMediaPlayback:
+          videoWebViewPlaybackPolicy.allowsInlineMediaPlayback,
+      mediaTypesRequiringUserAction:
+          videoWebViewPlaybackPolicy.requiresUserAction
+          ? const <PlaybackMediaTypes>{
+              PlaybackMediaTypes.audio,
+              PlaybackMediaTypes.video,
+            }
+          : const <PlaybackMediaTypes>{},
+    );
+  }
+  return const PlatformWebViewControllerCreationParams();
+}
+
+String resolveJmVideoPageUrl(
+  String videoId, {
+  String fullUrl = '',
+  String backlink = '',
+  String initialBacklink = '',
+}) {
+  final fallback = Uri.parse('https://18comic.vip/video/$videoId');
+  final publicBase = Uri.parse('https://18comic.vip/');
+  for (final raw in <String>[fullUrl, backlink, initialBacklink]) {
+    final uri = validatedHttpUri(raw, base: publicBase);
+    if (uri != null && isTrustedJmPageUri(uri, initial: uri)) {
+      return uri.toString();
+    }
+  }
+  return fallback.toString();
+}
+
+String _describeRemoteUri(String raw, {Uri? base}) {
+  final uri = validatedHttpUri(raw, base: base);
+  if (uri == null) return 'invalid-uri';
+  return '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}${uri.path}';
+}
 
 bool isCurrentGenerationResource<T extends Object>(
   T candidate,
@@ -121,17 +182,17 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
 
   String get _fullUrl {
     final detail = _detail;
-    if (detail != null) {
-      if (detail.fullUrl.isNotEmpty) return detail.fullUrl;
-      if (detail.backlink.isNotEmpty) return detail.backlink;
-    }
-    if (widget.initialBacklink.isNotEmpty) return widget.initialBacklink;
-    return 'https://18comic.vip/video/${widget.videoId}';
+    return resolveJmVideoPageUrl(
+      widget.videoId,
+      fullUrl: detail?.fullUrl ?? '',
+      backlink: detail?.backlink ?? '',
+      initialBacklink: widget.initialBacklink,
+    );
   }
 
   String get _directSource {
     final raw = _extractedSource ?? _detail?.videoSrc ?? '';
-    return safeRemoteHttpUri(raw)?.toString() ?? '';
+    return safeRemoteHttpUri(raw, base: Uri.parse(_fullUrl))?.toString() ?? '';
   }
 
   Future<bool> _isRemoteUriAllowed(Uri uri) async {
@@ -153,14 +214,36 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     final generation = ++_loadGeneration;
     final loader = _loader;
     final videoId = widget.videoId;
+    Log.i('Video detail load', 'id=$videoId');
     try {
       final result = await loader(videoId);
       var canPlayDirectly = false;
-      if (!result.error && result.data.videoSrc.isNotEmpty) {
-        final source = safeRemoteHttpUri(result.data.videoSrc);
-        canPlayDirectly = source != null && await _isRemoteUriAllowed(source);
+      var sourceDescription = 'n/a';
+      if (!result.error) {
+        final pageUrl = resolveJmVideoPageUrl(
+          videoId,
+          fullUrl: result.data.fullUrl,
+          backlink: result.data.backlink,
+          initialBacklink: widget.initialBacklink,
+        );
+        final source = safeRemoteHttpUri(
+          result.data.videoSrc,
+          base: Uri.parse(pageUrl),
+        );
+        sourceDescription = _describeRemoteUri(
+          result.data.videoSrc,
+          base: Uri.parse(pageUrl),
+        );
+        if (result.data.videoSrc.isNotEmpty && source != null) {
+          canPlayDirectly = await _isRemoteUriAllowed(source);
+        }
       }
       if (!mounted || generation != _loadGeneration) return;
+      Log.i(
+        'Video detail result',
+        'id=$videoId error=${result.error} source=$sourceDescription '
+            'direct=$canPlayDirectly',
+      );
       setState(() {
         _loading = false;
         if (result.error) {
@@ -172,8 +255,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
           _useWebView = !canPlayDirectly;
         }
       });
-    } catch (_) {
+    } catch (error, stackTrace) {
       if (!mounted || generation != _loadGeneration) return;
+      Log.e('Video detail exception', error: error, stackTrace: stackTrace);
       setState(() {
         _loading = false;
         _error = '视频详情加载失败';
@@ -291,6 +375,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       return;
     }
     if (failed.isNotEmpty) _failedSources.add(failed);
+    Log.w('Video native fallback', error: _describeRemoteUri(failed));
     if (_activeExtractedSource == failed) _activeExtractedSource = null;
     setState(() => _useWebView = true);
     _processQueuedExtraction(session);
@@ -305,7 +390,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   }
 
   Future<void> _onExtractedForSession(String source, int session) async {
-    final valid = safeRemoteHttpUri(source);
+    final valid = safeRemoteHttpUri(source, base: Uri.parse(_fullUrl));
     if (valid == null ||
         _failedSources.contains(valid.toString()) ||
         _acceptedExtractionSources.contains(valid.toString()) ||
@@ -329,6 +414,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
           _activeExtractedSource != null) {
         return;
       }
+      Log.i('Video source accepted', _describeRemoteUri(valid.toString()));
       _acceptedExtractionSources.add(valid.toString());
       _activeExtractedSource = valid.toString();
       setState(() {
@@ -345,6 +431,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   }
 
   void _onWebFailure() {
+    Log.w('Video WebView fallback failed', error: 'id=${widget.videoId}');
     if (mounted) setState(() => _webFailed = true);
   }
 
@@ -422,6 +509,7 @@ class _NativeVideoPlayerState extends State<NativeVideoPlayer> {
         return;
       }
       await controller.play();
+      Log.i('Video native playing', _describeRemoteUri(widget.source));
       if (mounted &&
           isCurrentGenerationResource(
             controller,
@@ -431,7 +519,7 @@ class _NativeVideoPlayerState extends State<NativeVideoPlayer> {
           )) {
         setState(() => _ready = true);
       }
-    } catch (_) {
+    } catch (error, stackTrace) {
       if (mounted &&
           isCurrentGenerationResource(
             controller,
@@ -439,6 +527,11 @@ class _NativeVideoPlayerState extends State<NativeVideoPlayer> {
             generation,
             _controllerGeneration,
           )) {
+        Log.e(
+          'Video native initialization failed',
+          error: '${_describeRemoteUri(widget.source)} $error',
+          stackTrace: stackTrace,
+        );
         _reportFailure();
       }
     }
@@ -446,7 +539,14 @@ class _NativeVideoPlayerState extends State<NativeVideoPlayer> {
 
   void _onControllerChanged() {
     if (!mounted) return;
-    if (_controller.value.hasError) _reportFailure();
+    if (_controller.value.hasError) {
+      Log.e(
+        'Video native controller error',
+        error:
+            '${_describeRemoteUri(widget.source)} ${_controller.value.errorDescription}',
+      );
+      _reportFailure();
+    }
     if (_ready) setState(() {});
   }
 
@@ -627,7 +727,18 @@ class _ExtractingVideoWebViewState extends State<ExtractingVideoWebView> {
       return;
     }
     _currentPage = initial;
-    _controller = WebViewController()
+    final controller = WebViewController.fromPlatformCreationParams(
+      videoWebViewCreationParams(
+        useWebKit: WebViewPlatform.instance is WebKitWebViewPlatform,
+      ),
+    );
+    if (controller.platform is AndroidWebViewController) {
+      unawaited(
+        (controller.platform as AndroidWebViewController)
+            .setMediaPlaybackRequiresUserGesture(false),
+      );
+    }
+    _controller = controller
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..addJavaScriptChannel(
         'VideoBridge',
@@ -640,7 +751,11 @@ class _ExtractingVideoWebViewState extends State<ExtractingVideoWebView> {
             pageUrl: currentPage.toString(),
             expectedNonce: _bridgeNonce,
           );
-          if (source == null) return;
+          if (source == null) {
+            Log.w('Video WebView extraction rejected');
+            return;
+          }
+          Log.i('Video WebView extracted', _describeRemoteUri(source));
           // Keep the timeout alive until the parent accepts this source. If
           // it is already known-bad, the parent can reject it and extraction
           // still gets a chance to find another source or time out.
@@ -649,12 +764,26 @@ class _ExtractingVideoWebViewState extends State<ExtractingVideoWebView> {
       )
       ..setNavigationDelegate(
         NavigationDelegate(
-          onNavigationRequest: (request) {
+          onNavigationRequest: (request) async {
             if (!isMainFrameNavigation(request)) {
-              return NavigationDecision.prevent;
+              final allowed = await shouldAllowVideoSubframeNavigation(request);
+              if (!mounted || _completed) return NavigationDecision.prevent;
+              if (!allowed) {
+                Log.w(
+                  'Video WebView subframe blocked',
+                  error: _describeRemoteUri(request.url),
+                );
+              }
+              return allowed
+                  ? NavigationDecision.navigate
+                  : NavigationDecision.prevent;
             }
             final uri = validatedHttpUri(request.url);
             if (uri == null || !isTrustedJmPageUri(uri, initial: initial)) {
+              Log.w(
+                'Video WebView navigation blocked',
+                error: _describeRemoteUri(request.url),
+              );
               return NavigationDecision.prevent;
             }
             final requestUrl = uri.toString();
@@ -674,10 +803,13 @@ class _ExtractingVideoWebViewState extends State<ExtractingVideoWebView> {
             _installExtractionHooks();
           },
           onWebResourceError: (error) {
-            if (shouldFailWebViewForResourceError(error)) _fail();
+            if (shouldFailWebViewForResourceError(error)) {
+              _fail('resource ${error.errorCode}: ${error.description}');
+            }
           },
         ),
       );
+    Log.i('Video WebView load', _describeRemoteUri(initial.toString()));
     _loadInitialPage(initial);
   }
 
@@ -686,16 +818,22 @@ class _ExtractingVideoWebViewState extends State<ExtractingVideoWebView> {
     if (!await isResolvedPublicHttpUri(initial) ||
         !mounted ||
         requestGeneration != _navigationApprovals.generation) {
-      _fail();
+      _fail('initial page DNS or lifecycle check failed');
       return;
     }
     final requestUrl = initial.toString();
     _navigationApprovals.approve(requestUrl, requestGeneration);
+    _startTimeout();
     try {
       await _controller?.loadRequest(initial);
-    } catch (_) {
+    } catch (error, stackTrace) {
       _navigationApprovals.revoke(requestUrl, requestGeneration);
-      _fail();
+      Log.e(
+        'Video WebView initial request failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      _fail('initial request exception');
     }
   }
 
@@ -715,9 +853,14 @@ class _ExtractingVideoWebViewState extends State<ExtractingVideoWebView> {
       _navigationApprovals.approve(requestUrl, requestGeneration);
       try {
         await _controller?.loadRequest(uri);
-      } catch (_) {
+      } catch (error, stackTrace) {
         _navigationApprovals.revoke(requestUrl, requestGeneration);
-        _fail();
+        Log.e(
+          'Video WebView redirect failed',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        _fail('redirect request exception');
       }
     } finally {
       _pendingHosts.remove('$host#$requestGeneration');
@@ -726,7 +869,10 @@ class _ExtractingVideoWebViewState extends State<ExtractingVideoWebView> {
 
   void _startTimeout() {
     _timeout?.cancel();
-    _timeout = Timer(const Duration(seconds: 10), _fail);
+    _timeout = Timer(
+      const Duration(seconds: 15),
+      () => _fail('extraction timeout'),
+    );
   }
 
   bool _updateCurrentPage(
@@ -738,7 +884,7 @@ class _ExtractingVideoWebViewState extends State<ExtractingVideoWebView> {
     if (page == null ||
         !isTrustedJmPageUri(page, initial: initial) ||
         !_navigationApprovals.isLoaded(page.toString())) {
-      _fail();
+      _fail('unapproved page callback');
       return false;
     }
     _currentPage = page;
@@ -762,16 +908,22 @@ class _ExtractingVideoWebViewState extends State<ExtractingVideoWebView> {
         ),
       );
       if (!mounted || generation != _navigationGeneration) return;
-    } catch (_) {
+    } catch (error, stackTrace) {
+      Log.w(
+        'Video WebView script injection deferred',
+        error: error,
+        stackTrace: stackTrace,
+      );
       // The page may not have a JavaScript context yet. The page-finished
       // callback retries, and the bounded timeout remains the final fallback.
     }
   }
 
-  void _fail() {
+  void _fail([String reason = 'unknown']) {
     if (_completed || !mounted) return;
     _completed = true;
     _timeout?.cancel();
+    Log.w('Video WebView failed', error: reason);
     widget.onFailure();
   }
 

@@ -49,6 +49,51 @@ void main() {
     );
   });
 
+  test('video WebView enables inline autoplay on iOS', () {
+    expect(videoWebViewPlaybackPolicy.allowsInlineMediaPlayback, isTrue);
+    expect(videoWebViewPlaybackPolicy.requiresUserAction, isFalse);
+  });
+
+  test('public HTTP subframes require resolved-public approval', () async {
+    final checkedHosts = <String>[];
+    Future<bool> approve(Uri uri) async {
+      checkedHosts.add(uri.host);
+      return true;
+    }
+
+    expect(
+      await shouldAllowVideoSubframeNavigation(
+        const NavigationRequest(
+          url: 'https://player.example/embed/123',
+          isMainFrame: false,
+        ),
+        remoteUriChecker: approve,
+      ),
+      isTrue,
+    );
+    expect(checkedHosts, <String>['player.example']);
+    expect(
+      await shouldAllowVideoSubframeNavigation(
+        const NavigationRequest(
+          url: 'http://127.0.0.1/private',
+          isMainFrame: false,
+        ),
+        remoteUriChecker: approve,
+      ),
+      isFalse,
+    );
+    expect(
+      await shouldAllowVideoSubframeNavigation(
+        const NavigationRequest(url: 'javascript:alert(1)', isMainFrame: false),
+        remoteUriChecker: approve,
+      ),
+      isFalse,
+    );
+    expect(checkedHosts, <String>[
+      'player.example',
+    ], reason: 'unsafe URLs must be rejected before DNS approval');
+  });
+
   test('async resource completion requires identity and generation', () {
     final current = Object();
     final stale = Object();
@@ -232,6 +277,45 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       find.text('web:https://18comic.vip/video/direct-id'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('relative API video source resolves against the video page', (
+    tester,
+  ) async {
+    String? directSource;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VideoPlayerPage(
+          remoteUriChecker: (_) async => true,
+          videoId: 'relative-source',
+          loader: (_) async => Res(
+            JmVideoDetail(
+              id: 'relative-source',
+              title: 'Relative source',
+              description: '',
+              photo: '',
+              videoSrc: '/media/movie.m3u8',
+              fullUrl: '/video/relative-source',
+              tags: const <String>[],
+              backlink: '',
+              relatedVideos: const <JmVideoItem>[],
+            ),
+          ),
+          directPlayerBuilder: (_, source, __) {
+            directSource = source;
+            return Text('native:$source');
+          },
+          webViewBuilder: (_, url, __) => Text('web:$url'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(directSource, 'https://18comic.vip/media/movie.m3u8');
+    expect(
+      find.text('native:https://18comic.vip/media/movie.m3u8'),
       findsOneWidget,
     );
   });
