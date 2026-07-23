@@ -163,6 +163,27 @@ void main() {
     },
   );
 
+  test('direct HLS only becomes visible after a media-ready event', () {
+    expect(isDirectHlsReadyEvent('loadedmetadata'), isTrue);
+    expect(isDirectHlsReadyEvent('canplay'), isTrue);
+    expect(isDirectHlsReadyEvent('playing'), isTrue);
+    expect(isDirectHlsReadyEvent('waiting'), isFalse);
+    expect(isDirectHlsReadyEvent('stalled'), isFalse);
+  });
+
+  testWidgets('video loading surface covers the white platform view', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: VideoLoadingSurface(message: '正在获取视频地址')),
+    );
+
+    expect(find.text('正在获取视频地址'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    final surface = tester.widget<ColoredBox>(find.byType(ColoredBox).last);
+    expect(surface.color, Colors.black);
+  });
+
   test('zero-size initialized media is treated as non-renderable', () {
     const value = VideoPlayerValue(
       duration: Duration(minutes: 5),
@@ -422,6 +443,7 @@ void main() {
     tester,
   ) async {
     VoidCallback? failPlayback;
+    VoidCallback? failDirectHls;
     final directFallbackSources = <String>[];
     const manifest = '''#EXTM3U
 #EXT-X-STREAM-INF:BANDWIDTH=5200000,RESOLUTION=1920x1080
@@ -454,6 +476,7 @@ void main() {
           },
           directHlsWebViewBuilder: (_, source, onFailure) {
             directFallbackSources.add(source);
+            failDirectHls = onFailure;
             return const Text('direct-hls-web');
           },
           webViewBuilder: (_, url, __) => Text('web:$url'),
@@ -476,6 +499,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(directFallbackSources.last, 'https://cdn.example/720/index.m3u8');
+
+    failDirectHls!();
+    await tester.pumpAndSettle();
+    expect(find.text('网页播放失败，请使用浏览器打开'), findsOneWidget);
   });
 
   testWidgets('HLS master playlist exposes real quality choices', (

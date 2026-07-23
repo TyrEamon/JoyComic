@@ -593,12 +593,10 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       }
     }
     if (_webFailed) {
-      return Center(
-        child: Text(
-          '网页播放失败，请使用浏览器打开',
-          style: TextStyle(
-            color: context.semanticColors.readerControlForeground,
-          ),
+      return const ColoredBox(
+        color: Colors.black,
+        child: Center(
+          child: Text('网页播放失败，请使用浏览器打开', style: TextStyle(color: Colors.white)),
         ),
       );
     }
@@ -693,7 +691,12 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       'Video direct HLS fallback failed',
       error: source == null ? 'missing-source' : _describeRemoteUri(source),
     );
-    if (mounted) setState(() => _directFallbackSource = null);
+    if (mounted) {
+      setState(() {
+        _directFallbackSource = null;
+        _webFailed = true;
+      });
+    }
   }
 
   Future<void> _openExternal() async {
@@ -1021,6 +1024,32 @@ String buildDirectHlsVideoHtml(String source) {
 </html>''';
 }
 
+bool isDirectHlsReadyEvent(String event) =>
+    const <String>{'loadedmetadata', 'canplay', 'playing'}.contains(event);
+
+class VideoLoadingSurface extends StatelessWidget {
+  const VideoLoadingSurface({super.key, required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: Colors.black,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            const CircularProgressIndicator(color: Colors.white),
+            const SizedBox(height: 12),
+            Text(message, style: const TextStyle(color: Colors.white70)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class DirectHlsVideoWebView extends StatefulWidget {
   const DirectHlsVideoWebView({
     super.key,
@@ -1038,10 +1067,16 @@ class DirectHlsVideoWebView extends StatefulWidget {
 class _DirectHlsVideoWebViewState extends State<DirectHlsVideoWebView> {
   WebViewController? _controller;
   bool _failed = false;
+  bool _ready = false;
+  Timer? _startupTimeout;
 
   @override
   void initState() {
     super.initState();
+    _startupTimeout = Timer(
+      const Duration(seconds: 15),
+      () => _fail('startup timeout'),
+    );
     final source = safeRemoteHttpUri(widget.source);
     if (source == null) {
       scheduleMicrotask(() => _fail('invalid source'));
@@ -1084,6 +1119,10 @@ class _DirectHlsVideoWebViewState extends State<DirectHlsVideoWebView> {
               'Video direct HLS event',
               'event=$event detail=${detail.substring(0, detail.length.clamp(0, 64))}',
             );
+            if (isDirectHlsReadyEvent(event)) {
+              _startupTimeout?.cancel();
+              if (mounted) setState(() => _ready = true);
+            }
             if (event == 'error') _fail('media error $detail');
           } catch (_) {
             _fail('invalid bridge message');
@@ -1103,23 +1142,36 @@ class _DirectHlsVideoWebViewState extends State<DirectHlsVideoWebView> {
         ),
       );
     Log.i('Video direct HLS load', _describeRemoteUri(source.toString()));
-    unawaited(
-      controller.loadHtmlString(
+    unawaited(_loadHtml(controller, source));
+  }
+
+  Future<void> _loadHtml(WebViewController controller, Uri source) async {
+    try {
+      await controller.loadHtmlString(
         buildDirectHlsVideoHtml(source.toString()),
         baseUrl: 'https://18comic.vip/',
-      ),
-    );
+      );
+    } catch (error, stackTrace) {
+      Log.e(
+        'Video direct HLS document failed',
+        error: error.runtimeType,
+        stackTrace: stackTrace,
+      );
+      _fail('document load failed');
+    }
   }
 
   void _fail(String reason) {
     if (_failed || !mounted) return;
     _failed = true;
+    _startupTimeout?.cancel();
     Log.w('Video direct HLS failed', error: reason);
     widget.onFailure();
   }
 
   @override
   void dispose() {
+    _startupTimeout?.cancel();
     Log.i('Video direct HLS dispose');
     super.dispose();
   }
@@ -1128,8 +1180,17 @@ class _DirectHlsVideoWebViewState extends State<DirectHlsVideoWebView> {
   Widget build(BuildContext context) {
     final controller = _controller;
     return controller == null
-        ? const SizedBox.shrink()
-        : WebViewWidget(controller: controller);
+        ? const VideoLoadingSurface(message: '正在初始化视频')
+        : Stack(
+            fit: StackFit.expand,
+            children: <Widget>[
+              WebViewWidget(controller: controller),
+              if (!_ready)
+                const IgnorePointer(
+                  child: VideoLoadingSurface(message: '正在加载视频'),
+                ),
+            ],
+          );
   }
 }
 
@@ -1291,11 +1352,13 @@ class _ExtractingVideoWebViewState extends State<ExtractingVideoWebView> {
             return NavigationDecision.prevent;
           },
           onPageStarted: (url) {
+            Log.i('Video WebView page started', _describeRemoteUri(url));
             if (!_updateCurrentPage(url, initial, newNavigation: true)) return;
             _startTimeout();
             _installExtractionHooks();
           },
           onPageFinished: (url) {
+            Log.i('Video WebView page finished', _describeRemoteUri(url));
             if (!_updateCurrentPage(url, initial)) return;
             _installExtractionHooks();
           },
@@ -1434,8 +1497,16 @@ class _ExtractingVideoWebViewState extends State<ExtractingVideoWebView> {
   @override
   Widget build(BuildContext context) {
     final controller = _controller;
-    if (controller == null) return const SizedBox.shrink();
-    return WebViewWidget(controller: controller);
+    if (controller == null) {
+      return const VideoLoadingSurface(message: '正在初始化播放页');
+    }
+    return Stack(
+      fit: StackFit.expand,
+      children: <Widget>[
+        WebViewWidget(controller: controller),
+        const IgnorePointer(child: VideoLoadingSurface(message: '正在获取视频地址')),
+      ],
+    );
   }
 }
 
