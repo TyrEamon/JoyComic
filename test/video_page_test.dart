@@ -439,7 +439,7 @@ void main() {
     );
   });
 
-  testWidgets('native playback failure can use direct HLS WebView fallback', (
+  testWidgets('direct HLS failure returns to the detail WebView extractor', (
     tester,
   ) async {
     VoidCallback? failPlayback;
@@ -502,7 +502,10 @@ void main() {
 
     failDirectHls!();
     await tester.pumpAndSettle();
-    expect(find.text('网页播放失败，请使用浏览器打开'), findsOneWidget);
+    expect(
+      find.text('web:https://18comic.vip/video/direct-fallback-id'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('HLS master playlist exposes real quality choices', (

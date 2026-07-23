@@ -694,7 +694,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     if (mounted) {
       setState(() {
         _directFallbackSource = null;
-        _webFailed = true;
+        _webFailed = false;
       });
     }
   }
