@@ -11,6 +11,45 @@ import 'package:video_player/video_player.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 void main() {
+  test(
+    'fullscreen policy changes orientation only after an explicit toggle',
+    () async {
+      final orientationCalls = <List<DeviceOrientation>>[];
+      final uiModeCalls = <SystemUiMode>[];
+
+      await applyVideoFullscreenState(
+        fullscreen: true,
+        restoreOrientations: const <DeviceOrientation>[
+          DeviceOrientation.portraitUp,
+        ],
+        setOrientations: (orientations) async =>
+            orientationCalls.add(orientations),
+        setUiMode: (mode) async => uiModeCalls.add(mode),
+      );
+      await applyVideoFullscreenState(
+        fullscreen: false,
+        restoreOrientations: const <DeviceOrientation>[
+          DeviceOrientation.portraitUp,
+        ],
+        setOrientations: (orientations) async =>
+            orientationCalls.add(orientations),
+        setUiMode: (mode) async => uiModeCalls.add(mode),
+      );
+
+      expect(orientationCalls, <List<DeviceOrientation>>[
+        <DeviceOrientation>[
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ],
+        <DeviceOrientation>[DeviceOrientation.portraitUp],
+      ]);
+      expect(uiModeCalls, <SystemUiMode>[
+        SystemUiMode.immersiveSticky,
+        SystemUiMode.edgeToEdge,
+      ]);
+    },
+  );
+
   test('navigation approvals reject stale generations and revoke failures', () {
     final tracker = NavigationApprovalTracker();
     final first = tracker.beginRequest();
@@ -133,6 +172,23 @@ void main() {
     );
 
     expect(isNativeVideoRenderable(value), isFalse);
+  });
+
+  test('quality changes clamp a saved position to the new duration', () {
+    expect(
+      clampVideoPosition(
+        const Duration(seconds: 12),
+        const Duration(seconds: 30),
+      ),
+      const Duration(seconds: 12),
+    );
+    expect(
+      clampVideoPosition(
+        const Duration(seconds: 40),
+        const Duration(seconds: 30),
+      ),
+      const Duration(seconds: 30),
+    );
   });
 
   test('public HTTP subframes require resolved-public approval', () async {
@@ -366,11 +422,18 @@ void main() {
     tester,
   ) async {
     VoidCallback? failPlayback;
-    String? directFallbackSource;
+    final directFallbackSources = <String>[];
+    const manifest = '''#EXTM3U
+#EXT-X-STREAM-INF:BANDWIDTH=5200000,RESOLUTION=1920x1080
+1080/index.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=2600000,RESOLUTION=1280x720
+720/index.m3u8
+''';
     await tester.pumpWidget(
       MaterialApp(
         home: VideoPlayerPage(
           remoteUriChecker: (_) async => true,
+          hlsManifestLoader: (_) async => manifest,
           videoId: 'direct-fallback-id',
           loader: (_) async => Res(
             JmVideoDetail(
@@ -390,7 +453,7 @@ void main() {
             return const Text('native-player');
           },
           directHlsWebViewBuilder: (_, source, onFailure) {
-            directFallbackSource = source;
+            directFallbackSources.add(source);
             return const Text('direct-hls-web');
           },
           webViewBuilder: (_, url, __) => Text('web:$url'),
@@ -402,7 +465,71 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('direct-hls-web'), findsOneWidget);
-    expect(directFallbackSource, 'https://cdn.example/video.m3u8?token=secret');
+    expect(
+      directFallbackSources.last,
+      'https://cdn.example/video.m3u8?token=secret',
+    );
+
+    await tester.tap(find.text('清晰度：自动'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(PopupMenuItem<String>, '720p'));
+    await tester.pumpAndSettle();
+
+    expect(directFallbackSources.last, 'https://cdn.example/720/index.m3u8');
+  });
+
+  testWidgets('HLS master playlist exposes real quality choices', (
+    tester,
+  ) async {
+    final directSources = <String>[];
+    const manifest = '''#EXTM3U
+#EXT-X-STREAM-INF:BANDWIDTH=900000,RESOLUTION=640x360
+360/index.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=5200000,RESOLUTION=1920x1080
+1080/index.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=2600000,RESOLUTION=1280x720
+720/index.m3u8
+''';
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VideoPlayerPage(
+          remoteUriChecker: (_) async => true,
+          hlsManifestLoader: (_) async => manifest,
+          videoId: 'quality-id',
+          loader: (_) async => Res(
+            JmVideoDetail(
+              id: 'quality-id',
+              title: 'Quality Video',
+              description: '',
+              photo: '',
+              videoSrc: 'https://cdn.example/video/master.m3u8',
+              fullUrl: 'https://18comic.vip/video/quality-id',
+              tags: const <String>[],
+              backlink: '',
+              relatedVideos: const <JmVideoItem>[],
+            ),
+          ),
+          directPlayerBuilder: (_, source, __) {
+            directSources.add(source);
+            return const Text('quality-player');
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('清晰度：自动'), findsOneWidget);
+    expect(directSources.last, 'https://cdn.example/video/master.m3u8');
+
+    await tester.tap(find.text('清晰度：自动'));
+    await tester.pumpAndSettle();
+    expect(find.text('1080p'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(PopupMenuItem<String>, '1080p'));
+    await tester.pumpAndSettle();
+    expect(find.text('清晰度：1080p'), findsOneWidget);
+    expect(directSources.last, 'https://cdn.example/video/1080/index.m3u8');
   });
 
   testWidgets('relative API video source resolves against the video page', (
@@ -818,9 +945,7 @@ void main() {
     expect(find.text('无法打开外部浏览器'), findsOneWidget);
   });
 
-  testWidgets('player restores the caller orientation policy on dispose', (
-    tester,
-  ) async {
+  testWidgets('player keeps caller orientation until dispose', (tester) async {
     const channel = MethodChannel('flutter/platform', JSONMethodCodec());
     final calls = <MethodCall>[];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -865,12 +990,8 @@ void main() {
     final orientationCalls = calls
         .where((call) => call.method == 'SystemChrome.setPreferredOrientations')
         .toList();
-    expect(orientationCalls, hasLength(2));
-    expect(orientationCalls.first.arguments, <String>[
-      'DeviceOrientation.landscapeLeft',
-      'DeviceOrientation.landscapeRight',
-    ]);
-    expect(orientationCalls.last.arguments, <String>[
+    expect(orientationCalls, hasLength(1));
+    expect(orientationCalls.single.arguments, <String>[
       'DeviceOrientation.portraitDown',
     ]);
   });

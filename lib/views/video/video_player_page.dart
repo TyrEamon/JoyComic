@@ -22,6 +22,7 @@ import '../../network/jm/jm_network.dart';
 import '../../network/res.dart';
 import '../../theme/app_safe_area.dart';
 import '../../theme/app_spacing.dart';
+import 'hls_quality.dart';
 
 typedef JmVideoDetailLoader = Future<Res<JmVideoDetail>> Function(String id);
 typedef DirectVideoPlayerBuilder =
@@ -44,6 +45,31 @@ typedef VideoWebViewBuilder =
     );
 typedef ExternalVideoLauncher = Future<bool> Function(Uri uri);
 typedef RemoteVideoUriChecker = Future<bool> Function(Uri uri);
+typedef HlsManifestLoader = Future<String> Function(Uri uri);
+typedef VideoOrientationsSetter =
+    Future<void> Function(List<DeviceOrientation> orientations);
+typedef VideoUiModeSetter = Future<void> Function(SystemUiMode mode);
+
+Future<void> applyVideoFullscreenState({
+  required bool fullscreen,
+  required List<DeviceOrientation> restoreOrientations,
+  VideoOrientationsSetter? setOrientations,
+  VideoUiModeSetter? setUiMode,
+}) async {
+  final orientations = setOrientations ?? SystemChrome.setPreferredOrientations;
+  final uiMode =
+      setUiMode ?? (mode) => SystemChrome.setEnabledSystemUIMode(mode);
+  if (fullscreen) {
+    await orientations(const <DeviceOrientation>[
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+    await uiMode(SystemUiMode.immersiveSticky);
+    return;
+  }
+  await orientations(restoreOrientations);
+  await uiMode(SystemUiMode.edgeToEdge);
+}
 
 class NavigationApprovalTracker {
   int _generation = 0;
@@ -155,6 +181,7 @@ class VideoPlayerPage extends StatefulWidget {
     this.webViewBuilder,
     this.externalLauncher,
     this.remoteUriChecker,
+    this.hlsManifestLoader,
     this.restoreOrientations = const <DeviceOrientation>[
       DeviceOrientation.portraitUp,
     ],
@@ -169,6 +196,7 @@ class VideoPlayerPage extends StatefulWidget {
   final VideoWebViewBuilder? webViewBuilder;
   final ExternalVideoLauncher? externalLauncher;
   final RemoteVideoUriChecker? remoteUriChecker;
+  final HlsManifestLoader? hlsManifestLoader;
   final List<DeviceOrientation> restoreOrientations;
 
   @override
@@ -189,6 +217,12 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   int? _pendingExtractionSession;
   String? _queuedExtractionSource;
   String? _activeExtractedSource;
+  List<HlsVariant> _qualityVariants = const <HlsVariant>[];
+  Uri? _selectedQualityUri;
+  Uri? _qualityMasterUri;
+  bool _isFullscreen = false;
+  Future<void> _fullscreenTransition = Future<void>.value();
+  int _fullscreenGeneration = 0;
 
   JmVideoDetailLoader get _loader =>
       widget.loader ?? JmNetwork().getVideoDetail;
@@ -205,7 +239,92 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
 
   String get _directSource {
     final raw = _extractedSource ?? _detail?.videoSrc ?? '';
-    return safeRemoteHttpUri(raw, base: Uri.parse(_fullUrl))?.toString() ?? '';
+    final original = safeRemoteHttpUri(raw, base: Uri.parse(_fullUrl));
+    return (_selectedQualityUri ?? _qualityMasterUri ?? original)?.toString() ??
+        '';
+  }
+
+  HlsManifestLoader get _hlsLoader =>
+      widget.hlsManifestLoader ?? _loadHlsManifest;
+
+  Future<String> _loadHlsManifest(Uri uri) async {
+    final client = HttpClient();
+    try {
+      final request = await client
+          .getUrl(uri)
+          .timeout(const Duration(seconds: 8));
+      request.headers.set(HttpHeaders.userAgentHeader, 'Mozilla/5.0');
+      request.headers.set(HttpHeaders.refererHeader, _fullUrl);
+      final response = await request.close().timeout(
+        const Duration(seconds: 8),
+      );
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw HttpException('manifest status ${response.statusCode}');
+      }
+      return readHlsManifest(response.timeout(const Duration(seconds: 8)));
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  Future<void> _discoverHlsQualities(Uri source, int generation) async {
+    if (!isHlsManifestCandidate(source)) return;
+    try {
+      final manifest = await _hlsLoader(source);
+      final parsed = parseHlsVariants(manifest, source);
+      final variants = <HlsVariant>[];
+      bool isStale() =>
+          !mounted ||
+          generation != _loadGeneration ||
+          source.toString() != _directSource;
+      if (isStale()) return;
+      for (final variant in parsed.take(12)) {
+        if (isStale()) return;
+        if (await _isRemoteUriAllowed(variant.uri)) variants.add(variant);
+        if (isStale()) return;
+      }
+      final selectable = variants.length >= 2 ? variants : const <HlsVariant>[];
+      setState(() {
+        _qualityMasterUri = source;
+        _qualityVariants = selectable;
+        _selectedQualityUri = null;
+      });
+      Log.i(
+        'Video HLS quality discovery',
+        'source=${_describeRemoteUri(source.toString())} variants=${selectable.length}',
+      );
+    } catch (error) {
+      if (!mounted || generation != _loadGeneration) return;
+      Log.w(
+        'Video HLS quality discovery failed',
+        error: '${_describeRemoteUri(source.toString())} ${error.runtimeType}',
+      );
+    }
+  }
+
+  void _selectQuality(String value) {
+    HlsVariant? selected;
+    if (value.isNotEmpty) {
+      for (final variant in _qualityVariants) {
+        if (variant.uri.toString() == value) {
+          selected = variant;
+          break;
+        }
+      }
+      if (selected == null) return;
+    }
+    if (selected?.uri == _selectedQualityUri ||
+        selected == null && _selectedQualityUri == null) {
+      return;
+    }
+    final nextSource = selected?.uri ?? _qualityMasterUri;
+    setState(() {
+      _selectedQualityUri = selected?.uri;
+      if (_directFallbackSource != null) {
+        _directFallbackSource = nextSource?.toString();
+      }
+    });
+    Log.i('Video HLS quality selected', 'quality=${selected?.label ?? 'auto'}');
   }
 
   Future<bool> _isRemoteUriAllowed(Uri uri) async {
@@ -217,10 +336,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   @override
   void initState() {
     super.initState();
-    SystemChrome.setPreferredOrientations(const <DeviceOrientation>[
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
     _load();
   }
 
@@ -233,6 +348,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       final result = await loader(videoId);
       var canPlayDirectly = false;
       var sourceDescription = 'n/a';
+      Uri? directSource;
       if (!result.error) {
         final pageUrl = resolveJmVideoPageUrl(
           videoId,
@@ -250,6 +366,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         );
         if (result.data.videoSrc.isNotEmpty && source != null) {
           canPlayDirectly = await _isRemoteUriAllowed(source);
+          if (canPlayDirectly) directSource = source;
         }
       }
       if (!mounted || generation != _loadGeneration) return;
@@ -269,6 +386,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
           _useWebView = !canPlayDirectly;
         }
       });
+      if (directSource != null) {
+        unawaited(_discoverHlsQualities(directSource, generation));
+      }
     } catch (error, stackTrace) {
       if (!mounted || generation != _loadGeneration) return;
       Log.e('Video detail exception', error: error, stackTrace: stackTrace);
@@ -284,6 +404,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   void didUpdateWidget(covariant VideoPlayerPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.videoId == widget.videoId) return;
+    if (_isFullscreen) {
+      unawaited(_queueFullscreenState(false, rollbackOnError: false));
+    }
     _failedSources.clear();
     _detail = null;
     _error = null;
@@ -293,6 +416,10 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     _pendingExtractionSession = null;
     _queuedExtractionSource = null;
     _activeExtractedSource = null;
+    _qualityVariants = const <HlsVariant>[];
+    _selectedQualityUri = null;
+    _qualityMasterUri = null;
+    _isFullscreen = false;
     _useWebView = false;
     _webFailed = false;
     _loading = true;
@@ -301,7 +428,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
 
   @override
   void dispose() {
-    SystemChrome.setPreferredOrientations(widget.restoreOrientations);
+    unawaited(_queueFullscreenState(false, rollbackOnError: false));
     super.dispose();
   }
 
@@ -313,24 +440,28 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     final semantic = context.semanticColors;
     return Scaffold(
       backgroundColor: semantic.readerCanvas,
-      appBar: AppBar(
-        title: Text(title.isEmpty ? '影视播放' : title),
-        backgroundColor: semantic.readerCanvas,
-        foregroundColor: semantic.readerControlForeground,
-        actions: <Widget>[
-          IconButton(
-            tooltip: '浏览器打开',
-            onPressed: _openExternal,
-            icon: const Icon(Icons.open_in_browser),
-          ),
-        ],
-      ),
+      appBar: _isFullscreen
+          ? null
+          : AppBar(
+              title: Text(title.isEmpty ? '影视播放' : title),
+              backgroundColor: semantic.readerCanvas,
+              foregroundColor: semantic.readerControlForeground,
+              actions: <Widget>[
+                IconButton(
+                  tooltip: '浏览器打开',
+                  onPressed: _openExternal,
+                  icon: const Icon(Icons.open_in_browser),
+                ),
+              ],
+            ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: <Widget>[
                 Expanded(child: _buildPlayer()),
-                if (_error != null)
+                if (!_isFullscreen && _qualityVariants.length >= 2)
+                  _buildQualitySelector(),
+                if (!_isFullscreen && _error != null)
                   Padding(
                     padding: const EdgeInsets.all(12),
                     child: Text(
@@ -338,17 +469,95 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
                       style: TextStyle(color: semantic.readerControlForeground),
                     ),
                   ),
-                TextButton.icon(
-                  onPressed: _openExternal,
-                  icon: const Icon(Icons.open_in_new),
-                  label: const Text('浏览器打开'),
-                ),
-                SizedBox(
-                  height: bottomContentInset(context, spacing: AppSpacing.xs),
-                ),
+                if (!_isFullscreen)
+                  TextButton.icon(
+                    onPressed: _openExternal,
+                    icon: const Icon(Icons.open_in_new),
+                    label: const Text('浏览器打开'),
+                  ),
+                if (!_isFullscreen)
+                  SizedBox(
+                    height: bottomContentInset(context, spacing: AppSpacing.xs),
+                  ),
               ],
             ),
     );
+  }
+
+  Widget _buildQualitySelector() {
+    final selectedLabel = _selectedQualityUri == null
+        ? '自动'
+        : _qualityVariants
+              .firstWhere(
+                (variant) => variant.uri == _selectedQualityUri,
+                orElse: () => _qualityVariants.first,
+              )
+              .label;
+    return Align(
+      alignment: Alignment.centerRight,
+      child: PopupMenuButton<String>(
+        tooltip: '选择清晰度',
+        onSelected: _selectQuality,
+        itemBuilder: (context) => <PopupMenuEntry<String>>[
+          const PopupMenuItem<String>(value: '', child: Text('自动')),
+          ..._qualityVariants.map(
+            (variant) => PopupMenuItem<String>(
+              value: variant.uri.toString(),
+              child: Text(variant.label),
+            ),
+          ),
+        ],
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Text('清晰度：$selectedLabel'),
+              const Icon(Icons.arrow_drop_down),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _toggleFullscreen() async {
+    final next = !_isFullscreen;
+    if (!mounted) return;
+    setState(() => _isFullscreen = next);
+    await _queueFullscreenState(next);
+  }
+
+  Future<void> _queueFullscreenState(
+    bool fullscreen, {
+    bool rollbackOnError = true,
+  }) {
+    final generation = ++_fullscreenGeneration;
+    final restoreOrientations = widget.restoreOrientations;
+    _fullscreenTransition = _fullscreenTransition.catchError((_) {}).then((
+      _,
+    ) async {
+      if (generation != _fullscreenGeneration) return;
+      try {
+        await applyVideoFullscreenState(
+          fullscreen: fullscreen,
+          restoreOrientations: restoreOrientations,
+        );
+      } catch (error, stackTrace) {
+        Log.e(
+          'Video fullscreen transition failed',
+          error: error.runtimeType,
+          stackTrace: stackTrace,
+        );
+        if (rollbackOnError &&
+            mounted &&
+            generation == _fullscreenGeneration &&
+            _isFullscreen == fullscreen) {
+          setState(() => _isFullscreen = !fullscreen);
+        }
+      }
+    });
+    return _fullscreenTransition;
   }
 
   Widget _buildPlayer() {
@@ -361,9 +570,10 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         return builder(context, source, onFailure);
       }
       return NativeVideoPlayer(
-        key: ValueKey<String>(source),
         source: source,
         onFailure: onFailure,
+        isFullscreen: _isFullscreen,
+        onToggleFullscreen: _toggleFullscreen,
       );
     }
     final directFallback = _directFallbackSource;
@@ -457,9 +667,13 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       setState(() {
         _extractedSource = valid.toString();
         _directFallbackSource = null;
+        _qualityVariants = const <HlsVariant>[];
+        _selectedQualityUri = null;
+        _qualityMasterUri = null;
         _useWebView = false;
         _webFailed = false;
       });
+      unawaited(_discoverHlsQualities(valid, session));
     } finally {
       if (_pendingExtractionSession == session) {
         _pendingExtractionSession = null;
@@ -546,15 +760,25 @@ bool isNativeVideoRenderable(VideoPlayerValue value) {
       value.aspectRatio > 0;
 }
 
+Duration clampVideoPosition(Duration position, Duration duration) {
+  if (position <= Duration.zero) return Duration.zero;
+  if (duration <= Duration.zero || position <= duration) return position;
+  return duration;
+}
+
 class NativeVideoPlayer extends StatefulWidget {
   const NativeVideoPlayer({
     super.key,
     required this.source,
     required this.onFailure,
+    this.isFullscreen = false,
+    this.onToggleFullscreen,
   });
 
   final String source;
   final VoidCallback onFailure;
+  final bool isFullscreen;
+  final VoidCallback? onToggleFullscreen;
 
   @override
   State<NativeVideoPlayer> createState() => _NativeVideoPlayerState();
@@ -574,16 +798,26 @@ class _NativeVideoPlayerState extends State<NativeVideoPlayer> {
     _startInitialization();
   }
 
-  void _startInitialization() {
+  void _startInitialization({
+    Duration? resumePosition,
+    bool shouldPlay = true,
+  }) {
     final controller = _controller;
     final generation = ++_controllerGeneration;
-    _initialize(controller, generation);
+    _initialize(
+      controller,
+      generation,
+      resumePosition: resumePosition,
+      shouldPlay: shouldPlay,
+    );
   }
 
   Future<void> _initialize(
     VideoPlayerController controller,
-    int generation,
-  ) async {
+    int generation, {
+    Duration? resumePosition,
+    required bool shouldPlay,
+  }) async {
     try {
       await controller.initialize();
       if (!mounted ||
@@ -615,8 +849,13 @@ class _NativeVideoPlayerState extends State<NativeVideoPlayer> {
         _reportFailure();
         return;
       }
-      await controller.play();
-      Log.i('Video native playing', _describeRemoteUri(widget.source));
+      if (resumePosition != null && resumePosition > Duration.zero) {
+        await controller.seekTo(
+          clampVideoPosition(resumePosition, controller.value.duration),
+        );
+      }
+      if (shouldPlay) await controller.play();
+      Log.i('Video native ready', _describeRemoteUri(widget.source));
       if (mounted &&
           isCurrentGenerationResource(
             controller,
@@ -667,6 +906,8 @@ class _NativeVideoPlayerState extends State<NativeVideoPlayer> {
   void didUpdateWidget(covariant NativeVideoPlayer oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.source == widget.source) return;
+    final resumePosition = _controller.value.position;
+    final shouldPlay = _controller.value.isPlaying;
     _controller
       ..removeListener(_onControllerChanged)
       ..dispose();
@@ -674,7 +915,10 @@ class _NativeVideoPlayerState extends State<NativeVideoPlayer> {
     _reportedError = false;
     _controller = createNativeVideoController(widget.source)
       ..addListener(_onControllerChanged);
-    _startInitialization();
+    _startInitialization(
+      resumePosition: resumePosition,
+      shouldPlay: shouldPlay,
+    );
   }
 
   @override
@@ -727,14 +971,11 @@ class _NativeVideoPlayerState extends State<NativeVideoPlayer> {
             ),
             IconButton(
               color: foreground,
-              tooltip: '全屏',
-              onPressed: () => SystemChrome.setPreferredOrientations(
-                const <DeviceOrientation>[
-                  DeviceOrientation.landscapeLeft,
-                  DeviceOrientation.landscapeRight,
-                ],
+              tooltip: widget.isFullscreen ? '退出全屏' : '全屏',
+              onPressed: widget.onToggleFullscreen,
+              icon: Icon(
+                widget.isFullscreen ? Icons.fullscreen_exit : Icons.fullscreen,
               ),
-              icon: const Icon(Icons.fullscreen),
             ),
           ],
         ),

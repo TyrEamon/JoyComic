@@ -15,6 +15,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../comic_source/comic_source.dart';
+import '../../foundation/log.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_safe_area.dart';
 import 'detail_navigation.dart';
@@ -43,6 +44,25 @@ class DetailPage extends StatelessWidget {
       child: const _DetailScaffold(),
     );
   }
+}
+
+enum DetailMoreAction { share }
+
+Future<void> handleDetailMoreAction(
+  Future<DetailMoreAction?> sheetResult, {
+  required Future<void> Function() waitForDismissal,
+  required Future<void> Function() onShare,
+}) async {
+  final action = await sheetResult;
+  await waitForDismissal();
+  if (action == DetailMoreAction.share) await onShare();
+}
+
+Rect? detailShareOrigin(BuildContext context) {
+  final box = context.findRenderObject();
+  if (box is! RenderBox || !box.hasSize || box.size.isEmpty) return null;
+  final origin = box.localToGlobal(Offset.zero) & box.size;
+  return origin.isEmpty ? null : origin;
 }
 
 class _DetailScaffold extends StatefulWidget {
@@ -93,85 +113,121 @@ class _DetailScaffoldState extends State<_DetailScaffold> {
     );
   }
 
-  Future<void> _share(DetailViewModel vm) async {
+  Future<void> _share(DetailViewModel vm, {Rect? sharePositionOrigin}) async {
     final info = vm.data!.info;
     final idLabel = vm.sourceKey == 'jm' ? 'JM${info.comicId}' : info.comicId;
     final author = vm.author.isEmpty ? '未知作者' : vm.author;
-    await Share.share(
-      '${info.title}\n作者：$author\n来源：${vm.sourceKey}\nID：$idLabel',
-      subject: info.title,
-    );
+    try {
+      await Share.share(
+        '${info.title}\n作者：$author\n来源：${vm.sourceKey}\nID：$idLabel',
+        subject: info.title,
+        sharePositionOrigin: sharePositionOrigin,
+      );
+    } on PlatformException catch (error, stackTrace) {
+      Log.e(
+        'Detail system share failed',
+        error: 'PlatformException code=${error.code}',
+        stackTrace: stackTrace,
+      );
+      _showShareError();
+    } catch (error, stackTrace) {
+      Log.e(
+        'Detail system share failed',
+        error: error.runtimeType,
+        stackTrace: stackTrace,
+      );
+      _showShareError();
+    }
   }
 
-  void _showMore(BuildContext context, DetailViewModel vm) {
+  Future<void> _showMore(BuildContext context, DetailViewModel vm) async {
     final info = vm.data!.info;
     final source = ComicSource.find(vm.sourceKey);
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: context.surfaceColor,
-      builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.ios_share_rounded),
-              title: const Text('分享'),
-              onTap: () {
-                Navigator.of(sheetContext).pop();
-                _share(vm);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.title_rounded),
-              title: const Text('复制标题'),
-              onTap: () => _copyAndClose(sheetContext, info.title, '已复制标题'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.copy_rounded),
-              title: Text(vm.sourceKey == 'jm' ? '复制车号' : '复制 ID'),
-              onTap: () => _copyAndClose(
-                sheetContext,
-                info.comicId,
-                vm.sourceKey == 'jm' ? '已复制车号 JM${info.comicId}' : '已复制 ID',
-              ),
-            ),
-            if (info.authors.isNotEmpty)
-              ListTile(
-                leading: const Icon(Icons.person_search_rounded),
-                title: const Text('搜索作者'),
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  openDetailKeywordSearch(
-                    context,
-                    sourceKey: vm.sourceKey,
-                    keyword: info.authors.first,
-                  );
-                },
-              ),
-            ListTile(
-              leading: const Icon(Icons.folder_outlined),
-              title: const Text('下载管理'),
-              onTap: () {
-                Navigator.pop(sheetContext);
-                context.push('/download');
-              },
-            ),
-            if (source != null && Uri.tryParse(source.url)?.hasScheme == true)
-              ListTile(
-                leading: const Icon(Icons.open_in_new_rounded),
-                title: const Text('打开源主页'),
-                onTap: () async {
-                  Navigator.pop(sheetContext);
-                  await launchUrl(
-                    Uri.parse(source.url),
-                    mode: LaunchMode.externalApplication,
-                  );
-                },
-              ),
-          ],
-        ),
-      ),
+    final shareOrigin = detailShareOrigin(context);
+    final transitionController = BottomSheet.createAnimationController(
+      Navigator.of(context),
     );
+    try {
+      await handleDetailMoreAction(
+        showModalBottomSheet<DetailMoreAction>(
+          context: context,
+          backgroundColor: context.surfaceColor,
+          transitionAnimationController: transitionController,
+          builder: (sheetContext) => SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.ios_share_rounded),
+                  title: const Text('分享'),
+                  onTap: () =>
+                      Navigator.of(sheetContext).pop(DetailMoreAction.share),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.title_rounded),
+                  title: const Text('复制标题'),
+                  onTap: () => _copyAndClose(sheetContext, info.title, '已复制标题'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.copy_rounded),
+                  title: Text(vm.sourceKey == 'jm' ? '复制车号' : '复制 ID'),
+                  onTap: () => _copyAndClose(
+                    sheetContext,
+                    info.comicId,
+                    vm.sourceKey == 'jm' ? '已复制车号 JM${info.comicId}' : '已复制 ID',
+                  ),
+                ),
+                if (info.authors.isNotEmpty)
+                  ListTile(
+                    leading: const Icon(Icons.person_search_rounded),
+                    title: const Text('搜索作者'),
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      openDetailKeywordSearch(
+                        context,
+                        sourceKey: vm.sourceKey,
+                        keyword: info.authors.first,
+                      );
+                    },
+                  ),
+                ListTile(
+                  leading: const Icon(Icons.folder_outlined),
+                  title: const Text('下载管理'),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    context.push('/download');
+                  },
+                ),
+                if (source != null &&
+                    Uri.tryParse(source.url)?.hasScheme == true)
+                  ListTile(
+                    leading: const Icon(Icons.open_in_new_rounded),
+                    title: const Text('打开源主页'),
+                    onTap: () async {
+                      Navigator.pop(sheetContext);
+                      await launchUrl(
+                        Uri.parse(source.url),
+                        mode: LaunchMode.externalApplication,
+                      );
+                    },
+                  ),
+              ],
+            ),
+          ),
+        ),
+        waitForDismissal: () => transitionController.reverse(),
+        onShare: () => _share(vm, sharePositionOrigin: shareOrigin),
+      );
+    } finally {
+      transitionController.dispose();
+    }
+  }
+
+  void _showShareError() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('无法打开系统分享面板')));
   }
 
   Future<void> _copyAndClose(
