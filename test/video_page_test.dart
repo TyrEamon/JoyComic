@@ -7,6 +7,7 @@ import 'package:joycomic/network/jm/jm_video_models.dart';
 import 'package:joycomic/network/res.dart';
 import 'package:joycomic/views/video/video_page.dart';
 import 'package:joycomic/views/video/video_player_page.dart';
+import 'package:video_player/video_player.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 void main() {
@@ -52,6 +53,63 @@ void main() {
   test('video WebView enables inline autoplay on iOS', () {
     expect(videoWebViewPlaybackPolicy.allowsInlineMediaPlayback, isTrue);
     expect(videoWebViewPlaybackPolicy.requiresUserAction, isFalse);
+  });
+
+  test('iOS and macOS select the native platform view backend', () {
+    expect(nativeVideoViewType(TargetPlatform.iOS), VideoViewType.platformView);
+    expect(
+      nativeVideoViewType(TargetPlatform.macOS),
+      VideoViewType.platformView,
+    );
+  });
+
+  test('non-Apple targets retain the texture backend', () {
+    expect(
+      nativeVideoViewType(TargetPlatform.android),
+      VideoViewType.textureView,
+    );
+    expect(
+      nativeVideoViewType(TargetPlatform.windows),
+      VideoViewType.textureView,
+    );
+  });
+
+  test('native controller uses the selected view type', () {
+    final controller = createNativeVideoController(
+      'https://18comic.vip/video/test.m3u8',
+      platform: TargetPlatform.iOS,
+    );
+    addTearDown(controller.dispose);
+    expect(controller.viewType, VideoViewType.platformView);
+  });
+
+  test('native video diagnostics describe media and render state', () {
+    const value = VideoPlayerValue(
+      duration: Duration(seconds: 12),
+      size: Size(1920, 1080),
+      isInitialized: true,
+      isPlaying: true,
+    );
+
+    final description = describeNativeVideoState(
+      value,
+      viewType: VideoViewType.platformView,
+      source:
+          'https://cdn.example/video/index.m3u8?token=secret#private-fragment',
+    );
+
+    expect(
+      description,
+      contains('source=https://cdn.example/video/index.m3u8'),
+    );
+    expect(description, isNot(contains('secret')));
+    expect(description, isNot(contains('private-fragment')));
+    expect(description, contains('view=platformView'));
+    expect(description, contains('size=1920.0x1080.0'));
+    expect(description, contains('aspect=1.777'));
+    expect(description, contains('duration=12000ms'));
+    expect(description, contains('playing=true'));
+    expect(description, contains('buffering=false'));
   });
 
   test('public HTTP subframes require resolved-public approval', () async {

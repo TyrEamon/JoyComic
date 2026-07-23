@@ -6,6 +6,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:joycomic/theme/app_theme_context.dart';
@@ -460,6 +462,37 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   }
 }
 
+VideoViewType nativeVideoViewType(TargetPlatform platform) {
+  if (platform == TargetPlatform.iOS || platform == TargetPlatform.macOS) {
+    return VideoViewType.platformView;
+  }
+  return VideoViewType.textureView;
+}
+
+VideoPlayerController createNativeVideoController(
+  String source, {
+  TargetPlatform? platform,
+}) {
+  final target = platform ?? defaultTargetPlatform;
+  return VideoPlayerController.networkUrl(
+    Uri.parse(source),
+    viewType: nativeVideoViewType(target),
+  );
+}
+
+String describeNativeVideoState(
+  VideoPlayerValue value, {
+  required VideoViewType viewType,
+  required String source,
+}) {
+  final size = value.size;
+  return 'source=${_describeRemoteUri(source)} '
+      'view=${viewType.name} size=${size.width}x${size.height} '
+      'aspect=${value.aspectRatio} '
+      'duration=${value.duration.inMilliseconds}ms '
+      'playing=${value.isPlaying} buffering=${value.isBuffering}';
+}
+
 class NativeVideoPlayer extends StatefulWidget {
   const NativeVideoPlayer({
     super.key,
@@ -483,7 +516,7 @@ class _NativeVideoPlayerState extends State<NativeVideoPlayer> {
   @override
   void initState() {
     super.initState();
-    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.source))
+    _controller = createNativeVideoController(widget.source)
       ..addListener(_onControllerChanged);
     _startInitialization();
   }
@@ -509,6 +542,14 @@ class _NativeVideoPlayerState extends State<NativeVideoPlayer> {
           )) {
         return;
       }
+      Log.i(
+        'Video native initialized',
+        describeNativeVideoState(
+          controller.value,
+          viewType: controller.viewType,
+          source: widget.source,
+        ),
+      );
       await controller.play();
       Log.i('Video native playing', _describeRemoteUri(widget.source));
       if (mounted &&
@@ -566,7 +607,7 @@ class _NativeVideoPlayerState extends State<NativeVideoPlayer> {
       ..dispose();
     _ready = false;
     _reportedError = false;
-    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.source))
+    _controller = createNativeVideoController(widget.source)
       ..addListener(_onControllerChanged);
     _startInitialization();
   }
