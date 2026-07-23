@@ -6,6 +6,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 
+import '../../../network/jm/jm_image.dart';
+import '../../../network/jm/jm_image_health.dart';
 import '../core/reader_v2_scheduler.dart';
 import '../core/reader_v2_session.dart';
 import '../data/reader_v2_page.dart';
@@ -45,10 +47,14 @@ final class ReaderV2PageLoader {
       );
       return bytes;
     }
-    final candidates = <String>{
-      page.url,
+    final rawCandidates = <String>{
+      ...jmImageUrlCandidates(page.url, additionalBases: page.fallbackUrls),
       ...page.fallbackUrls,
-    }.where((url) => url.trim().isNotEmpty);
+    }.where((url) => url.trim().isNotEmpty).toList(growable: false);
+    final jmRequest = isJmImageUrl(page.url);
+    final candidates = jmRequest
+        ? jmImageHealth.orderUrls(rawCandidates)
+        : rawCandidates;
     Object? lastError;
     StackTrace? lastStack;
     for (final candidate in candidates) {
@@ -66,12 +72,20 @@ final class ReaderV2PageLoader {
         if (!_looksLikeImage(bytes)) {
           throw StateError('invalid image bytes len=${bytes.length}');
         }
+        final host = Uri.tryParse(candidate)?.host;
+        if (jmRequest && host != null && host.isNotEmpty) {
+          jmImageHealth.recordSuccess(host);
+        }
         session.record('bytes', page: page.index, detail: '${bytes.length}');
         return bytes;
       } catch (error, stackTrace) {
         if (error is ReaderV2Cancelled) rethrow;
         lastError = error;
         lastStack = stackTrace;
+        final host = Uri.tryParse(candidate)?.host;
+        if (jmRequest && host != null && host.isNotEmpty) {
+          jmImageHealth.recordFailure(host, _imageFailure(error));
+        }
         session.record('candidate-error', page: page.index, detail: '$error');
       }
     }
@@ -150,6 +164,17 @@ final class ReaderV2PageLoader {
         bytes[9] == 0x45 &&
         bytes[10] == 0x42 &&
         bytes[11] == 0x50;
+  }
+
+  static ImageFailure _imageFailure(Object error) {
+    final message = error.toString().toLowerCase();
+    if (message.contains('timeout') || message.contains('timed out')) {
+      return ImageFailure.timeout;
+    }
+    if (message.contains('invalid image') || message.contains('bad response')) {
+      return ImageFailure.invalidResponse;
+    }
+    return ImageFailure.network;
   }
 }
 

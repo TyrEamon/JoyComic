@@ -13,6 +13,8 @@ import 'package:joycomic/theme/app_theme_context.dart';
 
 import '../../../theme/app_radius.dart';
 import '../../../theme/app_shadows.dart';
+import '../../../network/jm/jm_image.dart';
+import '../../reader/utils/reader_image_provider.dart';
 
 class ComicCover extends StatelessWidget {
   const ComicCover({
@@ -75,6 +77,22 @@ class ComicCover extends StatelessWidget {
     if (_isLocal) {
       return Image.file(
         File(url!),
+        fit: fit,
+        width: double.infinity,
+        height: double.infinity,
+        errorBuilder: (_, __, ___) => _Fallback(height),
+      );
+    }
+    if (isJmImageUrl(url!)) {
+      return Image(
+        image: readerImageProvider(
+          url: url!,
+          cacheKey: 'cover|$url',
+          fallbackUrls: jmImageUrlCandidates(url!),
+          headers: headers?.map(
+            (key, value) => MapEntry(key, value.toString()),
+          ),
+        ),
         fit: fit,
         width: double.infinity,
         height: double.infinity,

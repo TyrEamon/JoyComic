@@ -11,6 +11,16 @@ String jmBaseUrl = 'https://cdn-msp3.jmapiproxy1.cc';
 /// 默认图床（与 [jmBuiltInImgUrls] 首项对齐，避免循环 import 时使用字面量）。
 const jmDefaultImageBaseUrl = 'https://cdn-msp3.jmapiproxy1.cc';
 
+/// Built-in JM image bases used only as transport fallbacks. The active base
+/// remains controlled by [jmBaseUrl] and the source settings state.
+const jmImageFallbackBases = <String>[
+  'https://cdn-msp3.jmapiproxy1.cc',
+  'https://cdn-msp.jmapiproxy3.cc',
+  'https://cdn-msp2.jmapiproxy2.cc',
+  'https://cdn-msp3.jmapiproxy3.cc',
+  'https://cdn-msp.18comic.vip',
+];
+
 /// 归一化图床 base：空串 / 非法 host 回退到默认，避免拼出
 /// `//media/photos/...` 或相对路径导致阅读器永远加载失败。
 String resolveJmImageBaseUrl(String? raw) {
@@ -61,10 +71,60 @@ List<String> buildJmSequentialPageNames(
       ? extension.substring(1)
       : (extension.isEmpty ? 'webp' : extension);
   return List<String>.unmodifiable([
-    for (var i = 1; i <= count; i++)
-      '${i.toString().padLeft(5, '0')}.$ext',
+    for (var i = 1; i <= count; i++) '${i.toString().padLeft(5, '0')}.$ext',
   ]);
 }
 
 /// 禁漫用户头像 URL。
 String getJmAvatarUrl(String imageName) => '$jmBaseUrl/media/users/$imageName';
+
+/// Returns the primary JM image URL followed by host-replaced candidates.
+/// Non-JM URLs are returned unchanged so the Pica and local source paths keep
+/// their existing behavior. Path, query and fragment are preserved verbatim.
+List<String> jmImageUrlCandidates(
+  String primary, {
+  Iterable<String> additionalBases = const <String>[],
+}) {
+  final uri = Uri.tryParse(primary.trim());
+  if (uri == null ||
+      (uri.scheme != 'http' && uri.scheme != 'https') ||
+      uri.host.isEmpty ||
+      !isJmImageHost(uri.host)) {
+    return primary.trim().isEmpty ? const <String>[] : <String>[primary.trim()];
+  }
+  final bases = <String>[
+    uri.origin,
+    ...additionalBases,
+    ...jmImageFallbackBases,
+  ];
+  final seenHosts = <String>{uri.host.toLowerCase()};
+  final result = <String>[primary.trim()];
+  for (final base in bases) {
+    final candidateBase = resolveJmImageBaseUrl(base);
+    final candidateUri = Uri.tryParse(candidateBase);
+    final host = candidateUri?.host.toLowerCase() ?? '';
+    if (host.isEmpty || !seenHosts.add(host)) continue;
+    result.add(
+      uri
+          .replace(
+            host: host,
+            port: candidateUri!.hasPort ? candidateUri.port : null,
+          )
+          .toString(),
+    );
+  }
+  return List<String>.unmodifiable(result);
+}
+
+bool isJmImageHost(String host) {
+  final value = host.toLowerCase();
+  return value.contains('jmapiproxy') ||
+      value.contains('18comic') ||
+      value.contains('jmcomic') ||
+      value.startsWith('cdn-msp');
+}
+
+bool isJmImageUrl(String value) {
+  final uri = Uri.tryParse(value.trim());
+  return uri != null && uri.host.isNotEmpty && isJmImageHost(uri.host);
+}

@@ -8,6 +8,8 @@ import 'package:flutter/widgets.dart';
 
 import '../../../foundation/jm_image_recombine.dart';
 import '../../../foundation/log.dart';
+import '../../../network/jm/jm_image.dart';
+import '../../../network/jm/jm_image_health.dart';
 import '../../../network/jm/jm_network.dart' show jmScrambleId;
 
 typedef ReaderImageBytesTransformer =
@@ -21,7 +23,9 @@ class ReaderDiagnostics {
 
   static String newTraceId() {
     final millis = DateTime.now().millisecondsSinceEpoch.toRadixString(36);
-    final suffix = (Object().hashCode & 0xffff).toRadixString(16).padLeft(4, '0');
+    final suffix = (Object().hashCode & 0xffff)
+        .toRadixString(16)
+        .padLeft(4, '0');
     final id = '$millis$suffix';
     return id.length <= 12 ? id : id.substring(id.length - 12);
   }
@@ -177,7 +181,9 @@ class ReaderDiagnostics {
               ? Uri.parse(candidateUrl).host
               : 'invalid host');
     final status = statusCode ?? _guessStatus(error);
-    final ct = (contentType == null || contentType.isEmpty) ? 'n/a' : contentType;
+    final ct = (contentType == null || contentType.isEmpty)
+        ? 'n/a'
+        : contentType;
     final len = responseBytes?.length ?? 0;
     final magic = responseBytes == null || responseBytes.isEmpty
         ? 'n/a'
@@ -193,15 +199,14 @@ class ReaderDiagnostics {
     if (stackTrace == null) return null;
     var text = stackTrace.toString();
     // Drop query strings from any URI-like fragment.
-    text = text.replaceAllMapped(
-      RegExp(r'(https?://[^\s)\]"]+)\?[^\s)\]"]*'),
-      (match) {
-        final base = match.group(1) ?? '';
-        final uri = Uri.tryParse(base);
-        if (uri == null) return '[redacted-url]';
-        return '${uri.scheme}://${uri.host}${uri.path}?…';
-      },
-    );
+    text = text.replaceAllMapped(RegExp(r'(https?://[^\s)\]"]+)\?[^\s)\]"]*'), (
+      match,
+    ) {
+      final base = match.group(1) ?? '';
+      final uri = Uri.tryParse(base);
+      if (uri == null) return '[redacted-url]';
+      return '${uri.scheme}://${uri.host}${uri.path}?…';
+    });
     text = text.replaceAll(
       RegExp(
         r'(authorization|cookie|token|sig|password|secret)\s*[=:]\s*[^\s,;"]+',
@@ -225,8 +230,9 @@ class ReaderDiagnostics {
   }
 
   static int _guessStatus(Object error) {
-    final match = RegExp(r'(?:status(?:Code)?[=:\s]|HTTP\s)(\d{3})')
-        .firstMatch(error.toString());
+    final match = RegExp(
+      r'(?:status(?:Code)?[=:\s]|HTTP\s)(\d{3})',
+    ).firstMatch(error.toString());
     if (match == null) return 0;
     return int.tryParse(match.group(1) ?? '') ?? 0;
   }
@@ -278,10 +284,13 @@ class ReaderNetworkImageProvider
     ),
   );
 
-  List<String> get _urls => <String>{
-    url,
-    ...fallbackUrls,
-  }.where((value) => value.trim().isNotEmpty).toList(growable: false);
+  List<String> get _urls {
+    final values = <String>{
+      ...jmImageUrlCandidates(url, additionalBases: fallbackUrls),
+      ...fallbackUrls,
+    }.where((value) => value.trim().isNotEmpty).toList(growable: false);
+    return isJmImageUrl(url) ? jmImageHealth.orderUrls(values) : values;
+  }
 
   @override
   Future<ReaderNetworkImageProvider> obtainKey(
@@ -324,6 +333,17 @@ class ReaderNetworkImageProvider
     ReaderNetworkImageProvider key,
     StreamController<ImageChunkEvent> chunkEvents,
   ) async {
+    if (!isJmImageUrl(key.url)) return _fetchCandidates(key, chunkEvents);
+    return jmImageHealth.singleFlight(
+      'reader:${key.cacheKey}',
+      () => _fetchCandidates(key, chunkEvents),
+    );
+  }
+
+  static Future<Uint8List> _fetchCandidates(
+    ReaderNetworkImageProvider key,
+    StreamController<ImageChunkEvent> chunkEvents,
+  ) async {
     Object? lastError;
     StackTrace? lastStack;
     final trace = key.traceId == null ? '' : 'trace=${key.traceId} ';
@@ -340,9 +360,8 @@ class ReaderNetworkImageProvider
         if (key.bytesTransformer != null) {
           payload = await key.bytesTransformer!(bytes).timeout(
             const Duration(seconds: 20),
-            onTimeout: () => throw TimeoutException(
-              'image transform timed out after 20s',
-            ),
+            onTimeout: () =>
+                throw TimeoutException('image transform timed out after 20s'),
           );
         }
         if (payload.isEmpty) {
@@ -354,11 +373,15 @@ class ReaderNetworkImageProvider
             '(len=${payload.length}, magic=${_magic(payload)})',
           );
         }
+        final host = Uri.tryParse(candidate)?.host;
+        if (isJmImageUrl(candidate) && host != null && host.isNotEmpty) {
+          jmImageHealth.recordSuccess(host);
+        }
         Log.i(
           'Reader bytes ready',
           '$trace$index'
-          'cache=${ReaderDiagnostics.cacheKeySummary(key.cacheKey)} '
-          'len=${payload.length} magic=${_magic(payload)}',
+              'cache=${ReaderDiagnostics.cacheKeySummary(key.cacheKey)} '
+              'len=${payload.length} magic=${_magic(payload)}',
         );
         return payload;
       } catch (error, stackTrace) {
@@ -369,13 +392,15 @@ class ReaderNetworkImageProvider
         );
         lastError = StateError(sanitized);
         lastStack = stackTrace;
+        final host = Uri.tryParse(candidate)?.host;
+        if (isJmImageUrl(candidate) && host != null && host.isNotEmpty) {
+          jmImageHealth.recordFailure(host, _imageFailure(error));
+        }
         final redacted = ReaderDiagnostics.redactStackTrace(stackTrace);
         Log.w(
           'Reader image candidate failed',
           error: '$trace$index$sanitized',
-          stackTrace: redacted == null
-              ? null
-              : StackTrace.fromString(redacted),
+          stackTrace: redacted == null ? null : StackTrace.fromString(redacted),
         );
       }
     }
@@ -400,8 +425,8 @@ class ReaderNetworkImageProvider
       Log.i(
         'Reader codec ok',
         '$trace$index'
-        'cache=${ReaderDiagnostics.cacheKeySummary(key.cacheKey)} '
-        'len=${payload.length}',
+            'cache=${ReaderDiagnostics.cacheKeySummary(key.cacheKey)} '
+            'len=${payload.length}',
       );
       return codec;
     } catch (error, stackTrace) {
@@ -413,7 +438,8 @@ class ReaderNetworkImageProvider
       final redacted = ReaderDiagnostics.redactStackTrace(stackTrace);
       Log.e(
         'Reader codec failed',
-        error: '$trace$index'
+        error:
+            '$trace$index'
             'cache=${ReaderDiagnostics.cacheKeySummary(key.cacheKey)} $sanitized',
         stackTrace: redacted == null ? null : StackTrace.fromString(redacted),
       );
@@ -453,9 +479,7 @@ class ReaderNetworkImageProvider
           byteCount: data?.length ?? 0,
           magic: data == null
               ? 'n/a'
-              : _magic(
-                  data is Uint8List ? data : Uint8List.fromList(data),
-                ),
+              : _magic(data is Uint8List ? data : Uint8List.fromList(data)),
           headers: sanitized,
         ),
       );
@@ -489,7 +513,7 @@ class ReaderNetworkImageProvider
     Log.i(
       'Reader image ok',
       '${prefix}host=$host status=$status len=${bytes.length} '
-      'ct=${contentType.isEmpty ? 'n/a' : contentType} magic=${_magic(bytes)}',
+          'ct=${contentType.isEmpty ? 'n/a' : contentType} magic=${_magic(bytes)}',
     );
     return bytes;
   }
@@ -551,6 +575,22 @@ class ReaderNetworkImageProvider
     ).join(' ');
   }
 
+  static ImageFailure _imageFailure(Object error) {
+    final message = error.toString().toLowerCase();
+    if (message.contains('timeout') || message.contains('timed out')) {
+      return ImageFailure.timeout;
+    }
+    if (message.contains('not a decodable') ||
+        message.contains('empty transformed') ||
+        message.contains('non-image')) {
+      return ImageFailure.transform;
+    }
+    if (message.contains('bad response') || message.contains('status=')) {
+      return ImageFailure.invalidResponse;
+    }
+    return ImageFailure.network;
+  }
+
   @override
   bool operator ==(Object other) =>
       other is ReaderNetworkImageProvider &&
@@ -595,7 +635,7 @@ ReaderImageBytesTransformer? jmReaderTransformer({
     Log.i(
       'Reader transform begin',
       '${prefix}episode=$eps image=$bookId in=${bytes.length} '
-      'magic=${_magicStatic(bytes)}',
+          'magic=${_magicStatic(bytes)}',
     );
     try {
       final out = await recombineJmImage(bytes, eps, jmScrambleId, bookId);
@@ -605,7 +645,7 @@ ReaderImageBytesTransformer? jmReaderTransformer({
       Log.i(
         'Reader transform ok',
         '${prefix}episode=$eps image=$bookId out=${out.length} '
-        'magic=${_magicStatic(out)}',
+            'magic=${_magicStatic(out)}',
       );
       return out;
     } catch (error, stackTrace) {
