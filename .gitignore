@@ -34,6 +34,7 @@ Thumbs.db
 *.swp
 *.swo
 clone/
+.reasonix/
 
 # Local Git worktrees
 .worktrees/

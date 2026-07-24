@@ -1,49 +1,99 @@
 # JoyComic
 
-哔咔 & 禁漫双源 iOS 漫画阅读器。
+JoyComic 是一款使用 Flutter 构建的 iOS 漫画阅读器，聚合哔咔与禁漫两个内容源，提供搜索、分类、收藏、下载、阅读记录和多模式阅读体验。
 
-> 本项目为学习与个人使用目的的第三方客户端，仅与第三方漫画站点交互，
-> 不提供任何漫画资源。资源版权归原作者及平台所有，请于下载后合理期间删除。
-> 使用本软件产生的一切后果由使用者自行承担。
+当前稳定版本：`1.0.0`
 
-## 当前状态：全部阶段完成 ✅
+> JoyComic 不提供、存储或分发漫画资源。应用仅作为第三方客户端连接用户选择的内容服务，内容版权归原作者及对应平台所有。请遵守所在地法律法规及内容服务的使用条款。
 
-| 阶段 | 内容 | 状态 |
-|------|------|:----:|
-| 1 | 脚手架 + 核心架构（多源契约、网络层、加密命脉） | ✅ |
-| 1.5 | 双源配置补全（JM 6 图片源 + Pica 双源切换） | ✅ |
-| 2 | 阅读器（5 模式 / 预加载 / 缩放） | ✅ |
-| 3 | UI 页面 + 功能集成（16 页面 + 8 组功能 + 日志系统） | ✅ |
-| 4 | 本地 DB + 下载管理器 + WebDAV 同步 | ✅ |
-| 5 | 质量审计 + 亮色主题 + 霞鹜文楷字体 | ✅ |
-| 6 | 云端 iOS CI（Codemagic） | ✅ 配置完成 |
+## 功能
+
+- 双源浏览：支持哔咔与禁漫，禁漫普通内容可匿名浏览，账号用于云端收藏等个性化功能。
+- 内容发现：首页推荐、分类、排行、搜索、以图搜图和相关推荐。
+- 漫画详情：章节列表、收藏、评论、点赞、分享及阅读进度恢复。
+- 五种阅读模式：纵向连续、单页左右翻页、双页左右翻页，并支持缩放、预加载和章节切换。
+- 图片处理：支持禁漫图片解扰、多图床回退、缓存及失败重试。
+- 离线阅读：章节下载队列、暂停与恢复、任务持久化和本地阅读。
+- 数据管理：本地收藏、阅读历史、搜索历史以及 WebDAV 备份与恢复。
+- 媒体与诊断：禁漫视频播放、清晰度选择、运行日志查看与导出。
+- iOS 适配：安全区域、横竖屏阅读布局及无签名 IPA 云端构建配置。
+
+## 登录说明
+
+| 内容源 | 普通浏览 | 账号能力 |
+| --- | --- | --- |
+| 禁漫 | 无需登录 | 云端收藏、收藏同步等账号功能 |
+| 哔咔 | 需要登录 | 内容浏览、收藏、评论及账号资料 |
+
+登录或退出后，首页、分类页、分类内容页和收藏页会自动刷新对应内容源的状态。
 
 ## 技术栈
 
-纯 Dart / Flutter，不引入额外 native 语言。理由：网络加解密本就纯 Dart 可完成，
-离线归档用 `archive` + `pdf` 纯 Dart 包替代，避免增加 iOS 原生链接与 CI 复杂度。
+- Flutter / Dart
+- Dio、CookieJar、Crypto、PointyCastle
+- SQLite、SharedPreferences、Flutter Secure Storage
+- Provider、GoRouter
+- `cached_network_image_ce`、PhotoView、`video_player`
 
-## 编译方式（Windows 开发机无法编 iOS）
+网络签名、图片解扰、离线归档与数据同步均由 Dart/Flutter 代码完成，iOS 工程可在 CI 构建时生成。
 
-iOS 包须在 macOS 环境产出。方式是在 [Codemagic.io](https://codemagic.io) 连接本仓库，
-`codemagic.yaml` 已配置好，首次 CI 运行会自动执行：
+## 本地开发
 
-1. `flutter create . --platforms=ios` — 生成 iOS 工程
-2. `dart run flutter_launcher_icons` — 生成应用图标
-3. `flutter build ios --release --no-codesign` — 构建无签名 IPA
-4. 打包 `joycomic-*.ipa` 产物
+环境要求：
 
-## 应用图标
-
-`assets/app.jpg` 为题图照片，运行 `dart run flutter_launcher_icons` 可自动生成
-iOS 各尺寸图标（已配置 `pubspec.yaml` 的 `flutter_launcher_icons` 段）。
-
-## 可选字体
-
-内置霞鹜文楷（LXGW WenKai）字体，启用后需运行 `flutter pub get`。
-
-## 测试
+- Flutter `3.32.0` 或更高版本
+- Dart `3.10.0` 或更高版本
+- 构建 iOS 应用时需要 macOS 与 Xcode
 
 ```shell
-flutter test test/crypto_logic_test.dart
+flutter pub get
+flutter test
+flutter run
 ```
+
+运行静态分析：
+
+```shell
+flutter analyze
+```
+
+## 构建 iOS
+
+本地 macOS 构建：
+
+```shell
+flutter create . --platforms=ios
+flutter pub get
+dart run flutter_launcher_icons
+flutter build ios --release --no-codesign
+```
+
+仓库中的 `codemagic.yaml` 提供无签名 IPA 构建流程，可在 Codemagic 连接仓库后运行 `Build IPA` 工作流。生成的 IPA 仍需使用合法证书签名后才能安装到 iOS 设备。
+
+## 项目结构
+
+```text
+lib/
+  comic_source/   内容源契约与内置源
+  network/        API、鉴权、解析与媒体链路
+  database/       收藏、历史与下载数据
+  foundation/     下载、同步、缓存和诊断服务
+  views/          页面、阅读器与播放器
+  theme/          主题与响应式界面规范
+test/             单元测试与组件测试
+```
+
+## 安全与隐私
+
+- 账号凭据通过系统安全存储保存，不写入普通配置文件。
+- 日志会对账号、密码、会话及敏感请求信息进行脱敏。
+- WebDAV 配置与备份由用户自行提供和管理。
+- 请勿在 Issue、日志或截图中公开账号凭据、会话令牌或私人服务器地址。
+
+## 交流
+
+[学AI，上L站](https://linux.do)
+
+## 声明
+
+本项目仅供学习、研究与个人使用。使用者应自行判断内容来源的合法性，并承担使用本软件产生的全部责任。项目名称、图标与第三方平台名称不代表任何官方合作或授权关系。

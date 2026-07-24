@@ -3,7 +3,7 @@ description: "JoyComic - 哔咔 & 禁漫双源 iOS 漫画阅读器。"
 publish_to: "none"
 
 # iOS: build-name -> CFBundleShortVersionString, build-number -> CFBundleVersion
-version: 0.1.0+1
+version: 1.0.0+1
 
 environment:
   sdk: ">=3.10.0 <4.0.0"
