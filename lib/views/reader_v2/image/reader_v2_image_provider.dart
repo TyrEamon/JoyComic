@@ -234,8 +234,6 @@ final class ReaderV2ImageProvider extends ImageProvider<ReaderV2ImageProvider> {
   final ReaderV2Priority priority;
   final ReaderV2BytesLoader bytesLoader;
 
-  String get imageKey => '${session.traceId}|${page.cacheKey}';
-
   @override
   Future<ReaderV2ImageProvider> obtainKey(ImageConfiguration configuration) =>
       SynchronousFuture<ReaderV2ImageProvider>(this);
@@ -267,10 +265,4 @@ final class ReaderV2ImageProvider extends ImageProvider<ReaderV2ImageProvider> {
     return decode(buffer);
   }
 
-  @override
-  bool operator ==(Object other) =>
-      other is ReaderV2ImageProvider && other.imageKey == imageKey;
-
-  @override
-  int get hashCode => imageKey.hashCode;
 }

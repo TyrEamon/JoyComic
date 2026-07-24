@@ -105,6 +105,100 @@ void main() {
     expect(fetches['https://example.test/2.png'], 1);
   });
 
+  test('separate page mounts use separate framework image streams', () async {
+    final session = ReaderV2Session(traceId: 'mount-identity');
+    final scheduler = ReaderV2Scheduler(session: session, maxConcurrent: 1);
+    addTearDown(scheduler.dispose);
+    const page = ReaderV2Page(
+      index: 0,
+      url: 'https://example.test/mount.png',
+      cacheKey: 'mount-page',
+    );
+    Future<Uint8List> load(
+      ReaderV2Page page,
+      ReaderV2Session session,
+    ) async => _png;
+
+    final first = ReaderV2ImageProvider(
+      page: page,
+      session: session,
+      scheduler: scheduler,
+      priority: ReaderV2Priority.visible,
+      bytesLoader: load,
+    );
+    final second = ReaderV2ImageProvider(
+      page: page,
+      session: session,
+      scheduler: scheduler,
+      priority: ReaderV2Priority.visible,
+      bytesLoader: load,
+    );
+
+    expect(await first.obtainKey(ImageConfiguration.empty), same(first));
+    expect(await second.obtainKey(ImageConfiguration.empty), same(second));
+    expect(first, isNot(equals(second)));
+  });
+
+  testWidgets('recycled page remounts without retry or another fetch', (
+    tester,
+  ) async {
+    var fetches = 0;
+    final loader = ReaderV2PageLoader(
+      candidateFetcher: (_, _, _) async {
+        fetches += 1;
+        return _png;
+      },
+    );
+    final session = ReaderV2Session(traceId: 'recycled-page');
+    final scheduler = ReaderV2Scheduler(session: session, maxConcurrent: 1);
+    addTearDown(scheduler.dispose);
+    const page = ReaderV2Page(
+      index: 0,
+      url: 'https://example.test/recycled.png',
+      cacheKey: 'recycled-page',
+    );
+
+    Widget app({required bool visible}) => MaterialApp(
+      home: SizedBox(
+        width: 200,
+        child: visible
+            ? ReaderV2PageImage(
+                key: const ValueKey('recycled-image'),
+                page: page,
+                session: session,
+                scheduler: scheduler,
+                priority: ReaderV2Priority.visible,
+                bytesLoader: loader.load,
+                placeholderHeight: 200,
+              )
+            : const SizedBox(height: 200),
+      ),
+    );
+
+    await tester.pumpWidget(app(visible: true));
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    await tester.pumpAndSettle();
+    expect(find.text('重试'), findsNothing);
+
+    await tester.pumpWidget(app(visible: false));
+    await tester.pump();
+    await tester.pumpWidget(app(visible: true));
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    await tester.pumpAndSettle();
+
+    expect(find.text('重试'), findsNothing);
+    expect(session.events.where((event) => event.stage == 'frame').length, 2);
+    expect(
+      session.events.any((event) => event.stage == 'bytes-cache-hit'),
+      isTrue,
+    );
+    expect(fetches, 1);
+  });
+
   testWidgets('page image keeps one framework Image mounted while loading', (
     tester,
   ) async {
