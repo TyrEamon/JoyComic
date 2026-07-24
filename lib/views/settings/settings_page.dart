@@ -19,6 +19,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../comic_source/comic_source.dart';
 import '../../foundation/app_data.dart';
+import '../../foundation/app_package_info.dart';
 import '../../foundation/cache_manager.dart';
 import '../../foundation/download_manager.dart';
 import '../../foundation/reader_config.dart';
@@ -30,10 +31,16 @@ import '../common/source_account_profile.dart';
 import '../common/source_account_sheet.dart';
 
 class SettingsPage extends StatefulWidget {
-  const SettingsPage({super.key, this.cacheManager, this.webDavConfigStore});
+  const SettingsPage({
+    super.key,
+    this.cacheManager,
+    this.webDavConfigStore,
+    this.packageInfoLoader = loadAppPackageInfo,
+  });
 
   final CacheManager? cacheManager;
   final WebDavConfigStore? webDavConfigStore;
+  final AppPackageInfoLoader packageInfoLoader;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -42,6 +49,7 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   late Future<CacheManager> _cacheManager;
   late Future<WebDavConfigStore> _webDavConfigStore;
+  late Future<AppPackageInfo> _packageInfo;
   CacheSize? _cacheSize;
   String _webDavStatus = '读取中…';
   bool _loadingCache = false;
@@ -58,8 +66,17 @@ class _SettingsPageState extends State<SettingsPage> {
     _webDavConfigStore = widget.webDavConfigStore == null
         ? WebDavConfigStore.create()
         : Future<WebDavConfigStore>.value(widget.webDavConfigStore!);
+    _packageInfo = widget.packageInfoLoader();
     _refreshCacheSize();
     _refreshWebDavStatus();
+  }
+
+  @override
+  void didUpdateWidget(covariant SettingsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.packageInfoLoader != widget.packageInfoLoader) {
+      _packageInfo = widget.packageInfoLoader();
+    }
   }
 
   Future<void> _refreshWebDavStatus() async {
@@ -316,20 +333,28 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ],
             ),
-            const _SettingsGroup(
+            _SettingsGroup(
               title: '关于',
               items: [
-                _SettingsItem(
-                  icon: Icons.info_outline_rounded,
-                  label: '版本',
-                  value: '0.1.0',
+                FutureBuilder<AppPackageInfo>(
+                  future: _packageInfo,
+                  builder: (context, snapshot) {
+                    final info = snapshot.data ?? AppPackageInfo.fallback;
+                    return _SettingsItem(
+                      icon: Icons.info_outline_rounded,
+                      label: '版本',
+                      value: snapshot.connectionState == ConnectionState.done
+                          ? info.version
+                          : '读取中…',
+                    );
+                  },
                 ),
-                _SettingsItem(
+                const _SettingsItem(
                   icon: Icons.code_rounded,
                   label: '开源说明',
                   route: '/about',
                 ),
-                _SettingsItem(
+                const _SettingsItem(
                   icon: Icons.article_outlined,
                   label: '诊断日志',
                   route: '/logs',

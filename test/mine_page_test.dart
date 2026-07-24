@@ -7,6 +7,7 @@ import 'package:joycomic/comic_source/comic_source.dart';
 import 'package:joycomic/database/favorites_helper.dart';
 import 'package:joycomic/database/joy_database.dart';
 import 'package:joycomic/database/read_record_helper.dart';
+import 'package:joycomic/foundation/app_package_info.dart';
 import 'package:joycomic/foundation/cache_manager.dart';
 import 'package:joycomic/views/mine/mine_page.dart';
 import 'package:joycomic/views/settings/settings_page.dart';
@@ -115,6 +116,23 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('Mine shows the installed app version', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: MinePage(
+          statsLoader: _emptyStats,
+          packageInfoLoader: _loadReleaseInfo,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView), const Offset(0, -600));
+    await tester.pumpAndSettle();
+
+    expect(find.text('JoyComic 1.0.0'), findsOneWidget);
+    expect(find.textContaining('0.1.0'), findsNothing);
+  });
+
   testWidgets('Settings derives account status from enabled sources', (
     tester,
   ) async {
@@ -139,6 +157,24 @@ void main() {
     expect(find.textContaining('secret'), findsNothing);
 
     await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('Settings shows the installed app version', (tester) async {
+    final cacheManager = _ImmediateCacheManager();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsPage(
+          cacheManager: cacheManager,
+          packageInfoLoader: _loadReleaseInfo,
+        ),
+      ),
+    );
+    await cacheManager.calculated.future.timeout(const Duration(seconds: 2));
+    await tester.pumpAndSettle();
+
+    expect(find.text('1.0.0'), findsOneWidget);
+    expect(find.text('0.1.0'), findsNothing);
   });
 
   testWidgets('Mine refreshes history count when records change', (
@@ -182,6 +218,14 @@ void main() {
 }
 
 MineStats _emptyStats() => const MineStats();
+
+const _releaseInfo = AppPackageInfo(
+  appName: 'JoyComic',
+  version: '1.0.0',
+  buildNumber: '1',
+);
+
+Future<AppPackageInfo> _loadReleaseInfo() async => _releaseInfo;
 
 ComicSource _source(String key, String name) => ComicSource.named(
   name: name,

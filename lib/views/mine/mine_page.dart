@@ -8,6 +8,7 @@ import 'package:joycomic/theme/app_theme_context.dart';
 import '../../comic_source/comic_source.dart';
 import '../../database/favorites_helper.dart';
 import '../../database/read_record_helper.dart';
+import '../../foundation/app_package_info.dart';
 import '../../foundation/download_manager.dart';
 import '../../foundation/download_task.dart';
 import '../../foundation/log.dart';
@@ -19,9 +20,14 @@ import '../common/source_account_sheet.dart';
 typedef MineStatsLoader = MineStats Function();
 
 class MinePage extends StatefulWidget {
-  const MinePage({super.key, this.statsLoader});
+  const MinePage({
+    super.key,
+    this.statsLoader,
+    this.packageInfoLoader = loadAppPackageInfo,
+  });
 
   final MineStatsLoader? statsLoader;
+  final AppPackageInfoLoader packageInfoLoader;
 
   @override
   State<MinePage> createState() => _MinePageState();
@@ -29,14 +35,24 @@ class MinePage extends StatefulWidget {
 
 class _MinePageState extends State<MinePage> {
   MineStats _stats = const MineStats();
+  late Future<AppPackageInfo> _packageInfo;
 
   @override
   void initState() {
     super.initState();
     _stats = _readStats();
+    _packageInfo = widget.packageInfoLoader();
     FavoriteNotifier.instance.addListener(_refreshStats);
     ReadRecordNotifier.instance.addListener(_refreshStats);
     DownloadManager.instance.addListener(_refreshStats);
+  }
+
+  @override
+  void didUpdateWidget(covariant MinePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.packageInfoLoader != widget.packageInfoLoader) {
+      _packageInfo = widget.packageInfoLoader();
+    }
   }
 
   @override
@@ -168,12 +184,22 @@ class _MinePageState extends State<MinePage> {
             Padding(
               padding: const EdgeInsets.all(AppSpacing.md),
               child: Center(
-                child: Text(
-                  'JoyComic 0.1.0',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: context.tertiaryTextColor,
-                  ),
+                child: FutureBuilder<AppPackageInfo>(
+                  future: _packageInfo,
+                  builder: (context, snapshot) {
+                    final info = snapshot.data ?? AppPackageInfo.fallback;
+                    final label =
+                        snapshot.connectionState == ConnectionState.done
+                        ? 'JoyComic ${info.version}'
+                        : '正在读取版本…';
+                    return Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: context.tertiaryTextColor,
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
