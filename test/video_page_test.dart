@@ -94,8 +94,11 @@ void main() {
     expect(videoWebViewPlaybackPolicy.requiresUserAction, isFalse);
   });
 
-  test('iOS uses FVP texture while macOS keeps the platform view', () {
-    expect(nativeVideoViewType(TargetPlatform.iOS), VideoViewType.textureView);
+  test('iOS and macOS select the native platform view backend', () {
+    expect(
+      nativeVideoViewType(TargetPlatform.iOS),
+      VideoViewType.platformView,
+    );
     expect(
       nativeVideoViewType(TargetPlatform.macOS),
       VideoViewType.platformView,
@@ -119,7 +122,7 @@ void main() {
       platform: TargetPlatform.iOS,
     );
     addTearDown(controller.dispose);
-    expect(controller.viewType, VideoViewType.textureView);
+    expect(controller.viewType, VideoViewType.platformView);
   });
 
   test('native video diagnostics describe media and render state', () {
@@ -190,16 +193,6 @@ void main() {
       size: Size.zero,
       isInitialized: true,
       isBuffering: true,
-    );
-
-    expect(isNativeVideoRenderable(value), isFalse);
-  });
-
-  test('FVP audio-only placeholder texture is treated as non-renderable', () {
-    const value = VideoPlayerValue(
-      duration: Duration(minutes: 5),
-      size: Size(16, 16),
-      isInitialized: true,
     );
 
     expect(isNativeVideoRenderable(value), isFalse);

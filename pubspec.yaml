@@ -79,7 +79,6 @@ dependencies:
   # 日志导出分享
   share_plus: ^10.1.4
   package_info_plus: ^9.0.1
-  fvp: 0.37.3
   video_player: ^2.13.0
   webview_flutter: ^4.14.1
   webview_flutter_android: ^4.13.0

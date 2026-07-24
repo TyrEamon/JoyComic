@@ -724,7 +724,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
 }
 
 VideoViewType nativeVideoViewType(TargetPlatform platform) {
-  if (platform == TargetPlatform.macOS) {
+  if (platform == TargetPlatform.iOS || platform == TargetPlatform.macOS) {
     return VideoViewType.platformView;
   }
   return VideoViewType.textureView;
@@ -758,8 +758,8 @@ bool isNativeVideoRenderable(VideoPlayerValue value) {
   final size = value.size;
   return value.isInitialized &&
       !value.hasError &&
-      size.width > 16 &&
-      size.height > 16 &&
+      size.width > 0 &&
+      size.height > 0 &&
       value.aspectRatio > 0;
 }
 
