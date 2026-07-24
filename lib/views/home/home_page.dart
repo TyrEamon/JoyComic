@@ -55,7 +55,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<HomeSourceResult> _loadSource(ComicSource source) async {
-    if (source.key == 'picacg' && !source.isLogin) {
+    if (source.requiresLoginForBrowsing && !source.isLogin) {
       return HomeSourceResult.loginRequired(
         sourceKey: source.key,
         sourceName: source.name,

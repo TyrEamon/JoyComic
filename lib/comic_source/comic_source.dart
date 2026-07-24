@@ -113,6 +113,12 @@ class ComicSource {
 
   final AccountConfig? account;
 
+  /// Whether ordinary source content requires an authenticated account.
+  ///
+  /// Authentication can still be optional for source-specific operations such
+  /// as remote favorites even when browsing is available anonymously.
+  final bool requiresLoginForBrowsing;
+
   /// Source-keyed secrets used by authentication and session restoration.
   final SourceCredentialStore credentialStore;
 
@@ -215,6 +221,7 @@ class ComicSource {
     required this.name,
     required this.key,
     this.account,
+    this.requiresLoginForBrowsing = false,
     SourceCredentialStore? credentialStore,
     this.categoryData,
     this.categoryComicsData,

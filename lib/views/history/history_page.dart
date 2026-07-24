@@ -98,7 +98,7 @@ class _HistoryPageState extends State<HistoryPage> {
 
   Future<void> _openDetail(ReadRecord record) async {
     final source = ComicSource.find(record.source);
-    if (source != null && !source.isLogin) {
+    if (source != null && source.requiresLoginForBrowsing && !source.isLogin) {
       final allowed = await ensureSourceLoggedIn(context, record.source);
       if (!allowed) return;
     }

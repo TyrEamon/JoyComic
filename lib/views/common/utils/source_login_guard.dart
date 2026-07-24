@@ -9,10 +9,12 @@ import '../../../theme/app_theme_context.dart';
 
 Future<bool> ensureSourceLoggedIn(
   BuildContext context,
-  String sourceKey,
-) async {
+  String sourceKey, {
+  bool requireAuthentication = false,
+}) async {
   final source = ComicSource.find(sourceKey);
   if (source == null) return false;
+  if (!requireAuthentication && !source.requiresLoginForBrowsing) return true;
   if (source.isLogin) return true;
 
   final shouldLogin = await showDialog<bool>(

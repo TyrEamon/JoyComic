@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:joycomic/comic_source/comic_source.dart';
+import 'package:joycomic/foundation/source_session_notifier.dart';
 import 'package:joycomic/network/base_comic.dart';
 import 'package:joycomic/network/res.dart';
 import 'package:joycomic/views/category/category_page.dart';
@@ -122,6 +125,71 @@ void main() {
 
     expect(find.text('禁漫暂无分类'), findsOneWidget);
     expect(find.text('刷新'), findsOneWidget);
+  });
+
+  testWidgets('source login change reloads its categories automatically', (
+    tester,
+  ) async {
+    var loads = 0;
+    final source = ComicSource.named(
+      key: 'picacg',
+      name: '哔咔',
+      filePath: 'test',
+      requiresLoginForBrowsing: true,
+      loadSourceCategories: () async {
+        loads++;
+        if (!ComicSource.find('picacg')!.isLogin) {
+          return const Res<List<SourceCategory>>(null, errorMessage: '未登录');
+        }
+        return Res([SourceCategory(key: 'after-login', title: '登录后分类')]);
+      },
+    );
+    ComicSource.sources.add(source);
+
+    await tester.pumpWidget(const MaterialApp(home: CategoryPage()));
+    await tester.pump();
+    expect(find.text('哔咔分类加载失败'), findsOneWidget);
+    expect(loads, 1);
+
+    source.data['authenticated'] = true;
+    SourceSessionNotifier.instance.notifyChanged('picacg');
+    await tester.pump();
+
+    expect(loads, 2);
+    expect(find.text('登录后分类'), findsOneWidget);
+  });
+
+  testWidgets('stale pre-login category response cannot replace fresh data', (
+    tester,
+  ) async {
+    final staleResponse = Completer<Res<List<SourceCategory>>>();
+    var loads = 0;
+    final source = ComicSource.named(
+      key: 'picacg',
+      name: '哔咔',
+      filePath: 'test',
+      requiresLoginForBrowsing: true,
+      loadSourceCategories: () {
+        loads++;
+        if (loads == 1) return staleResponse.future;
+        return Future.value(Res([SourceCategory(key: 'fresh', title: '最新分类')]));
+      },
+    );
+    ComicSource.sources.add(source);
+
+    await tester.pumpWidget(const MaterialApp(home: CategoryPage()));
+    await tester.pump();
+
+    source.data['authenticated'] = true;
+    SourceSessionNotifier.instance.notifyChanged('picacg');
+    await tester.pump();
+    expect(find.text('最新分类'), findsOneWidget);
+
+    staleResponse.complete(Res([SourceCategory(key: 'stale', title: '旧分类')]));
+    await tester.pump();
+
+    expect(find.text('最新分类'), findsOneWidget);
+    expect(find.text('旧分类'), findsNothing);
   });
 
   testWidgets('switching tabs preserves each source scroll position', (
@@ -278,6 +346,54 @@ void main() {
     expect(find.text('old-tail'), findsNothing);
     expect(find.text('new-popular'), findsOneWidget);
     expect(find.text('已经到底了'), findsOneWidget);
+  });
+
+  testWidgets('category content reloads after its source logs in', (
+    tester,
+  ) async {
+    var contentLoads = 0;
+    final source = ComicSource.named(
+      key: 'picacg',
+      name: '哔咔',
+      filePath: 'test',
+      requiresLoginForBrowsing: true,
+      loadSourceCategories: () async =>
+          Res([SourceCategory(key: 'category', title: '分类')]),
+      loadSourceContent: (query) async {
+        contentLoads++;
+        if (!ComicSource.find('picacg')!.isLogin) {
+          return const Res<SourceContentPage>(null, errorMessage: '未登录');
+        }
+        return Res(
+          SourceContentPage(
+            query: query,
+            comics: const [_TestComic('登录后漫画')],
+            maxPage: 1,
+          ),
+        );
+      },
+    );
+    ComicSource.sources.add(source);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: content_view.SourceContentPage(
+          sourceKey: 'picacg',
+          kind: 'category',
+          category: 'category',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('未登录'), findsOneWidget);
+    expect(contentLoads, 1);
+
+    source.data['authenticated'] = true;
+    SourceSessionNotifier.instance.notifyChanged('picacg');
+    await tester.pumpAndSettle();
+
+    expect(contentLoads, 2);
+    expect(find.text('登录后漫画'), findsOneWidget);
   });
 
   testWidgets('shows an empty state when no category source is enabled', (

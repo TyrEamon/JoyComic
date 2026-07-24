@@ -166,6 +166,7 @@ void main() {
             key: 'picacg',
             filePath: 'test',
             account: const AccountConfig.named(),
+            requiresLoginForBrowsing: true,
             loadHomeSections: () async {
               loadCalls++;
               return const Res.error('latest：未登录; popular：未登录');

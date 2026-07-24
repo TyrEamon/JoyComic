@@ -143,6 +143,7 @@ void main() {
             key: 'picacg',
             filePath: 'test',
             account: const AccountConfig.named(),
+            requiresLoginForBrowsing: true,
           ),
         );
       bool? loginResult;
@@ -188,6 +189,46 @@ void main() {
       expect(loginResult, isTrue);
     },
   );
+
+  testWidgets('anonymous source browsing bypasses the login prompt', (
+    tester,
+  ) async {
+    ComicSource.sources
+      ..clear()
+      ..add(
+        ComicSource.named(
+          name: '禁漫',
+          key: 'jm',
+          filePath: 'test',
+          account: const AccountConfig.named(),
+        ),
+      );
+    bool? allowed;
+    final router = GoRouter(
+      initialLocation: '/',
+      routes: [
+        GoRoute(
+          path: '/',
+          builder: (context, state) => Scaffold(
+            body: TextButton(
+              onPressed: () async {
+                allowed = await ensureSourceLoggedIn(context, 'jm');
+              },
+              child: const Text('打开禁漫内容'),
+            ),
+          ),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.tap(find.text('打开禁漫内容'));
+    await tester.pump();
+
+    expect(allowed, isTrue);
+    expect(find.text('禁漫 未登录'), findsNothing);
+  });
 
   testWidgets('unknown routes render an explicit 404 with a home action', (
     tester,

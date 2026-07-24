@@ -302,7 +302,7 @@ class _SearchPageState extends State<SearchPage> {
   void _onItemTap(ComicGridItem item) async {
     final sk = item.sourceKey ?? 'jm';
     final loggedIn = await ensureSourceLoggedIn(context, sk);
-    if (!loggedIn && sk == 'picacg') return;
+    if (!loggedIn) return;
     if (!mounted) return;
     context.push('/detail/$sk/${item.id}');
   }

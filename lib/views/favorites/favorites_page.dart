@@ -1,6 +1,7 @@
 /// 收藏库：合并本地缓存与已登录漫画源的远端收藏。
 library;
 
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:collection/collection.dart';
@@ -11,6 +12,7 @@ import 'package:go_router/go_router.dart';
 import '../../comic_source/comic_source.dart';
 import '../../database/favorites_helper.dart';
 import '../../foundation/log.dart';
+import '../../foundation/source_session_notifier.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
 import '../common/utils/source_login_guard.dart';
@@ -108,13 +110,25 @@ class _FavoritesPageState extends State<FavoritesPage> {
     super.initState();
     _lastSeenRevision = FavoriteNotifier.instance.revision;
     FavoriteNotifier.instance.addListener(_onFavoriteChanged);
+    SourceSessionNotifier.instance.addListener(_onSourceSessionChanged);
     _loadFavorites();
   }
 
   @override
   void dispose() {
     FavoriteNotifier.instance.removeListener(_onFavoriteChanged);
+    SourceSessionNotifier.instance.removeListener(_onSourceSessionChanged);
     super.dispose();
+  }
+
+  void _onSourceSessionChanged() {
+    final sourceKey = SourceSessionNotifier.instance.lastChangedSourceKey;
+    final isRelevant = widget.sourcesProvider().any(
+      (source) => source.key == sourceKey && source.favoriteData != null,
+    );
+    if (!isRelevant) return;
+    Log.i('Favorites refresh after source session change', sourceKey);
+    unawaited(_loadFavorites());
   }
 
   void _onFavoriteChanged() {
@@ -313,7 +327,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
             .sourcesProvider()
             .where((source) => source.key == item.sourceKey)
             .firstOrNull;
-    if (source != null && !source.isLogin) {
+    if (source != null && source.requiresLoginForBrowsing && !source.isLogin) {
       final allowed = await ensureSourceLoggedIn(context, item.sourceKey);
       if (!allowed) return;
     }
@@ -330,7 +344,11 @@ class _FavoritesPageState extends State<FavoritesPage> {
         .where((candidate) => candidate.key == item.sourceKey)
         .firstOrNull;
     if (item.isRemote && source != null && !source.isLogin) {
-      await ensureSourceLoggedIn(context, item.sourceKey);
+      await ensureSourceLoggedIn(
+        context,
+        item.sourceKey,
+        requireAuthentication: true,
+      );
       return;
     }
 
@@ -371,6 +389,11 @@ class _FavoritesPageState extends State<FavoritesPage> {
         .sourcesProvider()
         .where((source) => source.favoriteData != null && !source.isLogin)
         .toList();
+    final loginSource =
+        loggedOutSources.firstWhereOrNull(
+          (source) => source.key == _filterSource,
+        ) ??
+        loggedOutSources.firstOrNull;
 
     return Scaffold(
       backgroundColor: context.pageBackground,
@@ -395,9 +418,9 @@ class _FavoritesPageState extends State<FavoritesPage> {
                 sourceNames: loggedOutSources
                     .map((source) => source.name)
                     .join('、'),
-                onLogin: () => context.push(
-                  '/login?source=${_filterSource ?? loggedOutSources.first.key}',
-                ),
+                onLogin: loginSource == null
+                    ? null
+                    : () => context.push('/login?source=${loginSource.key}'),
               ),
             if (_failedSources.isNotEmpty)
               Padding(
@@ -537,7 +560,7 @@ class _LoginHint extends StatelessWidget {
   const _LoginHint({required this.sourceNames, required this.onLogin});
 
   final String sourceNames;
-  final VoidCallback onLogin;
+  final VoidCallback? onLogin;
 
   @override
   Widget build(BuildContext context) {
@@ -563,7 +586,7 @@ class _LoginHint extends StatelessWidget {
           const SizedBox(width: AppSpacing.xs),
           Expanded(
             child: Text(
-              '$sourceNames 未登录；本地收藏仍可离线查看',
+              '$sourceNames 登录后可同步云端收藏；本地收藏仍可直接查看',
               style: const TextStyle(fontSize: 12),
             ),
           ),

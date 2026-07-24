@@ -2,10 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:joycomic/comic_source/comic_source.dart';
 import 'package:joycomic/database/favorites_helper.dart';
 import 'package:joycomic/database/joy_database.dart';
 import 'package:joycomic/database/read_record_helper.dart';
+import 'package:joycomic/foundation/source_session_notifier.dart';
 import 'package:joycomic/network/base_comic.dart';
 import 'package:joycomic/network/res.dart';
 import 'package:joycomic/views/favorites/favorites_page.dart';
@@ -319,6 +321,120 @@ void main() {
       expect(find.text('Offline favorite'), findsOneWidget);
       expect(find.textContaining('本地'), findsWidgets);
     });
+
+    testWidgets('anonymous JM favorite opens detail without a login prompt', (
+      tester,
+    ) async {
+      final database = sqlite3.openInMemory();
+      addTearDown(database.dispose);
+      JoyDatabase.migrateCore(database);
+      final helper = FavoritesHelper(database);
+      helper.upsert(
+        const FavoriteRecord(
+          source: 'jm',
+          comic: 'anonymous-1',
+          title: '匿名可读收藏',
+          cover: '',
+          author: '',
+          favoritedAt: 10,
+        ),
+      );
+      FavoriteNotifier.instance.loadFromDb(database);
+      final source = ComicSource.named(
+        name: '禁漫',
+        key: 'jm',
+        filePath: 'test',
+        account: const AccountConfig.named(),
+      );
+      final previousSources = List<ComicSource>.of(ComicSource.sources);
+      addTearDown(() {
+        ComicSource.sources
+          ..clear()
+          ..addAll(previousSources);
+      });
+      ComicSource.sources
+        ..clear()
+        ..add(source);
+      final router = GoRouter(
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (context, state) => FavoritesPage(
+              favoritesHelper: helper,
+              sourcesProvider: () => <ComicSource>[source],
+            ),
+          ),
+          GoRoute(
+            path: '/detail/:source/:id',
+            builder: (context, state) => const Scaffold(body: Text('已进入漫画详情')),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('匿名可读收藏'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('已进入漫画详情'), findsOneWidget);
+      expect(find.text('禁漫 未登录'), findsNothing);
+    });
+
+    testWidgets(
+      'source login change refreshes remote favorites automatically',
+      (tester) async {
+        final database = sqlite3.openInMemory();
+        addTearDown(database.dispose);
+        JoyDatabase.migrateCore(database);
+        final helper = FavoritesHelper(database);
+        FavoriteNotifier.instance.loadFromDb(database);
+        var remoteLoads = 0;
+        final source = ComicSource.named(
+          name: '禁漫',
+          key: 'jm',
+          filePath: 'test',
+          favoriteData: FavoriteData.named(
+            load: (page, [folder]) async {
+              remoteLoads++;
+              return const Res<List<BaseComic>>(<BaseComic>[
+                _TestComic(id: 'remote-after-login', title: '登录后收藏'),
+              ], subData: 1);
+            },
+          ),
+        );
+        final previousSources = List<ComicSource>.of(ComicSource.sources);
+        addTearDown(() {
+          ComicSource.sources
+            ..clear()
+            ..addAll(previousSources);
+        });
+        ComicSource.sources
+          ..clear()
+          ..add(source);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: FavoritesPage(
+              favoritesHelper: helper,
+              sourcesProvider: () => <ComicSource>[source],
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(remoteLoads, 0);
+        expect(find.textContaining('登录后可同步'), findsOneWidget);
+
+        source.data['authenticated'] = true;
+        SourceSessionNotifier.instance.notifyChanged('jm');
+        await tester.pumpAndSettle();
+
+        expect(remoteLoads, 1);
+        expect(find.text('登录后收藏'), findsOneWidget);
+        expect(find.textContaining('登录后可同步'), findsNothing);
+      },
+    );
 
     testWidgets('favorite revision refreshes every mounted page', (
       tester,

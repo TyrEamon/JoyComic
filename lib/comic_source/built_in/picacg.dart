@@ -170,6 +170,7 @@ ComicSource buildPicacgSource({
     filePath: 'built-in',
     url: 'https://picaapi.go2778.com',
     version: '2.2.1.3.3.4',
+    requiresLoginForBrowsing: true,
     credentialStore: secrets,
     account: AccountConfig.named(
       login: (account, pwd) => client.runAuthenticationOperation(() async {

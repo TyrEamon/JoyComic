@@ -1,12 +1,15 @@
 /// Generic paginated content page backed by a single [ComicSource].
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:joycomic/theme/app_theme_context.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../comic_source/comic_source.dart';
 import '../../foundation/log.dart';
+import '../../foundation/source_session_notifier.dart';
 import '../../network/base_comic.dart';
 import 'source_content_models.dart' as models;
 import 'widgets/comic_grid.dart';
@@ -52,8 +55,23 @@ class _SourceContentPageState extends State<SourceContentPage> {
   void initState() {
     super.initState();
     _selectedSort = widget.sort;
+    SourceSessionNotifier.instance.addListener(_onSourceSessionChanged);
     _loadCategoryMetadata();
     _loadInitial();
+  }
+
+  void _onSourceSessionChanged() {
+    final sourceKey = SourceSessionNotifier.instance.lastChangedSourceKey;
+    if (sourceKey != widget.sourceKey) return;
+    Log.i('Source content refresh after session change', sourceKey);
+    unawaited(_loadCategoryMetadata());
+    unawaited(_loadInitial());
+  }
+
+  @override
+  void dispose() {
+    SourceSessionNotifier.instance.removeListener(_onSourceSessionChanged);
+    super.dispose();
   }
 
   Future<void> _loadCategoryMetadata() async {

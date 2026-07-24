@@ -1,6 +1,8 @@
 /// Dual-source category browser with independent source state.
 library;
 
+import 'dart:async';
+
 import 'package:cached_network_image_ce/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
@@ -8,6 +10,8 @@ import 'package:joycomic/theme/app_theme_context.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../comic_source/comic_source.dart';
+import '../../foundation/log.dart';
+import '../../foundation/source_session_notifier.dart';
 import '../../theme/app_spacing.dart';
 import '../common/source_content_models.dart';
 import '../common/widgets/empty_state.dart';
@@ -133,6 +137,7 @@ class _SourceCategoryViewState extends State<_SourceCategoryView>
   bool _loading = true;
   bool _refreshing = false;
   String? _error;
+  int _loadGeneration = 0;
 
   @override
   bool get wantKeepAlive => true;
@@ -140,17 +145,27 @@ class _SourceCategoryViewState extends State<_SourceCategoryView>
   @override
   void initState() {
     super.initState();
+    SourceSessionNotifier.instance.addListener(_onSourceSessionChanged);
     _load();
+  }
+
+  void _onSourceSessionChanged() {
+    final sourceKey = SourceSessionNotifier.instance.lastChangedSourceKey;
+    if (sourceKey != widget.source.key) return;
+    Log.i('Category refresh after source session change', sourceKey);
+    unawaited(_load());
   }
 
   @override
   void dispose() {
+    SourceSessionNotifier.instance.removeListener(_onSourceSessionChanged);
     _scrollController.dispose();
     super.dispose();
   }
 
   Future<void> _load({bool refreshing = false}) async {
     if (refreshing && (_loading || _refreshing)) return;
+    final generation = ++_loadGeneration;
     setState(() {
       _loading = !refreshing;
       _refreshing = refreshing;
@@ -158,7 +173,7 @@ class _SourceCategoryViewState extends State<_SourceCategoryView>
     });
     try {
       final response = await widget.source.loadSourceCategories!();
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         if (response.error) {
           _error = response.errorMessageWithoutNull;
@@ -167,9 +182,11 @@ class _SourceCategoryViewState extends State<_SourceCategoryView>
         }
       });
     } catch (error) {
-      if (mounted) setState(() => _error = error.toString());
+      if (mounted && generation == _loadGeneration) {
+        setState(() => _error = error.toString());
+      }
     } finally {
-      if (mounted) {
+      if (mounted && generation == _loadGeneration) {
         setState(() {
           _loading = false;
           _refreshing = false;
