@@ -284,7 +284,7 @@ void main() {
     expect(layout.single.detail, contains('hasSize=true'));
   });
 
-  testWidgets('successful page image no longer exposes retry error UI', (
+  testWidgets('successful page image retains genuine retry error handling', (
     tester,
   ) async {
     final session = ReaderV2Session(traceId: 'post-frame-error');
@@ -318,7 +318,7 @@ void main() {
     }
 
     expect(session.events.any((event) => event.stage == 'frame'), isTrue);
-    expect(tester.widget<Image>(find.byType(Image)).errorBuilder, isNull);
+    expect(tester.widget<Image>(find.byType(Image)).errorBuilder, isNotNull);
     expect(find.text('重试'), findsNothing);
   });
 
