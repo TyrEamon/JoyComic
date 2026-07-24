@@ -195,6 +195,16 @@ void main() {
     expect(isNativeVideoRenderable(value), isFalse);
   });
 
+  test('FVP audio-only placeholder texture is treated as non-renderable', () {
+    const value = VideoPlayerValue(
+      duration: Duration(minutes: 5),
+      size: Size(16, 16),
+      isInitialized: true,
+    );
+
+    expect(isNativeVideoRenderable(value), isFalse);
+  });
+
   test('quality changes clamp a saved position to the new duration', () {
     expect(
       clampVideoPosition(

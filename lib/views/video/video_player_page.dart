@@ -758,8 +758,8 @@ bool isNativeVideoRenderable(VideoPlayerValue value) {
   final size = value.size;
   return value.isInitialized &&
       !value.hasError &&
-      size.width > 0 &&
-      size.height > 0 &&
+      size.width > 16 &&
+      size.height > 16 &&
       value.aspectRatio > 0;
 }
 

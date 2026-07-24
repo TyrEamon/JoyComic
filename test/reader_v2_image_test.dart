@@ -190,6 +190,44 @@ void main() {
     expect(layout.single.detail, contains('hasSize=true'));
   });
 
+  testWidgets('successful page image no longer exposes retry error UI', (
+    tester,
+  ) async {
+    final session = ReaderV2Session(traceId: 'post-frame-error');
+    final scheduler = ReaderV2Scheduler(session: session, maxConcurrent: 1);
+    addTearDown(scheduler.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SizedBox(
+          width: 200,
+          child: ReaderV2PageImage(
+            page: const ReaderV2Page(
+              index: 0,
+              url: 'https://example.test/post-frame.png',
+              cacheKey: 'post-frame-page',
+            ),
+            session: session,
+            scheduler: scheduler,
+            priority: ReaderV2Priority.visible,
+            bytesLoader: (_, _) async => _png,
+            placeholderHeight: 200,
+          ),
+        ),
+      ),
+    );
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    for (var i = 0; i < 6; i++) {
+      await tester.pump();
+    }
+
+    expect(session.events.any((event) => event.stage == 'frame'), isTrue);
+    expect(tester.widget<Image>(find.byType(Image)).errorBuilder, isNull);
+    expect(find.text('重试'), findsNothing);
+  });
+
   testWidgets('fixed-height paged image honors centered alignment', (
     tester,
   ) async {

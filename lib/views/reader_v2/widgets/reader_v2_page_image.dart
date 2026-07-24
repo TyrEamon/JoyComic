@@ -41,6 +41,7 @@ final class _ReaderV2PageImageState extends State<ReaderV2PageImage> {
   late ReaderV2ImageProvider _provider;
   BoxConstraints? _lastConstraints;
   bool _frameworkFrameLogged = false;
+  bool _hasRenderedFrame = false;
   double? _naturalAspectRatio;
   int? _loggedErrorGeneration;
   int _retryGeneration = 0;
@@ -58,6 +59,7 @@ final class _ReaderV2PageImageState extends State<ReaderV2PageImage> {
         oldWidget.session.traceId != widget.session.traceId ||
         !identical(oldWidget.scheduler, widget.scheduler)) {
       _frameworkFrameLogged = false;
+      _hasRenderedFrame = false;
       _naturalAspectRatio = null;
       _loggedErrorGeneration = null;
       _retryGeneration = 0;
@@ -82,6 +84,7 @@ final class _ReaderV2PageImageState extends State<ReaderV2PageImage> {
     setState(() {
       _retryGeneration += 1;
       _frameworkFrameLogged = false;
+      _hasRenderedFrame = false;
       _loggedErrorGeneration = null;
       _imageKey = GlobalKey();
       _provider = _buildImageProvider();
@@ -96,7 +99,7 @@ final class _ReaderV2PageImageState extends State<ReaderV2PageImage> {
           ? imageRenderObject
           : null;
       final decoded = renderImage?.image;
-      var resized = false;
+      double? nextAspectRatio;
       if (decoded != null) {
         final aspectRatio = decoded.width / decoded.height;
         widget.onImageSize?.call(
@@ -111,9 +114,17 @@ final class _ReaderV2PageImageState extends State<ReaderV2PageImage> {
             aspectRatio.isFinite &&
             aspectRatio > 0 &&
             _naturalAspectRatio != aspectRatio) {
-          resized = true;
-          setState(() => _naturalAspectRatio = aspectRatio);
+          nextAspectRatio = aspectRatio;
         }
+      }
+      final resized = nextAspectRatio != null;
+      if (!_hasRenderedFrame || resized) {
+        setState(() {
+          _hasRenderedFrame = true;
+          if (nextAspectRatio != null) {
+            _naturalAspectRatio = nextAspectRatio;
+          }
+        });
       }
       if (resized) {
         WidgetsBinding.instance.addPostFrameCallback((_) => _recordLayout());
@@ -222,26 +233,30 @@ final class _ReaderV2PageImageState extends State<ReaderV2PageImage> {
                       }
                       return child;
                     },
-                    errorBuilder: (context, error, stackTrace) {
-                      if (widget.session.isCancelled) {
-                        return const SizedBox.shrink();
-                      }
-                      if (_loggedErrorGeneration != _retryGeneration) {
-                        _loggedErrorGeneration = _retryGeneration;
-                        widget.session.record(
-                          'image-error',
-                          page: widget.page.index,
-                          detail: '$error',
-                        );
-                      }
-                      return Center(
-                        child: TextButton(
-                          key: ValueKey('reader-v2-retry-$_retryGeneration'),
-                          onPressed: _retry,
-                          child: const Text('重试'),
-                        ),
-                      );
-                    },
+                    errorBuilder: _hasRenderedFrame
+                        ? null
+                        : (context, error, stackTrace) {
+                            if (widget.session.isCancelled) {
+                              return const SizedBox.shrink();
+                            }
+                            if (_loggedErrorGeneration != _retryGeneration) {
+                              _loggedErrorGeneration = _retryGeneration;
+                              widget.session.record(
+                                'image-error',
+                                page: widget.page.index,
+                                detail: '$error',
+                              );
+                            }
+                            return Center(
+                              child: TextButton(
+                                key: ValueKey(
+                                  'reader-v2-retry-$_retryGeneration',
+                                ),
+                                onPressed: _retry,
+                                child: const Text('重试'),
+                              ),
+                            );
+                          },
                   ),
                 ),
               ],
