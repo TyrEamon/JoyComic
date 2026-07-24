@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -22,12 +23,30 @@ typedef ReaderV2BytesLoader =
     Future<Uint8List> Function(ReaderV2Page page, ReaderV2Session session);
 
 final class ReaderV2PageLoader {
-  ReaderV2PageLoader({ReaderV2CandidateFetcher? candidateFetcher})
-    : _candidateFetcher = candidateFetcher ?? _fetchCandidate;
+  ReaderV2PageLoader({
+    ReaderV2CandidateFetcher? candidateFetcher,
+    this.maxCacheBytes = 64 * 1024 * 1024,
+  }) : assert(maxCacheBytes > 0),
+       _candidateFetcher = candidateFetcher ?? _fetchCandidate;
 
   final ReaderV2CandidateFetcher _candidateFetcher;
+  final int maxCacheBytes;
+  final LinkedHashMap<String, Uint8List> _bytesCache =
+      LinkedHashMap<String, Uint8List>();
+  int _cacheBytes = 0;
 
   Future<Uint8List> load(ReaderV2Page page, ReaderV2Session session) async {
+    session.throwIfCancelled();
+    final cached = _takeCached(page.cacheKey);
+    if (cached != null) {
+      session.record(
+        'bytes-cache-hit',
+        page: page.index,
+        detail: '${cached.length}',
+      );
+      return cached;
+    }
+
     final uri = Uri.tryParse(page.url);
     final scheme = uri?.scheme.toLowerCase() ?? '';
     if (scheme != 'http' && scheme != 'https') {
@@ -45,6 +64,7 @@ final class ReaderV2PageLoader {
         page: page.index,
         detail: 'local ${bytes.length}',
       );
+      _store(page.cacheKey, bytes);
       return bytes;
     }
     final rawCandidates = <String>{
@@ -77,6 +97,7 @@ final class ReaderV2PageLoader {
           jmImageHealth.recordSuccess(host);
         }
         session.record('bytes', page: page.index, detail: '${bytes.length}');
+        _store(page.cacheKey, bytes);
         return bytes;
       } catch (error, stackTrace) {
         if (error is ReaderV2Cancelled) rethrow;
@@ -93,6 +114,26 @@ final class ReaderV2PageLoader {
       lastError ?? StateError('no image candidate'),
       lastStack ?? StackTrace.current,
     );
+  }
+
+  Uint8List? _takeCached(String key) {
+    final bytes = _bytesCache.remove(key);
+    if (bytes == null) return null;
+    _bytesCache[key] = bytes;
+    return bytes;
+  }
+
+  void _store(String key, Uint8List bytes) {
+    if (bytes.length > maxCacheBytes) return;
+    final replaced = _bytesCache.remove(key);
+    if (replaced != null) _cacheBytes -= replaced.length;
+    _bytesCache[key] = bytes;
+    _cacheBytes += bytes.length;
+    while (_cacheBytes > maxCacheBytes && _bytesCache.isNotEmpty) {
+      final oldestKey = _bytesCache.keys.first;
+      final removed = _bytesCache.remove(oldestKey);
+      if (removed != null) _cacheBytes -= removed.length;
+    }
   }
 
   static final Dio _dio = Dio(

@@ -48,6 +48,63 @@ void main() {
     },
   );
 
+  test('page loader reuses successful transformed bytes', () async {
+    var fetches = 0;
+    var transforms = 0;
+    final loader = ReaderV2PageLoader(
+      candidateFetcher: (_, _, _) async {
+        fetches += 1;
+        if (fetches > 1) {
+          throw StateError('network should not run twice');
+        }
+        return Uint8List.fromList([0x52, 0x49, 0x46, 0x46]);
+      },
+    );
+    final page = ReaderV2Page(
+      index: 0,
+      url: 'https://example.test/page.webp',
+      cacheKey: 'chapter-page-0',
+      bytesTransformer: (_) async {
+        transforms += 1;
+        return _png;
+      },
+    );
+    final session = ReaderV2Session(traceId: 'cache-test');
+
+    expect(await loader.load(page, session), _png);
+    expect(await loader.load(page, session), _png);
+    expect(fetches, 1);
+    expect(transforms, 1);
+  });
+
+  test('page loader evicts least recently used transformed bytes', () async {
+    final fetches = <String, int>{};
+    final loader = ReaderV2PageLoader(
+      maxCacheBytes: _png.length * 2,
+      candidateFetcher: (url, _, _) async {
+        fetches.update(url, (count) => count + 1, ifAbsent: () => 1);
+        return _png;
+      },
+    );
+    ReaderV2Page page(int index) => ReaderV2Page(
+      index: index,
+      url: 'https://example.test/$index.png',
+      cacheKey: 'chapter-page-$index',
+    );
+    final session = ReaderV2Session(traceId: 'cache-lru-test');
+
+    await loader.load(page(0), session);
+    await loader.load(page(1), session);
+    await loader.load(page(0), session);
+    await loader.load(page(2), session);
+    await loader.load(page(0), session);
+    await loader.load(page(1), session);
+
+    expect(fetches['https://example.test/0.png'], 1);
+    expect(fetches['https://example.test/1.png'], 2);
+    expect(fetches['https://example.test/2.png'], 1);
+  });
+
   testWidgets('page image keeps one framework Image mounted while loading', (
     tester,
   ) async {
