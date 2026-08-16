@@ -260,21 +260,6 @@ class _DistributionPageState extends State<_DistributionPage> {
   }
 }
 
-List<RankedStat> collapseDistribution(
-  List<RankedStat> values, {
-  int limit = 7,
-}) {
-  if (values.length <= limit) return values;
-  final visible = values.take(limit).toList();
-  final otherCount = values
-      .skip(limit)
-      .fold(0, (sum, value) => sum + value.count);
-  return List<RankedStat>.unmodifiable(<RankedStat>[
-    ...visible,
-    RankedStat('其他', otherCount),
-  ]);
-}
-
 class DistributionDonut extends StatelessWidget {
   const DistributionDonut({
     super.key,

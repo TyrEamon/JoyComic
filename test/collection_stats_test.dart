@@ -5,7 +5,6 @@ import 'package:joycomic/database/favorites_helper.dart';
 import 'package:joycomic/database/joy_database.dart';
 import 'package:joycomic/database/read_record_helper.dart';
 import 'package:joycomic/views/stats/collection_stats.dart';
-import 'package:joycomic/views/stats/stats_page.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 void main() {

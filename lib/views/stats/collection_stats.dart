@@ -101,6 +101,21 @@ List<RankedStat> _rank(Map<String, int> counts) {
   return List<RankedStat>.unmodifiable(result);
 }
 
+List<RankedStat> collapseDistribution(
+  List<RankedStat> values, {
+  int limit = 7,
+}) {
+  if (values.length <= limit) return values;
+  final visible = values.take(limit).toList();
+  final otherCount = values
+      .skip(limit)
+      .fold(0, (sum, value) => sum + value.count);
+  return List<RankedStat>.unmodifiable(<RankedStat>[
+    ...visible,
+    RankedStat('其他', otherCount),
+  ]);
+}
+
 typedef StatsSourceLookup = ComicSource? Function(String sourceKey);
 
 class CollectionStatsController extends ChangeNotifier {
