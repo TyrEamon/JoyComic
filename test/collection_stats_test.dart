@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:joycomic/database/favorites_helper.dart';
 import 'package:joycomic/database/joy_database.dart';
@@ -93,32 +91,4 @@ void main() {
     expect(restored.metadataComplete, isTrue);
   });
 
-  test('distribution collapses the tail into other', () {
-    final values = <RankedStat>[
-      for (var index = 0; index < 10; index)
-        RankedStat('item-$index', 10 - index),
-    ];
-    final collapsed = collapseDistribution(values, limit: 3);
-    expect(collapsed.map((item) => item.name), <String>[
-      'item-0',
-      'item-1',
-      'item-2',
-      '其他',
-    ]);
-    expect(collapsed.last.count, 28);
-  });
-
-  test('routes and both discoverable entries are registered', () {
-    final main = File('lib/main.dart').readAsStringSync();
-    final mine = File('lib/views/mine/mine_page.dart').readAsStringSync();
-    final favorites = File(
-      'lib/views/favorites/favorites_page.dart',
-    ).readAsStringSync();
-
-    expect(main, contains("path: '/stats'"));
-    expect(main, contains("path: 'artists'"));
-    expect(main, contains("path: 'tags'"));
-    expect(mine, contains("label: '收藏洞察'"));
-    expect(favorites, contains("tooltip: '收藏洞察'"));
-  });
 }

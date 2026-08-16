@@ -25,5 +25,16 @@ void main() {
     expect(workflow, contains('continue-on-error: true'));
     expect(workflow, contains('flutter build apk --release'));
     expect(workflow, contains('actions/upload-artifact@v7'));
+
+    final main = File('lib/main.dart').readAsStringSync();
+    final mine = File('lib/views/mine/mine_page.dart').readAsStringSync();
+    final favorites = File(
+      'lib/views/favorites/favorites_page.dart',
+    ).readAsStringSync();
+    expect(main, contains("path: '/stats'"));
+    expect(main, contains("path: 'artists'"));
+    expect(main, contains("path: 'tags'"));
+    expect(mine, contains("label: '收藏洞察'"));
+    expect(favorites, contains("tooltip: '收藏洞察'"));
   });
 }
