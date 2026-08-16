@@ -42,7 +42,7 @@ void main() {
     expect(workflow, contains('-storepass:env ANDROID_KEYSTORE_PASSWORD'));
     expect(
       workflow,
-      contains('signingConfigs.getByName("release")'),
+      contains('signingConfigs.getByName(\\"release\\")'),
     );
     expect(workflow, contains('flutter build apk --release'));
     expect(workflow, contains('github.run_number'));
