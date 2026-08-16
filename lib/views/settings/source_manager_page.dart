@@ -55,7 +55,6 @@ class _SourceManagerPageState extends State<SourceManagerPage> {
 
   Future<void> _reorder(int oldIndex, int newIndex) async {
     if (_saving) return;
-    if (newIndex > oldIndex) newIndex--;
     if (oldIndex == newIndex) return;
 
     final previous = List<String>.of(_order);
@@ -109,7 +108,7 @@ class _SourceManagerPageState extends State<SourceManagerPage> {
               padding: EdgeInsets.only(bottom: bottomContentInset(context)),
               buildDefaultDragHandles: false,
               itemCount: _order.length,
-              onReorder: _reorder,
+              onReorderItem: _reorder,
               itemBuilder: (context, index) {
                 final key = _order[index];
                 final name = _sourceNames[key] ?? key;

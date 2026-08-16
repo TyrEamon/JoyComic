@@ -92,7 +92,7 @@ void main() {
     final list = tester.widget<ReorderableListView>(
       find.byType(ReorderableListView),
     );
-    list.onReorder(0, 2);
+    list.onReorderItem!(0, 1);
     await tester.pumpAndSettle();
 
     expect(AppData.instance.prefs.getStringList('sourceOrder'), <String>[
