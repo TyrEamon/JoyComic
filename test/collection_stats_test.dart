@@ -1,8 +1,10 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:joycomic/database/favorites_helper.dart';
 import 'package:joycomic/database/joy_database.dart';
 import 'package:joycomic/database/read_record_helper.dart';
 import 'package:joycomic/views/stats/collection_stats.dart';
+import 'package:joycomic/views/stats/stats_page.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 void main() {
@@ -92,6 +94,38 @@ void main() {
     expect(stats.favoriteCoverage(artist.count), closeTo(2 / 450, 0.0001));
     expect(tag.count, 12);
     expect(stats.favoriteCoverage(tag.count), closeTo(12 / 450, 0.0001));
+  });
+
+  testWidgets('full distribution donut renders every thin category', (
+    tester,
+  ) async {
+    final values = <RankedStat>[
+      const RankedStat('藤崎ひかり', 2),
+      for (var index = 1; index < 336; index++) RankedStat('画师 $index', 1),
+    ];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: Scaffold(
+          body: SizedBox.square(
+            dimension: 360,
+            child: DistributionDonut(
+              values: values,
+              selectedName: '藤崎ひかり',
+              unit: '本',
+              percentageTotal: 450,
+              percentageLabel: '占全部收藏',
+              onSelected: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('占全部收藏 0.4%'), findsOneWidget);
+    expect(find.text('圆环份额 0.6%'), findsOneWidget);
   });
 
   test('favorite metadata survives SQLite round trip', () {

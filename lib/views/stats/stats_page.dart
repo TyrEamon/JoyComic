@@ -172,7 +172,6 @@ class _DistributionPageState extends State<_DistributionPage> {
           }
           final selected = _selectedValue(values);
           final total = stats.totalFavorites;
-          final subject = widget.isArtist ? '该画师' : '该标签';
           return ListView(
             padding: EdgeInsets.fromLTRB(
               AppSpacing.md,
@@ -207,13 +206,19 @@ class _DistributionPageState extends State<_DistributionPage> {
               _Panel(
                 child: Column(
                   children: <Widget>[
-                    _CoverageDonut(
-                      value: selected,
-                      totalFavorites: total,
+                    DistributionDonut(
+                      values: values,
+                      selectedName: selected.name,
+                      displayValue: selected,
+                      unit: '本',
+                      percentageTotal: total,
+                      percentageLabel: '占全部收藏',
+                      onSelected: (value) =>
+                          setState(() => _selectedName = value.name),
                     ),
                     const SizedBox(height: AppSpacing.sm),
                     Text(
-                      '比例 = 含$subject的收藏数 ÷ 总收藏数；一部作品可以对应多个${widget.isArtist ? '画师' : '标签'}。',
+                      '圆环按全部${widget.isArtist ? '画师署名' : '标签出现'}次数分配，已展开所有${widget.isArtist ? '画师' : '标签'}；收藏占比仍以 $total 本总收藏为基数。',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 12,
@@ -238,8 +243,7 @@ class _DistributionPageState extends State<_DistributionPage> {
                         value: values[index],
                         total: total,
                         unit: '本',
-                        color: chartColors(context)[
-                            math.min(index, chartColors(context).length - 1)],
+                        color: distributionColor(context, index),
                         selected: selected.name == values[index].name,
                         showDivider: index != values.length - 1,
                         onTap: () =>
@@ -266,112 +270,6 @@ class _DistributionPageState extends State<_DistributionPage> {
   }
 }
 
-class _CoverageDonut extends StatelessWidget {
-  const _CoverageDonut({
-    required this.value,
-    required this.totalFavorites,
-  });
-
-  final RankedStat value;
-  final int totalFavorites;
-
-  @override
-  Widget build(BuildContext context) {
-    final ratio = totalFavorites == 0
-        ? 0.0
-        : (value.count / totalFavorites).clamp(0.0, 1.0).toDouble();
-    return Semantics(
-      label: '${value.name}，${value.count}本，占全部收藏${_percent(value.count, totalFavorites)}',
-      child: AspectRatio(
-        aspectRatio: 1.15,
-        child: LayoutBuilder(
-          builder: (context, constraints) => CustomPaint(
-            painter: _CoveragePainter(
-              ratio: ratio,
-              color: context.colorScheme.primary,
-              trackColor: context.borderColor.withValues(alpha: 0.55),
-            ),
-            child: Center(
-              child: SizedBox(
-                width: constraints.maxWidth * 0.48,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    Text(
-                      value.name,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: context.colorScheme.primary,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.xxs),
-                    Text('${value.count} 本'),
-                    Text(
-                      '占全部收藏 ${_percent(value.count, totalFavorites)}',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: context.secondaryTextColor,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CoveragePainter extends CustomPainter {
-  const _CoveragePainter({
-    required this.ratio,
-    required this.color,
-    required this.trackColor,
-  });
-
-  final double ratio;
-  final Color color;
-  final Color trackColor;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = size.center(Offset.zero);
-    final radius = math.min(size.width, size.height) * 0.34;
-    const width = 18.0;
-    final rect = Rect.fromCircle(center: center, radius: radius);
-    final trackPaint = Paint()
-      ..color = trackColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = width;
-    canvas.drawArc(rect, 0, math.pi * 2, false, trackPaint);
-    if (ratio <= 0) return;
-    canvas.drawArc(
-      rect,
-      -math.pi / 2,
-      math.pi * 2 * ratio,
-      false,
-      Paint()
-        ..color = color
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = width
-        ..strokeCap = StrokeCap.round,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _CoveragePainter oldDelegate) =>
-      oldDelegate.ratio != ratio ||
-      oldDelegate.color != color ||
-      oldDelegate.trackColor != trackColor;
-}
-
 class DistributionDonut extends StatelessWidget {
   const DistributionDonut({
     super.key,
@@ -379,6 +277,8 @@ class DistributionDonut extends StatelessWidget {
     required this.selectedName,
     this.displayValue,
     required this.unit,
+    this.percentageTotal,
+    this.percentageLabel,
     required this.onSelected,
   });
 
@@ -386,6 +286,8 @@ class DistributionDonut extends StatelessWidget {
   final String selectedName;
   final RankedStat? displayValue;
   final String unit;
+  final int? percentageTotal;
+  final String? percentageLabel;
   final ValueChanged<RankedStat> onSelected;
 
   @override
@@ -399,10 +301,17 @@ class DistributionDonut extends StatelessWidget {
       ),
     );
     final selected = displayValue ?? segmentSelected;
-    final colors = chartColors(context);
+    final colors = <Color>[
+      for (var index = 0; index < values.length; index++)
+        distributionColor(context, index),
+    ];
+    final externalTotal = percentageTotal;
+    final externalLabel = percentageLabel;
+    final displayTotal = externalTotal ?? total;
+    final semanticsPrefix = externalLabel == null ? '' : '$externalLabel，';
     return Semantics(
       label: '${selected.name}，${selected.count}$unit，'
-          '${_percent(selected.count, total)}',
+          '$semanticsPrefix${_percent(selected.count, displayTotal)}',
       child: AspectRatio(
         aspectRatio: 1.15,
         child: LayoutBuilder(
@@ -443,12 +352,22 @@ class DistributionDonut extends StatelessWidget {
                       const SizedBox(height: AppSpacing.xxs),
                       Text('${selected.count} $unit'),
                       Text(
-                        _percent(selected.count, total),
+                        externalTotal == null || externalLabel == null
+                            ? _percent(selected.count, total)
+                            : '$externalLabel ${_percent(selected.count, externalTotal)}',
                         style: TextStyle(
                           color: context.secondaryTextColor,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
+                      if (externalTotal != null && externalLabel != null)
+                        Text(
+                          '圆环份额 ${_percent(selected.count, total)}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: context.tertiaryTextColor,
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -493,7 +412,16 @@ class _DonutPainter extends CustomPainter {
     final total = values.fold(0, (sum, value) => sum + value.count);
     if (total == 0) return;
     var start = -math.pi / 2;
-    const gap = 0.018;
+    final minimumCount = values.fold<int>(
+      values.first.count,
+      (minimum, value) => math.min(minimum, value.count),
+    );
+    final averageSweep = math.pi * 2 / values.length;
+    final minimumSweep = math.pi * 2 * minimumCount / total;
+    final gap = math.min(
+      0.018,
+      math.min(averageSweep * 0.08, minimumSweep * 0.35),
+    );
     for (var index = 0; index < values.length; index++) {
       final value = values[index];
       final rawSweep = math.pi * 2 * value.count / total;
@@ -516,6 +444,7 @@ class _DonutPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _DonutPainter oldDelegate) =>
       oldDelegate.values != values ||
+      oldDelegate.colors != colors ||
       oldDelegate.selectedName != selectedName ||
       oldDelegate.trackColor != trackColor;
 }
@@ -547,6 +476,12 @@ List<Color> chartColors(BuildContext context) => <Color>[
   const Color(0xFF77757D),
   context.borderColor,
 ];
+
+Color distributionColor(BuildContext context, int index) {
+  final lightness = Theme.of(context).brightness == Brightness.dark ? 0.64 : 0.48;
+  final hue = (4 + index * 137.508) % 360;
+  return HSLColor.fromAHSL(1, hue, 0.62, lightness).toColor();
+}
 
 class _SummaryGrid extends StatelessWidget {
   const _SummaryGrid({required this.stats});
