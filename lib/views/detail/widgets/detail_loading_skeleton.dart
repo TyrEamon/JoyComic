@@ -45,7 +45,7 @@ class DetailLoadingSkeleton extends StatelessWidget {
                       left: 0,
                       right: 0,
                       top: 0,
-                      height: geometry.backdropHeight,
+                      height: geometry.totalHeight,
                       child: ColoredBox(color: elevated),
                     ),
                     Positioned(

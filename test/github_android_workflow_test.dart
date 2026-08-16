@@ -18,6 +18,7 @@ void main() {
       contains('test/github_android_workflow_test.dart'),
     );
     expect(workflow, contains('test/android_font_fallback_test.dart'));
+    expect(workflow, contains('test/detail_header_overlap_test.dart'));
     expect(workflow, contains('continue-on-error: true'));
     expect(workflow, contains('flutter build apk --release'));
     expect(workflow, contains('actions/upload-artifact@v7'));

@@ -71,7 +71,7 @@ class HeroHeader extends StatelessWidget {
                       left: 0,
                       right: 0,
                       top: 0,
-                      height: geometry.backdropHeight,
+                      height: stackHeight,
                       child: _HeroBackdrop(
                         imageUrl: backgroundCover ?? frontCover,
                         headers: coverHeaders,
