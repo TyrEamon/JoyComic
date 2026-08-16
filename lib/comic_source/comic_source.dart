@@ -93,19 +93,38 @@ class ComicSource {
   }
 
   /// 初始化启用的内置源。由 app 启动流程在 settings 系统就绪后调用。
-  static Future<void> init(Set<String> enabledKeys) async {
-    for (final entry in builtInMap.entries) {
-      if (!enabledKeys.contains(entry.key)) continue;
-      final s = entry.value();
+  static Future<void> init(Iterable<String> enabledKeys) async {
+    final loadedKeys = <String>{};
+    for (final key in enabledKeys) {
+      if (!loadedKeys.add(key)) continue;
+      final builder = builtInMap[key];
+      if (builder == null) continue;
+      final s = builder();
       sources.add(s);
       await s.loadData();
       await s.initData?.call(s);
     }
   }
 
-  static Future<void> reload(Set<String> enabledKeys) async {
+  static Future<void> reload(Iterable<String> enabledKeys) async {
     sources.clear();
     await init(enabledKeys);
+  }
+
+  /// Reorders already initialized sources without rebuilding their sessions.
+  static void reorder(Iterable<String> orderedKeys) {
+    final remaining = <String, ComicSource>{
+      for (final source in sources) source.key: source,
+    };
+    final ordered = <ComicSource>[];
+    for (final key in orderedKeys) {
+      final source = remaining.remove(key);
+      if (source != null) ordered.add(source);
+    }
+    ordered.addAll(remaining.values);
+    sources
+      ..clear()
+      ..addAll(ordered);
   }
 
   final String name;

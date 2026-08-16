@@ -48,7 +48,7 @@ Future<void> main() async {
   await JoyDatabase.instance.initialize();
   FavoriteNotifier.instance.loadFromDb();
   registerBuiltInSources();
-  await ComicSource.init(AppData.instance.enabledSources);
+  await ComicSource.init(AppData.instance.orderedEnabledSources);
   await DownloadManager.instance.initialize();
   runApp(const JoyComicApp());
 }

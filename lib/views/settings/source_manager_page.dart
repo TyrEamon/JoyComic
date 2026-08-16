@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../comic_source/comic_source.dart';
 import '../../foundation/app_data.dart';
+import '../../foundation/source_session_notifier.dart';
 import '../../theme/app_safe_area.dart';
 import '../../theme/app_spacing.dart';
 
@@ -14,6 +15,7 @@ class SourceManagerPage extends StatefulWidget {
 
 class _SourceManagerPageState extends State<SourceManagerPage> {
   late Set<String> _enabled = AppData.instance.enabledSources;
+  late List<String> _order = AppData.instance.sourceOrder;
   bool _saving = false;
 
   static const _sourceNames = <String, String>{'jm': '禁漫', 'picacg': '哔咔'};
@@ -31,14 +33,12 @@ class _SourceManagerPageState extends State<SourceManagerPage> {
 
     setState(() => _saving = true);
     try {
-      final persisted = await AppData.instance.prefs.setStringList(
-        'enabledSources',
-        next.toList(growable: false),
-      );
+      final persisted = await AppData.instance.setEnabledSources(next);
       if (!persisted) throw StateError('源设置保存失败');
-      await ComicSource.reload(next);
+      await ComicSource.reload(_orderedEnabled(next));
       if (!mounted) return;
       setState(() => _enabled = next);
+      SourceSessionNotifier.instance.notifyConfigurationChanged();
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -49,39 +49,97 @@ class _SourceManagerPageState extends State<SourceManagerPage> {
     }
   }
 
+  List<String> _orderedEnabled(Set<String> enabled) => _order
+      .where(enabled.contains)
+      .toList(growable: false);
+
+  Future<void> _reorder(int oldIndex, int newIndex) async {
+    if (_saving) return;
+    if (newIndex > oldIndex) newIndex--;
+    if (oldIndex == newIndex) return;
+
+    final previous = List<String>.of(_order);
+    final next = List<String>.of(_order);
+    final moved = next.removeAt(oldIndex);
+    next.insert(newIndex, moved);
+    setState(() {
+      _order = next;
+      _saving = true;
+    });
+    try {
+      final persisted = await AppData.instance.setSourceOrder(next);
+      if (!persisted) throw StateError('源顺序保存失败');
+      ComicSource.reorder(_orderedEnabled(_enabled));
+      SourceSessionNotifier.instance.notifyConfigurationChanged();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _order = previous);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('调整源顺序失败：$error')));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final keys = ComicSource.builtInMap.keys.toList(growable: false);
+    String? firstEnabled;
+    for (final key in _order) {
+      if (_enabled.contains(key)) {
+        firstEnabled = key;
+        break;
+      }
+    }
     return Scaffold(
       appBar: AppBar(title: const Text('源管理')),
-      body: ListView(
-        padding: EdgeInsets.only(
-          top: AppSpacing.sm,
-          bottom: bottomContentInset(context),
-        ),
+      body: Column(
         children: <Widget>[
           const Padding(
             padding: EdgeInsets.fromLTRB(
               AppSpacing.md,
-              AppSpacing.sm,
+              AppSpacing.lg,
               AppSpacing.md,
               AppSpacing.md,
             ),
-            child: Text('选择要在首页、分类、搜索和账号区域中启用的漫画源。源选择与登录状态相互独立。'),
+            child: Text('拖动左侧图标可调整顺序。排在最前的已启用源会优先显示在首页；源开关与登录状态相互独立。'),
           ),
-          for (final key in keys)
-            SwitchListTile(
-              key: ValueKey<String>('source-manager-$key'),
-              title: Text(_sourceNames[key] ?? key),
-              subtitle: Text(_enabled.contains(key) ? '已启用' : '未启用'),
-              value: _enabled.contains(key),
-              onChanged: _saving ? null : (value) => _toggle(key, value),
+          Expanded(
+            child: ReorderableListView.builder(
+              padding: EdgeInsets.only(bottom: bottomContentInset(context)),
+              buildDefaultDragHandles: false,
+              itemCount: _order.length,
+              onReorder: _reorder,
+              itemBuilder: (context, index) {
+                final key = _order[index];
+                final name = _sourceNames[key] ?? key;
+                final enabled = _enabled.contains(key);
+                return SwitchListTile(
+                  key: ValueKey<String>('source-manager-$key'),
+                  secondary: ReorderableDragStartListener(
+                    index: index,
+                    enabled: !_saving,
+                    child: const SizedBox.square(
+                      dimension: 48,
+                      child: Icon(Icons.drag_handle_rounded),
+                    ),
+                  ),
+                  title: Text(name),
+                  subtitle: Text(
+                    enabled
+                        ? key == firstEnabled
+                              ? '已启用 · 首页优先'
+                              : '已启用'
+                        : '未启用',
+                  ),
+                  value: enabled,
+                  onChanged: _saving ? null : (value) => _toggle(key, value),
+                );
+              },
             ),
+          ),
           if (_saving)
-            const Padding(
-              padding: EdgeInsets.all(AppSpacing.lg),
-              child: Center(child: CircularProgressIndicator()),
-            ),
+            const LinearProgressIndicator(minHeight: 2),
         ],
       ),
     );

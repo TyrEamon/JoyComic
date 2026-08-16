@@ -17,3 +17,6 @@ void registerBuiltInSources() {
 
 /// 默认启用的内置源 key 列表。
 const defaultEnabledSources = <String>{'picacg', 'jm'};
+
+/// 默认源顺序；排在最前的已启用源优先出现在首页。
+const defaultSourceOrder = <String>['jm', 'picacg'];

@@ -16,6 +16,8 @@ class AppData {
 
   static const _themeModeKey = 'themeMode';
   static const _legacyDarkModeKey = 'enableDarkMode';
+  static const _enabledSourcesKey = 'enabledSources';
+  static const _sourceOrderKey = 'sourceOrder';
 
   late SharedPreferences prefs;
   late PreferencesStore _preferenceStore;
@@ -28,10 +30,44 @@ class AppData {
   );
 
   Set<String> get enabledSources =>
-      (prefs.getStringList('enabledSources') ?? defaultEnabledSources.toList())
+      (prefs.getStringList(_enabledSourcesKey) ??
+              defaultEnabledSources.toList())
           .toSet();
   set enabledSources(Set<String> v) =>
-      prefs.setStringList('enabledSources', v.toList());
+      prefs.setStringList(_enabledSourcesKey, v.toList());
+
+  List<String> get sourceOrder {
+    final available = ComicSource.builtInMap.keys.toSet();
+    final saved = prefs.getStringList(_sourceOrderKey) ?? defaultSourceOrder;
+    final seen = <String>{};
+    return <String>[
+      for (final key in saved)
+        if ((available.isEmpty || available.contains(key)) && seen.add(key)) key,
+      for (final key in ComicSource.builtInMap.keys)
+        if (seen.add(key)) key,
+    ];
+  }
+
+  List<String> get orderedEnabledSources {
+    final enabled = enabledSources;
+    final ordered = sourceOrder.where(enabled.contains).toList();
+    ordered.addAll(enabled.where((key) => !ordered.contains(key)));
+    return ordered;
+  }
+
+  Future<bool> setEnabledSources(Set<String> value) => _safeWrite(
+    () => _preferenceStore.setStringList(
+      _enabledSourcesKey,
+      value.toList(growable: false),
+    ),
+  );
+
+  Future<bool> setSourceOrder(List<String> value) => _safeWrite(
+    () => _preferenceStore.setStringList(
+      _sourceOrderKey,
+      value.toList(growable: false),
+    ),
+  );
 
   bool get enableDynamicColor => prefs.getBool('enableDynamicColor') ?? true;
   set enableDynamicColor(bool v) => prefs.setBool('enableDynamicColor', v);

@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-/// Broadcasts successful source account login/logout changes to mounted pages.
+/// Broadcasts source account or configuration changes to mounted pages.
 class SourceSessionNotifier extends ChangeNotifier {
   SourceSessionNotifier._();
 
@@ -14,6 +14,12 @@ class SourceSessionNotifier extends ChangeNotifier {
 
   void notifyChanged(String sourceKey) {
     _lastChangedSourceKey = sourceKey;
+    _revision++;
+    notifyListeners();
+  }
+
+  void notifyConfigurationChanged() {
+    _lastChangedSourceKey = null;
     _revision++;
     notifyListeners();
   }

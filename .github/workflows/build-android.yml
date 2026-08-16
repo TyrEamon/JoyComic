@@ -225,6 +225,9 @@ jobs:
       - name: Test collection analytics
         run: flutter test test/collection_stats_test.dart
 
+      - name: Test source ordering
+        run: flutter test test/source_order_test.dart
+
       - name: Run upstream test suite
         continue-on-error: true
         run: flutter test
