@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:joycomic/network/jm/jm_models.dart';
 import 'package:joycomic/network/jm/jm_network.dart';
 import 'package:joycomic/network/res.dart';
 import 'package:joycomic/theme/app_theme.dart';
@@ -95,8 +94,8 @@ void main() {
             required String order,
           }) async {
             calls.add('${tab.name}:$page:$order');
-            return Res<List<JmComicBrief>>([
-              const JmComicBrief(
+            return const Res<List<JmComicBrief>>([
+              JmComicBrief(
                 id: '1',
                 author: 'A',
                 name: '去码作品',
