@@ -211,7 +211,38 @@ jobs:
           dart run flutter_launcher_icons -f flutter_launcher_icons_android.yaml
 
       - name: Analyze source
-        run: flutter analyze
+        shell: python
+        run: |
+          import re
+          import subprocess
+          import sys
+
+          process = subprocess.Popen(
+              ["flutter", "analyze"],
+              stdout=subprocess.PIPE,
+              stderr=subprocess.STDOUT,
+              text=True,
+              encoding="utf-8",
+              errors="replace",
+          )
+          issue = re.compile(
+              r"^\s*(info|warning|error) • (.*?) • (.*?):(\d+):(\d+) • (\S+)\s*$"
+          )
+          assert process.stdout is not None
+          for line in process.stdout:
+              print(line, end="", flush=True)
+              match = issue.match(line)
+              if match is None:
+                  continue
+              severity, message, path, row, column, code = match.groups()
+              command = "notice" if severity == "info" else severity
+              message = message.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+              print(
+                  f"::{command} file={path},line={row},col={column}::"
+                  f"{message} ({code})",
+                  flush=True,
+              )
+          raise SystemExit(process.wait())
 
       - name: Test Android workflow configuration
         run: >-
