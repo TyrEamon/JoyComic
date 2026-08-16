@@ -46,6 +46,9 @@ class CollectionStatsSnapshot {
   int get tagCount => tags.length;
   int get tagOccurrences => tags.fold(0, (sum, item) => sum + item.count);
   double get readRatio => totalFavorites == 0 ? 0 : read / totalFavorites;
+  double favoriteCoverage(int matchingFavorites) => totalFavorites == 0
+      ? 0
+      : matchingFavorites / totalFavorites;
   double get metadataRatio => totalFavorites == 0
       ? 1
       : metadataComplete / totalFavorites;
@@ -99,21 +102,6 @@ List<RankedStat> _rank(Map<String, int> counts) {
     return byCount != 0 ? byCount : a.name.compareTo(b.name);
   });
   return List<RankedStat>.unmodifiable(result);
-}
-
-List<RankedStat> collapseDistribution(
-  List<RankedStat> values, {
-  int limit = 7,
-}) {
-  if (values.length <= limit) return values;
-  final visible = values.take(limit).toList();
-  final otherCount = values
-      .skip(limit)
-      .fold(0, (sum, value) => sum + value.count);
-  return List<RankedStat>.unmodifiable(<RankedStat>[
-    ...visible,
-    RankedStat('其他', otherCount),
-  ]);
 }
 
 typedef StatsSourceLookup = ComicSource? Function(String sourceKey);

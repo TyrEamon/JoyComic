@@ -170,9 +170,9 @@ class _DistributionPageState extends State<_DistributionPage> {
                   : '返回数据统计页补全收藏详情后再试',
             );
           }
-          final donutValues = collapseDistribution(values, limit: 7);
-          final selected = _selectedValue(values, donutValues);
-          final total = values.fold(0, (sum, value) => sum + value.count);
+          final selected = _selectedValue(values);
+          final total = stats.totalFavorites;
+          final subject = widget.isArtist ? '该画师' : '该标签';
           return ListView(
             padding: EdgeInsets.fromLTRB(
               AppSpacing.md,
@@ -205,13 +205,22 @@ class _DistributionPageState extends State<_DistributionPage> {
               ),
               const SizedBox(height: AppSpacing.md),
               _Panel(
-                child: DistributionDonut(
-                  values: donutValues,
-                  selectedName: selected.name,
-                  displayValue: selected,
-                  unit: widget.isArtist ? '本' : '次',
-                  onSelected: (value) =>
-                      setState(() => _selectedName = value.name),
+                child: Column(
+                  children: <Widget>[
+                    _CoverageDonut(
+                      value: selected,
+                      totalFavorites: total,
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    Text(
+                      '比例 = 含$subject的收藏数 ÷ 总收藏数；一部作品可以对应多个${widget.isArtist ? '画师' : '标签'}。',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: context.tertiaryTextColor,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: AppSpacing.lg),
@@ -228,7 +237,7 @@ class _DistributionPageState extends State<_DistributionPage> {
                       _DistributionRow(
                         value: values[index],
                         total: total,
-                        unit: widget.isArtist ? '本' : '次',
+                        unit: '本',
                         color: chartColors(context)[
                             math.min(index, chartColors(context).length - 1)],
                         selected: selected.name == values[index].name,
@@ -246,18 +255,121 @@ class _DistributionPageState extends State<_DistributionPage> {
     );
   }
 
-  RankedStat _selectedValue(
-    List<RankedStat> values,
-    List<RankedStat> donutValues,
-  ) {
+  RankedStat _selectedValue(List<RankedStat> values) {
     final name = _selectedName;
     if (name != null) {
-      for (final value in <RankedStat>[...values, ...donutValues]) {
+      for (final value in values) {
         if (value.name == name) return value;
       }
     }
     return values.first;
   }
+}
+
+class _CoverageDonut extends StatelessWidget {
+  const _CoverageDonut({
+    required this.value,
+    required this.totalFavorites,
+  });
+
+  final RankedStat value;
+  final int totalFavorites;
+
+  @override
+  Widget build(BuildContext context) {
+    final ratio = totalFavorites == 0
+        ? 0.0
+        : (value.count / totalFavorites).clamp(0.0, 1.0).toDouble();
+    return Semantics(
+      label: '${value.name}，${value.count}本，占全部收藏${_percent(value.count, totalFavorites)}',
+      child: AspectRatio(
+        aspectRatio: 1.15,
+        child: LayoutBuilder(
+          builder: (context, constraints) => CustomPaint(
+            painter: _CoveragePainter(
+              ratio: ratio,
+              color: context.colorScheme.primary,
+              trackColor: context.borderColor.withValues(alpha: 0.55),
+            ),
+            child: Center(
+              child: SizedBox(
+                width: constraints.maxWidth * 0.48,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(
+                      value.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: context.colorScheme.primary,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.xxs),
+                    Text('${value.count} 本'),
+                    Text(
+                      '占全部收藏 ${_percent(value.count, totalFavorites)}',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: context.secondaryTextColor,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CoveragePainter extends CustomPainter {
+  const _CoveragePainter({
+    required this.ratio,
+    required this.color,
+    required this.trackColor,
+  });
+
+  final double ratio;
+  final Color color;
+  final Color trackColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = size.center(Offset.zero);
+    final radius = math.min(size.width, size.height) * 0.34;
+    const width = 18.0;
+    final rect = Rect.fromCircle(center: center, radius: radius);
+    final trackPaint = Paint()
+      ..color = trackColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = width;
+    canvas.drawArc(rect, 0, math.pi * 2, false, trackPaint);
+    if (ratio <= 0) return;
+    canvas.drawArc(
+      rect,
+      -math.pi / 2,
+      math.pi * 2 * ratio,
+      false,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = width
+        ..strokeCap = StrokeCap.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _CoveragePainter oldDelegate) =>
+      oldDelegate.ratio != ratio ||
+      oldDelegate.color != color ||
+      oldDelegate.trackColor != trackColor;
 }
 
 class DistributionDonut extends StatelessWidget {

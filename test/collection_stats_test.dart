@@ -64,6 +64,34 @@ void main() {
     expect(stats.tags.first.name, '纯爱');
     expect(stats.tags.first.count, 2);
     expect(stats.tagOccurrences, 4);
+    expect(stats.favoriteCoverage(2), closeTo(2 / 3, 0.0001));
+  });
+
+  test('artist and tag coverage use total favorites as the denominator', () {
+    final stats = CollectionStatsSnapshot.fromRecords(
+      favorites: <FavoriteRecord>[
+        for (var index = 0; index < 450; index++)
+          FavoriteRecord(
+            source: 'jm',
+            comic: '$index',
+            title: 'Comic $index',
+            cover: '',
+            author: index < 2 ? '藤崎ひかり' : '画师 $index',
+            tags: index < 12 ? const <String>['巨乳'] : const <String>[],
+            favoritedAt: index,
+          ),
+      ],
+      history: const <ReadRecord>[],
+    );
+
+    final artist = stats.artists.firstWhere(
+      (value) => value.name == '藤崎ひかり',
+    );
+    final tag = stats.tags.firstWhere((value) => value.name == '巨乳');
+    expect(artist.count, 2);
+    expect(stats.favoriteCoverage(artist.count), closeTo(2 / 450, 0.0001));
+    expect(tag.count, 12);
+    expect(stats.favoriteCoverage(tag.count), closeTo(12 / 450, 0.0001));
   });
 
   test('favorite metadata survives SQLite round trip', () {
