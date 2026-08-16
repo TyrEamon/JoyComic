@@ -30,8 +30,10 @@ void main() {
     ComicSource.sources.clear();
     ComicSource.builtInMap
       ..clear()
-      ..['picacg'] = () => source('picacg', '哔咔')
-      ..['jm'] = () => source('jm', '禁漫');
+      ..addAll(<String, ComicSource Function()>{
+        'picacg': () => source('picacg', '哔咔'),
+        'jm': () => source('jm', '禁漫'),
+      });
   });
 
   tearDown(() {
