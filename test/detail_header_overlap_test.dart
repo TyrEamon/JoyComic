@@ -64,4 +64,53 @@ void main() {
     expect(backdrop.bottom, lessThanOrEqualTo(firstMetric.top));
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('long hero title stays fully inside its visible title band', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(375, 812);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark(),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: const TextScaler.linear(1.3),
+            padding: const EdgeInsets.only(top: 24),
+          ),
+          child: child!,
+        ),
+        home: const Scaffold(
+          body: CustomScrollView(
+            slivers: [
+              HeroHeader(
+                title: '【超长测试漫画标题】汉化组作品天堂1WEEKLY合集',
+                subTitle: 'はいら太、なすびニンジャ、その他作者',
+                backgroundCover: null,
+                frontCover: null,
+                rating: 8.8,
+                tags: <String>['C108', '汉化'],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final titleBand = tester.getRect(
+      find.byKey(const ValueKey('detail-hero-title-band')),
+    );
+    final titleRect = tester.getRect(
+      find.byKey(const ValueKey('detail-hero-title')),
+    );
+    expect(titleRect.top, greaterThanOrEqualTo(titleBand.top - 0.5));
+    expect(titleRect.bottom, lessThanOrEqualTo(titleBand.bottom + 0.5));
+    expect(tester.takeException(), isNull);
+  });
 }

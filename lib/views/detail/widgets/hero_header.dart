@@ -123,14 +123,18 @@ class HeroHeader extends StatelessWidget {
                                   width: double.infinity,
                                   height: titleConstraints.maxHeight,
                                   child: ClipRect(
-                                    child: OverflowBox(
-                                      maxHeight: double.infinity,
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
                                       alignment: Alignment.bottomLeft,
-                                      child: _HeroTitle(
-                                        title: title,
-                                        subTitle: subTitle,
-                                        tags: tags,
-                                        maxHeight: titleConstraints.maxHeight,
+                                      child: SizedBox(
+                                        width: titleConstraints.maxWidth,
+                                        child: _HeroTitle(
+                                          title: title,
+                                          subTitle: subTitle,
+                                          tags: tags,
+                                          maxHeight:
+                                              titleConstraints.maxHeight,
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -272,6 +276,7 @@ class _HeroTitle extends StatelessWidget {
         children: [
           Text(
             title,
+            key: const ValueKey('detail-hero-title'),
             maxLines: titleLines,
             overflow: TextOverflow.ellipsis,
             style: AppTypography.hero(context).copyWith(color: onImage),
