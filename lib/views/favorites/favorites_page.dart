@@ -275,14 +275,14 @@ class _FavoritesPageState extends State<FavoritesPage> {
                 : item.coverUrl,
             author: item.author.isEmpty ? existing?.author ?? '' : item.author,
             authors: existing?.metadataComplete == true
-                ? existing.authors
+                ? existing!.authors
                 : item.author
                       .split(RegExp(r'[、,，;/；]+'))
                       .map((value) => value.trim())
                       .where((value) => value.isNotEmpty)
                       .toList(growable: false),
             tags: existing?.metadataComplete == true
-                ? existing.tags
+                ? existing!.tags
                 : item.tags,
             metadataComplete: existing?.metadataComplete ?? false,
             favoritedAt: existing?.favoritedAt ?? now - index,

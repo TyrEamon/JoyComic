@@ -7,7 +7,6 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 
 import '../../comic_source/comic_source.dart';
-import '../../comic_source/detail_models.dart';
 import '../../database/favorites_helper.dart';
 import '../../database/read_record_helper.dart';
 

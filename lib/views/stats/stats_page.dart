@@ -400,7 +400,7 @@ class _DonutPainter extends CustomPainter {
     for (var index = 0; index < values.length; index++) {
       final value = values[index];
       final rawSweep = math.pi * 2 * value.count / total;
-      final sweep = math.max(0, rawSweep - gap);
+      final sweep = math.max(0.0, rawSweep - gap);
       canvas.drawArc(
         rect,
         start + gap / 2,
@@ -772,7 +772,12 @@ class _DistributionRow extends StatelessWidget {
           ),
         ),
       ),
-      if (showDivider) Divider(height: 1, indent: AppSpacing.md, endIndent: AppSpacing.md),
+      if (showDivider)
+        const Divider(
+          height: 1,
+          indent: AppSpacing.md,
+          endIndent: AppSpacing.md,
+        ),
     ],
   );
 }
