@@ -13,7 +13,11 @@ void main() {
     expect(workflow, contains('android.permission.INTERNET'));
     expect(workflow, contains('flutter_launcher_icons_android.yaml'));
     expect(workflow, contains('flutter analyze'));
-    expect(workflow, contains('flutter test'));
+    expect(
+      workflow,
+      contains('flutter test test/github_android_workflow_test.dart'),
+    );
+    expect(workflow, contains('continue-on-error: true'));
     expect(workflow, contains('flutter build apk --release'));
     expect(workflow, contains('actions/upload-artifact@v7'));
   });
