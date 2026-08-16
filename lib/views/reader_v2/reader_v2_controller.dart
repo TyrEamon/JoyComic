@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:collection';
 import 'dart:ui';
 
@@ -55,6 +56,35 @@ final class ReaderV2Controller extends ChangeNotifier {
   ReaderV2Priority priorityFor(int index) => index == currentPage
       ? ReaderV2Priority.visible
       : ReaderV2Priority.preload;
+
+  void preloadNextBytes(int anchor) {
+    if (_disposed) return;
+    final index = anchor + 1;
+    if (index < 0 || index >= _pages.length) return;
+    final page = _pages[index];
+    final session = _session;
+    final scheduler = _scheduler;
+    unawaited(_preloadBytes(page, session, scheduler));
+  }
+
+  Future<void> _preloadBytes(
+    ReaderV2Page page,
+    ReaderV2Session session,
+    ReaderV2Scheduler scheduler,
+  ) async {
+    try {
+      await scheduler.schedule(
+        key: page.cacheKey,
+        page: page.index,
+        priority: ReaderV2Priority.preload,
+        task: () => _bytesLoader(page, session),
+      );
+    } on ReaderV2Cancelled {
+      // Chapter and route changes cancel their old preloads by design.
+    } catch (error) {
+      session.record('preload-error', page: page.index, detail: '$error');
+    }
+  }
 
   void setCurrentPage(int index) {
     if (_pages.isEmpty) return;

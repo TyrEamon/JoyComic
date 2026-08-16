@@ -172,6 +172,39 @@ void main() {
     expect(state.controller.scheduler.maxObservedActive, lessThanOrEqualTo(3));
   });
 
+  testWidgets('vertical viewport preloads only the next page bytes', (
+    tester,
+  ) async {
+    final loads = <int>[];
+    final state = (await tester.runAsync(() => harness(loads: loads)))!;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SizedBox(
+          width: 440,
+          height: 300,
+          child: ReaderV2Vertical(
+            controller: state.controller,
+            reader: state.reader,
+            widthRatio: 1,
+            physics: const BouncingScrollPhysics(),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    for (var i = 0; i < 5; i++) {
+      await tester.pump();
+    }
+
+    expect(find.byType(ReaderV2PageImage), findsOneWidget);
+    expect(loads, <int>[0, 1]);
+    expect(state.controller.scheduler.maxObservedActive, lessThanOrEqualTo(2));
+  });
+
   testWidgets('paged viewport uses the shared page renderer in every mode', (
     tester,
   ) async {

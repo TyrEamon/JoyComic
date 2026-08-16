@@ -252,6 +252,7 @@ jobs:
           test/detail_header_overlap_test.dart
           test/detail_download_action_test.dart
           test/reader_v2_route_test.dart
+          test/reader_v2_viewport_test.dart
 
       - name: Test collection analytics
         run: flutter test test/collection_stats_test.dart

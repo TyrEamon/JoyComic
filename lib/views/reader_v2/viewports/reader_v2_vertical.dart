@@ -28,6 +28,7 @@ class _ReaderV2VerticalState extends State<ReaderV2Vertical> {
   final Object _scrollOwner = Object();
   TapDownDetails? _tapDown;
   double _layoutWidth = 390;
+  int? _lastPreloadAnchor;
 
   @override
   void initState() {
@@ -89,6 +90,15 @@ class _ReaderV2VerticalState extends State<ReaderV2Vertical> {
     widget.controller.setCurrentPage(
       _indexAtOffset(_scrollController.offset + 1),
     );
+  }
+
+  void _queueNextPreload(int anchor) {
+    if (_lastPreloadAnchor == anchor) return;
+    _lastPreloadAnchor = anchor;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || widget.controller.currentPage != anchor) return;
+      widget.controller.preloadNextBytes(anchor);
+    });
   }
 
   void _jumpToIndex(int index) {
@@ -191,6 +201,9 @@ class _ReaderV2VerticalState extends State<ReaderV2Vertical> {
                     );
                     if (!widget.controller.shouldLoad(index)) {
                       return SizedBox(height: height);
+                    }
+                    if (index == widget.controller.currentPage) {
+                      _queueNextPreload(index);
                     }
                     final page = pages[index];
                     return ReaderV2PageImage(
