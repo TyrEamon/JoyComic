@@ -9,6 +9,7 @@ void main() {
     ).readAsStringSync();
 
     expect(workflow, contains('workflow_dispatch:'));
+    expect(workflow, contains('contents: write'));
     expect(workflow, contains('flutter create . --empty --platforms=android'));
     expect(
       workflow,
@@ -33,15 +34,23 @@ void main() {
     expect(workflow, contains('secrets.ANDROID_KEYSTORE_PASSWORD'));
     expect(workflow, contains('secrets.ANDROID_KEY_ALIAS'));
     expect(workflow, contains('secrets.ANDROID_KEY_PASSWORD'));
+    expect(workflow, contains('joycomic-release.jks'));
+    expect(workflow, contains('storeType=JKS'));
     expect(
       workflow,
       contains('signingConfigs.getByName("release")'),
     );
     expect(workflow, contains('flutter build apk --release'));
     expect(workflow, contains('github.run_number'));
+    expect(workflow, contains('Resolve next release version'));
+    expect(workflow, contains('git tag --list'));
+    expect(workflow, contains('NEXT_PATCH'));
+    expect(workflow, contains('steps.release_version.outputs.version'));
     expect(workflow, contains('apksigner'));
     expect(workflow, contains('--print-certs'));
     expect(workflow, contains('actions/upload-artifact@v7'));
+    expect(workflow, contains('gh release create'));
+    expect(workflow, contains('--generate-notes'));
 
     final main = File('lib/main.dart').readAsStringSync();
     final mine = File('lib/views/mine/mine_page.dart').readAsStringSync();
