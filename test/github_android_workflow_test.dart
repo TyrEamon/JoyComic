@@ -19,7 +19,8 @@ void main() {
     );
     expect(workflow, contains('android.permission.INTERNET'));
     expect(workflow, contains('flutter_launcher_icons_android.yaml'));
-    expect(workflow, contains('flutter analyze'));
+    expect(workflow, contains('["flutter", "analyze"]'));
+    expect(workflow, contains('file={path},line={row},col={column}'));
     expect(
       workflow,
       contains('test/github_android_workflow_test.dart'),
