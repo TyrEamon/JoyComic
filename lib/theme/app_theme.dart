@@ -1,6 +1,7 @@
 /// JoyComic light and dark Material theme assembly.
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'app_colors.dart';
