@@ -152,6 +152,11 @@ class _MinePageState extends State<MinePage> {
                   label: '我的收藏',
                   onTap: () => _open('/favorites'),
                 ),
+                _MenuItem(
+                  icon: Icons.insights_rounded,
+                  label: '收藏洞察',
+                  onTap: () => _open('/stats'),
+                ),
               ],
             ),
             const SizedBox(height: AppSpacing.lg),

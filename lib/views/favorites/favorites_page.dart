@@ -29,6 +29,7 @@ class FavoriteLibraryItem {
     required this.title,
     required this.coverUrl,
     required this.author,
+    this.tags = const <String>[],
     this.favoritedAt = 0,
     this.isLocal = false,
     this.isRemote = false,
@@ -39,6 +40,7 @@ class FavoriteLibraryItem {
   final String title;
   final String coverUrl;
   final String author;
+  final List<String> tags;
   final int favoritedAt;
   final bool isLocal;
   final bool isRemote;
@@ -50,6 +52,7 @@ class FavoriteLibraryItem {
       title: newer.title.isNotEmpty ? newer.title : title,
       coverUrl: newer.coverUrl.isNotEmpty ? newer.coverUrl : coverUrl,
       author: newer.author.isNotEmpty ? newer.author : author,
+      tags: newer.tags.isNotEmpty ? newer.tags : tags,
       favoritedAt: math.max(favoritedAt, newer.favoritedAt),
       isLocal: isLocal || newer.isLocal,
       isRemote: isRemote || newer.isRemote,
@@ -149,6 +152,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
             title: record.title,
             coverUrl: record.cover,
             author: record.author,
+            tags: record.tags,
             favoritedAt: record.favoritedAt,
             isLocal: true,
           ),
@@ -197,6 +201,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
               title: comic.title,
               coverUrl: comic.cover,
               author: comic.subTitle,
+              tags: comic.tags,
               isRemote: true,
             ),
           );
@@ -269,6 +274,17 @@ class _FavoritesPageState extends State<FavoritesPage> {
                 ? existing?.cover ?? ''
                 : item.coverUrl,
             author: item.author.isEmpty ? existing?.author ?? '' : item.author,
+            authors: existing?.metadataComplete == true
+                ? existing.authors
+                : item.author
+                      .split(RegExp(r'[、,，;/；]+'))
+                      .map((value) => value.trim())
+                      .where((value) => value.isNotEmpty)
+                      .toList(growable: false),
+            tags: existing?.metadataComplete == true
+                ? existing.tags
+                : item.tags,
+            metadataComplete: existing?.metadataComplete ?? false,
             favoritedAt: existing?.favoritedAt ?? now - index,
           ),
         );
@@ -405,6 +421,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
               count: visibleItems.length,
               loading: _loading,
               onRefresh: _loadFavorites,
+              onOpenStats: () => context.push('/stats'),
             ),
             if (_sourceKeys.isNotEmpty)
               _SourceFilterBar(
@@ -481,11 +498,13 @@ class _TopBar extends StatelessWidget {
     required this.count,
     required this.loading,
     required this.onRefresh,
+    required this.onOpenStats,
   });
 
   final int count;
   final bool loading;
   final Future<void> Function() onRefresh;
+  final VoidCallback onOpenStats;
 
   @override
   Widget build(BuildContext context) {
@@ -510,6 +529,11 @@ class _TopBar extends StatelessWidget {
             style: TextStyle(fontSize: 14, color: context.tertiaryTextColor),
           ),
           const Spacer(),
+          IconButton(
+            tooltip: '收藏洞察',
+            onPressed: onOpenStats,
+            icon: const Icon(Icons.insights_rounded),
+          ),
           IconButton(
             tooltip: '刷新收藏',
             onPressed: loading ? null : onRefresh,

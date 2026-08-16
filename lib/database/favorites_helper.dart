@@ -1,4 +1,6 @@
 // 收藏状态本地追踪 + 跨页面通知。
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:sqlite3/sqlite3.dart';
 
@@ -16,6 +18,9 @@ class FavoriteRecord {
   final String title;
   final String cover;
   final String author;
+  final List<String> authors;
+  final List<String> tags;
+  final bool metadataComplete;
   final int favoritedAt;
 
   const FavoriteRecord({
@@ -24,12 +29,22 @@ class FavoriteRecord {
     required this.title,
     required this.cover,
     required this.author,
+    this.authors = const <String>[],
+    this.tags = const <String>[],
+    this.metadataComplete = false,
     required this.favoritedAt,
   });
 
   String get sourceKey => source;
   String get comicId => comic;
   String get coverUrl => cover;
+  List<String> get effectiveAuthors => authors.isNotEmpty
+      ? authors
+      : author
+            .split(RegExp(r'[、,，;/；]+'))
+            .map((value) => value.trim())
+            .where((value) => value.isNotEmpty)
+            .toList(growable: false);
 
   factory FavoriteRecord.fromRow(Row row) {
     return FavoriteRecord(
@@ -38,6 +53,9 @@ class FavoriteRecord {
       title: (row['title'] as String?) ?? '',
       cover: (row['cover_url'] as String?) ?? '',
       author: (row['author'] as String?) ?? '',
+      authors: _decodeStringList(row['authors_json']),
+      tags: _decodeStringList(row['tags_json']),
+      metadataComplete: ((row['metadata_complete'] as int?) ?? 0) != 0,
       favoritedAt: (row['favorited_at'] as int?) ?? 0,
     );
   }
@@ -119,12 +137,16 @@ class FavoritesHelper {
     _db.execute(
       '''
       INSERT INTO favorites
-        (source_key, comic_id, title, cover_url, author, favorited_at)
-      VALUES (?, ?, ?, ?, ?, ?)
+        (source_key, comic_id, title, cover_url, author, authors_json,
+         tags_json, metadata_complete, favorited_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(source_key, comic_id) DO UPDATE SET
         title = excluded.title,
         cover_url = excluded.cover_url,
         author = excluded.author,
+        authors_json = excluded.authors_json,
+        tags_json = excluded.tags_json,
+        metadata_complete = excluded.metadata_complete,
         favorited_at = excluded.favorited_at
     ''',
       <Object?>[
@@ -133,6 +155,9 @@ class FavoritesHelper {
         record.title,
         record.cover,
         record.author,
+        jsonEncode(record.authors),
+        jsonEncode(record.tags),
+        record.metadataComplete ? 1 : 0,
         record.favoritedAt,
       ],
     );
@@ -197,6 +222,9 @@ class FavoritesHelper {
     required String title,
     required String coverUrl,
     String author = '',
+    List<String> authors = const <String>[],
+    List<String> tags = const <String>[],
+    bool metadataComplete = false,
   }) {
     final key = (sourceKey, comicId);
     final pending = _inFlight[key];
@@ -209,6 +237,9 @@ class FavoritesHelper {
       title: title,
       coverUrl: coverUrl,
       author: author,
+      authors: authors,
+      tags: tags,
+      metadataComplete: metadataComplete,
     );
     _inFlight[key] = operation;
     return operation;
@@ -221,6 +252,9 @@ class FavoritesHelper {
     required String title,
     required String coverUrl,
     required String author,
+    required List<String> authors,
+    required List<String> tags,
+    required bool metadataComplete,
   }) async {
     try {
       final wasFavorited = FavoriteNotifier.instance.isFavorited(
@@ -244,6 +278,9 @@ class FavoritesHelper {
           title: title,
           cover: coverUrl,
           author: author,
+          authors: authors,
+          tags: tags,
+          metadataComplete: metadataComplete,
           favoritedAt: DateTime.now().millisecondsSinceEpoch,
         ),
       );
@@ -293,5 +330,20 @@ class FavoritesHelper {
     if (result.error) {
       throw StateError(result.errorMessageWithoutNull);
     }
+  }
+}
+
+List<String> _decodeStringList(Object? value) {
+  if (value is! String || value.isEmpty) return const <String>[];
+  try {
+    final decoded = jsonDecode(value);
+    if (decoded is! List) return const <String>[];
+    return decoded
+        .whereType<String>()
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toList(growable: false);
+  } catch (_) {
+    return const <String>[];
   }
 }

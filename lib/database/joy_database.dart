@@ -202,6 +202,27 @@ class JoyDatabase {
       name: 'favorited_at',
       definition: 'INTEGER NOT NULL DEFAULT 0',
     );
+    _addColumnIfMissing(
+      db,
+      table: 'favorites',
+      columns: columns,
+      name: 'authors_json',
+      definition: "TEXT NOT NULL DEFAULT '[]'",
+    );
+    _addColumnIfMissing(
+      db,
+      table: 'favorites',
+      columns: columns,
+      name: 'tags_json',
+      definition: "TEXT NOT NULL DEFAULT '[]'",
+    );
+    _addColumnIfMissing(
+      db,
+      table: 'favorites',
+      columns: columns,
+      name: 'metadata_complete',
+      definition: 'INTEGER NOT NULL DEFAULT 0',
+    );
 
     final primaryKey = _primaryKeyColumns(db, 'favorites');
     if (primaryKey.toSet().containsAll(<String>{'source_key', 'comic_id'}) &&
@@ -213,11 +234,14 @@ class JoyDatabase {
     _createFavoritesTable(db, table: 'favorites_migration');
     db.execute('''
       INSERT OR REPLACE INTO favorites_migration
-        (source_key, comic_id, title, cover_url, author, favorited_at)
+        (source_key, comic_id, title, cover_url, author, authors_json,
+         tags_json, metadata_complete, favorited_at)
       SELECT
         COALESCE(source_key, ''), COALESCE(comic_id, ''),
         COALESCE(title, ''), COALESCE(cover_url, ''),
-        COALESCE(author, ''), COALESCE(favorited_at, 0)
+        COALESCE(author, ''), COALESCE(authors_json, '[]'),
+        COALESCE(tags_json, '[]'), COALESCE(metadata_complete, 0),
+        COALESCE(favorited_at, 0)
       FROM favorites
       ORDER BY favorited_at ASC, rowid ASC
     ''');
@@ -346,6 +370,9 @@ class JoyDatabase {
         title TEXT NOT NULL DEFAULT '',
         cover_url TEXT NOT NULL DEFAULT '',
         author TEXT NOT NULL DEFAULT '',
+        authors_json TEXT NOT NULL DEFAULT '[]',
+        tags_json TEXT NOT NULL DEFAULT '[]',
+        metadata_complete INTEGER NOT NULL DEFAULT 0,
         favorited_at INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (source_key, comic_id)
       )

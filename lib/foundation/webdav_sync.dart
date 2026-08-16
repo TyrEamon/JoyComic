@@ -54,7 +54,8 @@ Archive exportBackupArchive(Database database) {
     'favorites.json',
     database
         .select('''
-          SELECT source_key, comic_id, title, cover_url, author, favorited_at
+          SELECT source_key, comic_id, title, cover_url, author, authors_json,
+                 tags_json, metadata_complete, favorited_at
           FROM favorites
         ''')
         .map(
@@ -64,6 +65,9 @@ Archive exportBackupArchive(Database database) {
             'title': row['title'],
             'cover_url': row['cover_url'],
             'author': row['author'],
+            'authors_json': row['authors_json'],
+            'tags_json': row['tags_json'],
+            'metadata_complete': row['metadata_complete'],
             'favorited_at': row['favorited_at'],
           },
         )
@@ -144,8 +148,9 @@ void _importBackupFile(Database database, String name, String content) {
       database.execute(
         '''
         INSERT OR REPLACE INTO favorites
-          (source_key, comic_id, title, cover_url, author, favorited_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+          (source_key, comic_id, title, cover_url, author, authors_json,
+           tags_json, metadata_complete, favorited_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''',
         <Object?>[
           _stringValue(item, 'source_key'),
@@ -153,6 +158,9 @@ void _importBackupFile(Database database, String name, String content) {
           _stringValue(item, 'title'),
           _stringValue(item, 'cover_url'),
           _stringValue(item, 'author'),
+          _stringValue(item, 'authors_json', fallback: '[]'),
+          _stringValue(item, 'tags_json', fallback: '[]'),
+          _intValue(item, 'metadata_complete'),
           _intValue(item, 'favorited_at'),
         ],
       );
@@ -189,9 +197,13 @@ List<Map<String, Object?>> _decodeBackupRows(String name, String content) {
   ];
 }
 
-String _stringValue(Map<String, Object?> row, String key) {
+String _stringValue(
+  Map<String, Object?> row,
+  String key, {
+  String fallback = '',
+}) {
   final value = row[key];
-  return value == null ? '' : value.toString();
+  return value == null ? fallback : value.toString();
 }
 
 int _intValue(Map<String, Object?> row, String key) {

@@ -31,6 +31,7 @@ import 'views/settings/source_manager_page.dart';
 import 'views/settings/source_settings_page.dart';
 import 'views/settings/webdav_settings_page.dart';
 import 'views/settings/log_viewer_page.dart';
+import 'views/stats/stats_page.dart';
 import 'views/premium/jm_premium_page.dart';
 import 'views/video/video_page.dart';
 import 'views/video/video_player_page.dart';
@@ -122,6 +123,20 @@ final appRouter = GoRouter(
       builder: (context, state) => const FavoritesPage(),
     ),
     GoRoute(path: '/history', builder: (context, state) => const HistoryPage()),
+    GoRoute(
+      path: '/stats',
+      builder: (context, state) => const CollectionStatsPage(),
+      routes: [
+        GoRoute(
+          path: 'artists',
+          builder: (context, state) => const ArtistStatsPage(),
+        ),
+        GoRoute(
+          path: 'tags',
+          builder: (context, state) => const TagStatsPage(),
+        ),
+      ],
+    ),
     GoRoute(
       path: '/login',
       builder: (context, state) => LoginPage(

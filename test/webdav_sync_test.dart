@@ -39,8 +39,9 @@ void main() {
       source.execute(
         '''
         INSERT INTO favorites
-          (source_key, comic_id, title, cover_url, author, favorited_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+          (source_key, comic_id, title, cover_url, author, authors_json,
+           tags_json, metadata_complete, favorited_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''',
         <Object?>[
           'picacg',
@@ -48,6 +49,9 @@ void main() {
           '收藏标题',
           'https://img.test/favorite.jpg',
           '收藏作者',
+          '["收藏作者","第二画师"]',
+          '["纯爱","校园"]',
+          1,
           987654321,
         ],
       );
@@ -77,6 +81,9 @@ void main() {
         'title': '收藏标题',
         'cover_url': 'https://img.test/favorite.jpg',
         'author': '收藏作者',
+        'authors_json': '["收藏作者","第二画师"]',
+        'tags_json': '["纯爱","校园"]',
+        'metadata_complete': 1,
         'favorited_at': 987654321,
       });
       expect(_row(target, 'search_history'), containsPair('keyword', '完整搜索'));
@@ -132,6 +139,9 @@ void main() {
         'title': '旧收藏',
         'cover_url': 'legacy-cover',
         'author': '',
+        'authors_json': '[]',
+        'tags_json': '[]',
+        'metadata_complete': 0,
         'favorited_at': 66,
       });
     });

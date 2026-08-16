@@ -187,8 +187,9 @@ class DetailViewModel extends ChangeNotifier {
   void _applyFavoriteState(ComicInfoData info) {
     final notifier = FavoriteNotifier.instance;
     final isLocal = notifier.isFavorited(sourceKey, info.comicId);
-    if (info.isFavorite == true && !isLocal) {
+    if (info.isFavorite == true || isLocal) {
       final author = _authorOf(info);
+      final existing = _favHelper.get(sourceKey, info.comicId);
       _favHelper.upsert(
         FavoriteRecord(
           source: sourceKey,
@@ -196,16 +197,22 @@ class DetailViewModel extends ChangeNotifier {
           title: info.title,
           cover: info.cover,
           author: author,
-          favoritedAt: DateTime.now().millisecondsSinceEpoch,
+          authors: info.authors,
+          tags: info.labels,
+          metadataComplete: true,
+          favoritedAt:
+              existing?.favoritedAt ?? DateTime.now().millisecondsSinceEpoch,
         ),
       );
-      notifier.addLocal(
-        sourceKey,
-        info.comicId,
-        info.title,
-        info.cover,
-        author,
-      );
+      if (!isLocal) {
+        notifier.addLocal(
+          sourceKey,
+          info.comicId,
+          info.title,
+          info.cover,
+          author,
+        );
+      }
     }
     _isFavorite = info.isFavorite == true || isLocal;
   }
@@ -222,6 +229,9 @@ class DetailViewModel extends ChangeNotifier {
       title: info.title,
       coverUrl: info.cover,
       author: _authorOf(info),
+      authors: info.authors,
+      tags: info.labels,
+      metadataComplete: true,
     );
     if (_disposed) return;
     _isFavorite = newState;

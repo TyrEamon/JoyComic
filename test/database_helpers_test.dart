@@ -97,6 +97,9 @@ void main() {
           'title',
           'cover_url',
           'author',
+          'authors_json',
+          'tags_json',
+          'metadata_complete',
           'favorited_at',
         }),
       );
@@ -168,6 +171,9 @@ void main() {
       expect(row['title'], 'Legacy');
       expect(row['cover_url'], 'old-cover');
       expect(row['author'], '');
+      expect(row['authors_json'], '[]');
+      expect(row['tags_json'], '[]');
+      expect(row['metadata_complete'], 0);
       expect(row['favorited_at'], 42);
     });
 
