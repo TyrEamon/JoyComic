@@ -9,7 +9,7 @@ void main() {
     ).readAsStringSync();
 
     expect(workflow, contains('workflow_dispatch:'));
-    expect(workflow, contains('flutter create . --platforms=android'));
+    expect(workflow, contains('flutter create . --empty --platforms=android'));
     expect(workflow, contains('android.permission.INTERNET'));
     expect(workflow, contains('flutter_launcher_icons_android.yaml'));
     expect(workflow, contains('flutter analyze'));

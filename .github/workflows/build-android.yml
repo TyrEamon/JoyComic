@@ -49,7 +49,7 @@ jobs:
           cache: true
 
       - name: Generate Android project
-        run: flutter create . --platforms=android --org io.github.xiaoqi419 --project-name joycomic
+        run: flutter create . --empty --platforms=android --org io.github.xiaoqi419 --project-name joycomic
 
       - name: Configure Android app
         shell: python
