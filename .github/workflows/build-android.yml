@@ -1,0 +1,101 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+    paths:
+      - ".github/workflows/build-android.yml"
+      - "assets/**"
+      - "lib/**"
+      - "test/**"
+      - "flutter_launcher_icons_android.yaml"
+      - "pubspec.yaml"
+      - "pubspec.lock"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Test and build APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.7"
+          channel: stable
+          cache: true
+
+      - name: Generate Android project
+        run: flutter create . --platforms=android --org io.github.xiaoqi419 --project-name joycomic
+
+      - name: Configure Android app
+        shell: python
+        run: |
+          from pathlib import Path
+
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          source = manifest.read_text(encoding="utf-8")
+          permissions = '    <uses-permission android:name="android.permission.INTERNET" />\n'
+          marker = ">\n    <application"
+          if marker not in source:
+              raise SystemExit("Unexpected AndroidManifest.xml layout")
+          source = source.replace(marker, ">\n" + permissions + "    <application", 1)
+          source = source.replace('android:label="joycomic"', 'android:label="JoyComic"', 1)
+          manifest.write_text(source, encoding="utf-8")
+
+      - name: Resolve dependencies and generate icons
+        run: |
+          flutter pub get
+          dart run flutter_launcher_icons -f flutter_launcher_icons_android.yaml
+
+      - name: Analyze and test
+        run: |
+          flutter analyze
+          flutter test
+
+      - name: Build universal release APK
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          VERSION="$(awk '/^version:/ {print $2; exit}' pubspec.yaml)"
+          BUILD_NAME="${VERSION%%+*}"
+          SHORT_SHA="$(git rev-parse --short=8 HEAD)"
+          flutter build apk --release \
+            --build-name="$BUILD_NAME" \
+            --build-number="$BUILD_NUMBER"
+          mkdir -p dist
+          APK_NAME="joycomic-android-v${BUILD_NAME}-${SHORT_SHA}.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "dist/$APK_NAME"
+          sha256sum "dist/$APK_NAME" > "dist/$APK_NAME.sha256"
+
+      - name: Upload installable APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: joycomic-android-apk
+          path: dist/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30

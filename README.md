@@ -4,7 +4,7 @@
 
 # JoyComic
 
-### 哔咔 & 禁漫 · 双源 iOS 漫画阅读器
+### 哔咔 & 禁漫 · 双源 Flutter 漫画阅读器
 
 使用 Flutter 构建，聚合哔咔与禁漫两个内容源，提供搜索、分类、收藏、下载、阅读记录和多模式阅读体验。纯 Dart / Flutter 实现，iOS 工程由云端 CI 自动生成。
 
@@ -13,7 +13,7 @@
 [![Version](https://img.shields.io/badge/version-1.0.0-7B61FF?style=flat-square&logo=semver&logoColor=white)](https://github.com/xiaoqi419/JoyComic/releases)
 [![Flutter](https://img.shields.io/badge/Flutter-3.32%2B-02569B?style=flat-square&logo=flutter&logoColor=white)](https://flutter.dev)
 [![Dart](https://img.shields.io/badge/Dart-3.10%2B-0175C2?style=flat-square&logo=dart&logoColor=white)](https://dart.dev)
-[![Platform](https://img.shields.io/badge/platform-iOS-000000?style=flat-square&logo=apple&logoColor=white)](#)
+[![Platform](https://img.shields.io/badge/platform-iOS%20%7C%20Android-000000?style=flat-square&logo=flutter&logoColor=white)](#)
 [![License](https://img.shields.io/badge/license-个人学习使用-9F7AEA?style=flat-square)](#声明)
 [![CI](https://img.shields.io/badge/CI-Codemagic-29B7AC?style=flat-square&logo=codemagic&logoColor=white)](https://codemagic.io)
 
@@ -40,7 +40,7 @@
 - **离线阅读**：章节下载队列、暂停与恢复、任务持久化和本地阅读。
 - **数据管理**：本地收藏、阅读历史、搜索历史以及 WebDAV 备份与恢复。
 - **媒体与诊断**：禁漫视频播放、清晰度选择、运行日志查看与导出。
-- **iOS 适配**：安全区域、横竖屏阅读布局及无签名 IPA 云端构建配置。
+- **iOS / Android 适配**：安全区域、横竖屏阅读布局、无签名 IPA 及可安装 APK 云端构建配置。
 
 ## 🔐 登录说明
 
@@ -101,6 +101,17 @@ flutter build ios --release --no-codesign
 ```
 
 仓库中的 `codemagic.yaml` 提供无签名 IPA 构建流程，可在 Codemagic 连接仓库后运行 `Build IPA` 工作流。生成的 IPA 仍需使用合法证书签名后才能安装到 iOS 设备。
+
+## 🤖 构建 Android
+
+仓库中的 `.github/workflows/build-android.yml` 会在 GitHub Actions 中生成 Android 工程、运行分析与测试，并构建可直接安装的通用 APK。
+
+1. 在 GitHub 仓库打开 **Actions** → **Build Android APK**。
+2. 选择 **Run workflow** 手动触发构建。
+3. 构建成功后，在运行页面的 **Artifacts** 下载 `joycomic-android-apk`。
+4. 解压后将 APK 发送到 Android 手机安装。
+
+> GitHub Actions 默认生成的 APK 使用测试签名，适合个人安装验证；上架 Google Play 前需改为私有正式密钥签名并构建 AAB。
 
 ## 📁 项目结构
 
