@@ -194,6 +194,17 @@ jobs:
           )
           gradle.write_text(source, encoding="utf-8")
 
+      - name: Verify Android release keystore
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: >-
+          keytool -list
+          -keystore android/app/joycomic-release.jks
+          -storetype JKS
+          -storepass:env ANDROID_KEYSTORE_PASSWORD
+          -alias "$ANDROID_KEY_ALIAS"
+
       - name: Resolve dependencies and generate icons
         run: |
           flutter pub get
