@@ -8,6 +8,11 @@ import 'app_theme_context.dart';
 const String kFontFamily = 'LXGWWenKai';
 const String kMonoFontFamily = 'LXGWWenKaiMono';
 
+/// Android uses its system font because some devices fail to render the
+/// bundled WenKai font even when the asset is present in the APK.
+String? appFontFamily(TargetPlatform platform) =>
+    platform == TargetPlatform.android ? null : kFontFamily;
+
 class AppTypography {
   AppTypography._();
 
@@ -19,7 +24,7 @@ class AppTypography {
     double? height,
     double? letterSpacing,
   }) => TextStyle(
-    fontFamily: kFontFamily,
+    fontFamily: appFontFamily(Theme.of(context).platform),
     fontSize: size,
     fontWeight: weight,
     height: height,

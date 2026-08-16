@@ -75,7 +75,10 @@ jobs:
         run: flutter analyze
 
       - name: Test Android workflow configuration
-        run: flutter test test/github_android_workflow_test.dart
+        run: >-
+          flutter test
+          test/github_android_workflow_test.dart
+          test/android_font_fallback_test.dart
 
       - name: Run upstream test suite
         continue-on-error: true

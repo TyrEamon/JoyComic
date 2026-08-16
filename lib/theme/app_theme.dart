@@ -24,7 +24,7 @@ class AppTheme {
       colorScheme: scheme,
       scaffoldBackgroundColor: semantic.pageBackground,
       canvasColor: semantic.pageBackground,
-      fontFamily: kFontFamily,
+      fontFamily: appFontFamily(defaultTargetPlatform),
       splashFactory: InkSparkle.splashFactory,
       extensions: <ThemeExtension<dynamic>>[semantic],
       appBarTheme: AppBarTheme(
