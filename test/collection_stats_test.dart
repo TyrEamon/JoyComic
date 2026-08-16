@@ -1,8 +1,11 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:joycomic/database/favorites_helper.dart';
 import 'package:joycomic/database/joy_database.dart';
 import 'package:joycomic/database/read_record_helper.dart';
+import 'package:joycomic/theme/app_spacing.dart';
 import 'package:joycomic/views/stats/collection_stats.dart';
 import 'package:joycomic/views/stats/stats_page.dart';
 import 'package:sqlite3/sqlite3.dart';
@@ -143,6 +146,26 @@ void main() {
     expect(tester.widget<Text>(find.text('圆环份额 0.6%')).style?.fontSize, 11);
     expect(find.text('占全部收藏 0.4%'), findsOneWidget);
     expect(find.text('圆环份额 0.6%'), findsOneWidget);
+  });
+
+  test('overview summary follows the Stitch two-row card hierarchy', () {
+    final source = File(
+      'lib/views/stats/stats_page.dart',
+    ).readAsStringSync();
+    final summary = source.substring(
+      source.indexOf('class _SummaryGrid'),
+      source.indexOf('class _MetricCard'),
+    );
+
+    expect(RegExp(r'\n\s+largeCard\(').allMatches(summary), hasLength(3));
+    expect(
+      RegExp(r'child: _CompactMetricCard\(').allMatches(summary),
+      hasLength(2),
+    );
+    expect(summary, contains("label: '画师'"));
+    expect(summary, contains("label: '标签'"));
+    expect(summary, contains('.clamp(100.0, 112.0)'));
+    expect((100 - AppSpacing.xs) / 2, greaterThanOrEqualTo(44));
   });
 
   test('favorite metadata survives SQLite round trip', () {

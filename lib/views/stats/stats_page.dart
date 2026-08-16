@@ -532,35 +532,118 @@ class _SummaryGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final items = <(String, String, IconData, bool)>[
-      ('总收藏', '${stats.totalFavorites}', Icons.library_books_rounded, false),
-      ('已读', '${stats.read}', Icons.check_circle_outline_rounded, true),
-      ('未读', '${stats.unread}', Icons.visibility_off_outlined, false),
-      ('画师', '${stats.artistCount}', Icons.brush_outlined, false),
-      ('标签', '${stats.tagCount}', Icons.sell_outlined, false),
-    ];
     return LayoutBuilder(
       builder: (context, constraints) {
-        final width = (constraints.maxWidth - AppSpacing.sm) / 2;
-        return Wrap(
-          spacing: AppSpacing.sm,
-          runSpacing: AppSpacing.sm,
+        final cardHeight = (constraints.maxWidth * 0.31)
+            .clamp(100.0, 112.0)
+            .toDouble();
+        Widget largeCard({
+          required String label,
+          required String value,
+          required IconData icon,
+          bool accent = false,
+        }) => Expanded(
+          child: SizedBox(
+            height: cardHeight,
+            child: _MetricCard(
+              label: label,
+              value: value,
+              icon: icon,
+              accent: accent,
+            ),
+          ),
+        );
+
+        return Column(
           children: <Widget>[
-            for (final item in items)
-              SizedBox(
-                width: width,
-                child: _MetricCard(
-                  label: item.$1,
-                  value: item.$2,
-                  icon: item.$3,
-                  accent: item.$4,
+            Row(
+              children: <Widget>[
+                largeCard(
+                  label: '总收藏',
+                  value: '${stats.totalFavorites}',
+                  icon: Icons.library_books_rounded,
                 ),
-              ),
+                const SizedBox(width: AppSpacing.sm),
+                largeCard(
+                  label: '已读',
+                  value: '${stats.read}',
+                  icon: Icons.check_circle_outline_rounded,
+                  accent: true,
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Row(
+              children: <Widget>[
+                largeCard(
+                  label: '未读',
+                  value: '${stats.unread}',
+                  icon: Icons.visibility_off_outlined,
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: SizedBox(
+                    height: cardHeight,
+                    child: Column(
+                      children: <Widget>[
+                        Expanded(
+                          child: _CompactMetricCard(
+                            label: '画师',
+                            value: '${stats.artistCount}',
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.xs),
+                        Expanded(
+                          child: _CompactMetricCard(
+                            label: '标签',
+                            value: '${stats.tagCount}',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ],
         );
       },
     );
   }
+}
+
+class _CompactMetricCard extends StatelessWidget {
+  const _CompactMetricCard({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => _Panel(
+    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+    borderRadius: AppRadius.brMd,
+    child: Row(
+      children: <Widget>[
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 13,
+              color: context.secondaryTextColor,
+            ),
+          ),
+        ),
+        const SizedBox(width: AppSpacing.xs),
+        Text(
+          value,
+          maxLines: 1,
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+        ),
+      ],
+    ),
+  );
 }
 
 class _MetricCard extends StatelessWidget {
@@ -610,7 +693,7 @@ class _MetricCard extends StatelessWidget {
             ),
           ],
         ),
-        SizedBox(height: compact ? 6 : AppSpacing.sm),
+        if (compact) const SizedBox(height: 6) else const Spacer(),
         Text(
           value,
           style: TextStyle(
@@ -904,16 +987,21 @@ class _DistributionRow extends StatelessWidget {
 }
 
 class _Panel extends StatelessWidget {
-  const _Panel({required this.child, this.padding = const EdgeInsets.all(AppSpacing.md)});
+  const _Panel({
+    required this.child,
+    this.padding = const EdgeInsets.all(AppSpacing.md),
+    this.borderRadius = AppRadius.brLg,
+  });
   final Widget child;
   final EdgeInsetsGeometry padding;
+  final BorderRadius borderRadius;
 
   @override
   Widget build(BuildContext context) => Container(
     padding: padding,
     decoration: BoxDecoration(
       color: context.surfaceColor,
-      borderRadius: AppRadius.brLg,
+      borderRadius: borderRadius,
       border: Border.all(color: context.borderColor),
     ),
     clipBehavior: Clip.antiAlias,
