@@ -21,6 +21,7 @@ import '../../theme/app_safe_area.dart';
 import 'detail_navigation.dart';
 import 'detail_view_model.dart';
 import 'widgets/comment_preview.dart';
+import 'widgets/chapter_download_sheet.dart';
 import 'widgets/detail_actions.dart';
 import 'widgets/detail_app_bar.dart';
 import 'widgets/detail_loading_skeleton.dart';
@@ -411,6 +412,13 @@ class _ContentState extends State<_Content> {
                   readLabel: vm.readActionLabel,
                   onFavorite: vm.toggleFavorite,
                   onRead: () => openDetailReader(context, vm, null),
+                  onDownload: vm.chapters.isEmpty
+                      ? null
+                      : () => showChapterDownloadSheet(
+                          context,
+                          viewModel: vm,
+                          chapters: vm.chapters,
+                        ),
                 ),
                 const SizedBox(height: AppSpacing.sectionGap),
                 CommentPreview(

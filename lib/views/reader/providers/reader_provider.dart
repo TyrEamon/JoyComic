@@ -583,40 +583,9 @@ class ReaderProvider extends ChangeNotifier {
   /// 阅读中滚动仍会自动收起。
   bool showToolbar = true;
 
-  /// 是否显示菜单锁定按钮。
-  bool showMenuLock = false;
-
-  /// 锁定状态下菜单锁定按钮是否展开。
-  bool menuLockExpanded = false;
-
-  /// 展开锁定状态下的菜单锁定按钮。
-  void expandMenuLock() {
-    if (menuLockExpanded) return;
-    menuLockExpanded = true;
-    notifyListeners();
-  }
-
-  /// 收起锁定状态下的菜单锁定按钮。
-  void collapseMenuLock() {
-    if (!menuLockExpanded) return;
-    menuLockExpanded = false;
-    notifyListeners();
-  }
-
-  /// 隐藏菜单锁定按钮。
-  void hideMenuLock() {
-    if (!showMenuLock && !menuLockExpanded) return;
-    showMenuLock = false;
-    menuLockExpanded = false;
-    notifyListeners();
-  }
-
   /// 隐藏工具栏（仅在显示时生效）。
   void hideToolbar() {
-    if (!showToolbar) {
-      hideMenuLock();
-      return;
-    }
+    if (!showToolbar) return;
     openOrCloseToolbar();
   }
 
@@ -644,10 +613,6 @@ class ReaderProvider extends ChangeNotifier {
       }
 
       showToolbar = willShowToolbar;
-      showMenuLock = willShowToolbar;
-      if (!willShowToolbar) {
-        menuLockExpanded = false;
-      }
       SystemChrome.setEnabledSystemUIMode(
         showToolbar ? SystemUiMode.edgeToEdge : SystemUiMode.immersive,
       );

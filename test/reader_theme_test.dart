@@ -8,7 +8,6 @@ void main() {
       'lib/views/reader/reader.dart',
       'lib/views/reader/widgets/app_bar.dart',
       'lib/views/reader/widgets/bottom.dart',
-      'lib/views/reader/widgets/menu_lock.dart',
       'lib/views/reader/widgets/page_no_tag.dart',
       'lib/views/reader/widgets/toast.dart',
     ];

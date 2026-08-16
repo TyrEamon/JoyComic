@@ -13,7 +13,6 @@ import '../reader/state/comic_state.dart';
 import '../reader/widgets/app_bar.dart';
 import '../reader/widgets/bottom.dart';
 import '../reader/widgets/error_page.dart';
-import '../reader/widgets/menu_lock.dart';
 import '../reader/widgets/next_chapter.dart';
 import '../reader/widgets/page_no_tag.dart';
 import '../reader/widgets/reader_keyboard_listener.dart';
@@ -96,9 +95,7 @@ class _ReaderV2State extends State<ReaderV2> {
           if (notification is ScrollUpdateNotification) {
             _scrollAccumulator += (notification.scrollDelta ?? 0).abs();
             if (_scrollAccumulator >= 30) {
-              if (listState.lockMenu) {
-                reader.collapseMenuLock();
-              } else {
+              if (!listState.lockMenu) {
                 reader.hideToolbar();
               }
               _scrollAccumulator = 0;
@@ -199,7 +196,7 @@ class _ReaderV2Content extends StatelessWidget {
               ),
             ),
           if (ready && listState.showPageNumbers) const ReaderPageNoTag(),
-          if (ready) ...[const ReaderNextChapter(), const MenuLock()],
+          if (ready) const ReaderNextChapter(),
           const ReaderAppBar(),
           if (ready) const ReaderBottom(),
         ],

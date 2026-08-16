@@ -80,6 +80,8 @@ jobs:
           test/github_android_workflow_test.dart
           test/android_font_fallback_test.dart
           test/detail_header_overlap_test.dart
+          test/detail_download_action_test.dart
+          test/reader_v2_route_test.dart
 
       - name: Run upstream test suite
         continue-on-error: true

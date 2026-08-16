@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:joycomic/theme/app_theme_context.dart';
 
 import '../../../theme/app_gradients.dart';
+import '../providers/list_state_provider.dart';
 import '../providers/reader_provider.dart' hide ReaderImage;
 import '../state/read_mode.dart';
 import '../utils/reader_utils.dart';
@@ -24,6 +25,7 @@ class _ReaderBottomState extends State<ReaderBottom> {
     final pageCount = context.selector((p) => p.pageCount);
     final readMode = context.selector((p) => p.readMode);
     final isPageTurning = context.selector((p) => p.isPageTurning);
+    final lockMenu = context.stateSelector((p) => p.lockMenu);
     final foreground = context.semanticColors.readerControlForeground;
 
     return AnimatedPositioned(
@@ -84,6 +86,11 @@ class _ReaderBottomState extends State<ReaderBottom> {
                   icon: Icons.menu,
                   tooltip: '章节列表',
                   onTap: () => Scaffold.of(context).openDrawer(),
+                ),
+                _ActionButton(
+                  icon: lockMenu ? Icons.lock : Icons.lock_open,
+                  tooltip: lockMenu ? '解锁工具栏' : '锁定工具栏',
+                  onTap: () => context.stateReader.toggleLockMenu(),
                 ),
               ],
             ),

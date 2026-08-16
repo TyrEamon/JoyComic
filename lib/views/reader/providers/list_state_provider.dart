@@ -1,6 +1,6 @@
 /// 列表/UI 态 Provider。
 ///
-/// 管理 UI 层状态：Ctrl 键状态、ScrollPhysics、条漫列宽、菜单锁定、页码显隐。
+/// 管理 UI 层状态：Ctrl 键状态、ScrollPhysics、条漫列宽、工具栏锁定、页码显隐。
 /// 与 [ReaderProvider]（内容态）分离，单一职责。持久化字段写入 [ReaderConf]。
 library;
 
@@ -44,14 +44,14 @@ class ListStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 锁定菜单（持久化 + Toast）。
+  /// 锁定工具栏（持久化 + Toast）。锁定后翻页或滚动不会自动隐藏工具栏。
   late bool _lockMenu;
   bool get lockMenu => _lockMenu;
   void toggleLockMenu() {
     _lockMenu = !_lockMenu;
     ReaderConf.instance.menuLocked = _lockMenu;
     notifyListeners();
-    Toast.show(message: _lockMenu ? '菜单已锁定' : '菜单已解锁');
+    Toast.show(message: _lockMenu ? '工具栏已锁定' : '工具栏已解锁');
   }
 
   /// 页码显隐（持久化，仅切内存态不弹 Toast）。

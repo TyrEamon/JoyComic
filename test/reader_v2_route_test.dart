@@ -89,6 +89,19 @@ void main() {
     expect(find.byType(ReaderBottom), findsOneWidget);
     expect(tester.widget<Scaffold>(find.byType(Scaffold)).drawer, isNotNull);
 
+    final unlocked = find.byTooltip('锁定工具栏');
+    final locked = find.byTooltip('解锁工具栏');
+    final wasUnlocked = unlocked.evaluate().isNotEmpty;
+    final lockControl = wasUnlocked ? unlocked : locked;
+    expect(lockControl, findsOneWidget);
+    expect(
+      tester.getRect(find.byType(Slider)).overlaps(tester.getRect(lockControl)),
+      isFalse,
+    );
+    await tester.tap(lockControl);
+    await tester.pump();
+    expect(wasUnlocked ? locked : unlocked, findsOneWidget);
+
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
     PaintingBinding.instance.imageCache.clear();

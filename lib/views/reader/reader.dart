@@ -2,7 +2,7 @@
 ///
 /// 接收 [ComicState] 与可选 [ReaderImageLoader]，创建 [ReaderProvider] 与
 /// [ListStateProvider] 后按阅读模式渲染 [VerticalList] 或 [HorizontalList]，
-/// 并叠放工具栏、页码角标、下一章 FAB、菜单锁等 UI。
+/// 并叠放工具栏、页码角标、下一章 FAB 等 UI。
 library;
 
 import 'package:flutter/material.dart';
@@ -22,7 +22,6 @@ import 'widgets/app_bar.dart';
 import 'widgets/bottom.dart';
 import 'widgets/error_page.dart';
 import 'widgets/horizontal_list/horizontal_list.dart';
-import 'widgets/menu_lock.dart';
 import 'widgets/next_chapter.dart';
 import 'widgets/page_no_tag.dart';
 import 'widgets/reader_keyboard_listener.dart';
@@ -134,9 +133,7 @@ class _ReaderState extends State<Reader> {
           if (notification is ScrollUpdateNotification) {
             _scrollAccumulator += (notification.scrollDelta ?? 0.0).abs();
             if (_scrollAccumulator >= _hideToolbarScrollThreshold) {
-              if (context.stateReader.lockMenu) {
-                context.reader.collapseMenuLock();
-              } else {
+              if (!context.stateReader.lockMenu) {
                 context.reader.hideToolbar();
               }
               _scrollAccumulator = 0.0;
@@ -257,7 +254,6 @@ class _ReaderContent extends StatelessWidget {
 
           if (loadingState == ReaderLoadState.success) ...[
             const ReaderNextChapter(),
-            const MenuLock(),
           ],
 
           // 点中间展开完整顶栏/底栏
