@@ -532,6 +532,9 @@ class _SummaryGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final coral = context.colorScheme.primary;
+    final mint = context.successColor;
+    final softPink = Color.lerp(coral, context.secondaryTextColor, 0.24)!;
     return LayoutBuilder(
       builder: (context, constraints) {
         final cardHeight = (constraints.maxWidth * 0.31)
@@ -541,7 +544,7 @@ class _SummaryGrid extends StatelessWidget {
           required String label,
           required String value,
           required IconData icon,
-          bool accent = false,
+          required Color emphasisColor,
         }) => Expanded(
           child: SizedBox(
             height: cardHeight,
@@ -549,7 +552,7 @@ class _SummaryGrid extends StatelessWidget {
               label: label,
               value: value,
               icon: icon,
-              accent: accent,
+              emphasisColor: emphasisColor,
             ),
           ),
         );
@@ -562,13 +565,14 @@ class _SummaryGrid extends StatelessWidget {
                   label: '总收藏',
                   value: '${stats.totalFavorites}',
                   icon: Icons.library_books_rounded,
+                  emphasisColor: coral,
                 ),
                 const SizedBox(width: AppSpacing.sm),
                 largeCard(
                   label: '已读',
                   value: '${stats.read}',
                   icon: Icons.check_circle_outline_rounded,
-                  accent: true,
+                  emphasisColor: mint,
                 ),
               ],
             ),
@@ -579,6 +583,7 @@ class _SummaryGrid extends StatelessWidget {
                   label: '未读',
                   value: '${stats.unread}',
                   icon: Icons.visibility_off_outlined,
+                  emphasisColor: softPink,
                 ),
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
@@ -590,6 +595,7 @@ class _SummaryGrid extends StatelessWidget {
                           child: _CompactMetricCard(
                             label: '画师',
                             value: '${stats.artistCount}',
+                            accentColor: coral,
                           ),
                         ),
                         const SizedBox(height: AppSpacing.xs),
@@ -597,6 +603,7 @@ class _SummaryGrid extends StatelessWidget {
                           child: _CompactMetricCard(
                             label: '标签',
                             value: '${stats.tagCount}',
+                            accentColor: softPink,
                           ),
                         ),
                       ],
@@ -613,15 +620,21 @@ class _SummaryGrid extends StatelessWidget {
 }
 
 class _CompactMetricCard extends StatelessWidget {
-  const _CompactMetricCard({required this.label, required this.value});
+  const _CompactMetricCard({
+    required this.label,
+    required this.value,
+    required this.accentColor,
+  });
 
   final String label;
   final String value;
+  final Color accentColor;
 
   @override
   Widget build(BuildContext context) => _Panel(
     padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
     borderRadius: AppRadius.brMd,
+    borderColor: accentColor.withValues(alpha: 0.10),
     child: Row(
       children: <Widget>[
         Expanded(
@@ -631,7 +644,7 @@ class _CompactMetricCard extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               fontSize: 13,
-              color: context.secondaryTextColor,
+              color: accentColor.withValues(alpha: 0.88),
             ),
           ),
         ),
@@ -653,6 +666,7 @@ class _MetricCard extends StatelessWidget {
     this.icon,
     this.accent = false,
     this.compact = false,
+    this.emphasisColor,
   });
 
   final String label;
@@ -660,6 +674,7 @@ class _MetricCard extends StatelessWidget {
   final IconData? icon;
   final bool accent;
   final bool compact;
+  final Color? emphasisColor;
 
   @override
   Widget build(BuildContext context) => _Panel(
@@ -669,6 +684,7 @@ class _MetricCard extends StatelessWidget {
             vertical: AppSpacing.sm,
           )
         : const EdgeInsets.all(AppSpacing.md),
+    borderColor: emphasisColor?.withValues(alpha: 0.14),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -678,9 +694,11 @@ class _MetricCard extends StatelessWidget {
               Icon(
                 icon,
                 size: 18,
-                color: accent
-                    ? context.successColor
-                    : context.colorScheme.primary,
+                color:
+                    emphasisColor ??
+                    (accent
+                        ? context.successColor
+                        : context.colorScheme.primary),
               ),
               const SizedBox(width: AppSpacing.xs),
             ],
@@ -698,7 +716,8 @@ class _MetricCard extends StatelessWidget {
           value,
           style: TextStyle(
             fontSize: compact ? 26 : 30,
-            fontWeight: compact ? FontWeight.w700 : FontWeight.w800,
+            fontWeight: FontWeight.w700,
+            color: emphasisColor,
           ),
         ),
       ],
@@ -991,10 +1010,12 @@ class _Panel extends StatelessWidget {
     required this.child,
     this.padding = const EdgeInsets.all(AppSpacing.md),
     this.borderRadius = AppRadius.brLg,
+    this.borderColor,
   });
   final Widget child;
   final EdgeInsetsGeometry padding;
   final BorderRadius borderRadius;
+  final Color? borderColor;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -1002,7 +1023,7 @@ class _Panel extends StatelessWidget {
     decoration: BoxDecoration(
       color: context.surfaceColor,
       borderRadius: borderRadius,
-      border: Border.all(color: context.borderColor),
+      border: Border.all(color: borderColor ?? context.borderColor),
     ),
     clipBehavior: Clip.antiAlias,
     child: child,

@@ -168,6 +168,32 @@ void main() {
     expect((100 - AppSpacing.xs) / 2, greaterThanOrEqualTo(44));
   });
 
+  test('overview summary uses restrained semantic card accents', () {
+    final source = File(
+      'lib/views/stats/stats_page.dart',
+    ).readAsStringSync();
+    final summary = source.substring(
+      source.indexOf('class _SummaryGrid'),
+      source.indexOf('class _MetadataCoverageCard'),
+    );
+
+    expect(summary, contains('final coral = context.colorScheme.primary;'));
+    expect(summary, contains('final mint = context.successColor;'));
+    expect(summary, contains('final softPink = Color.lerp('));
+    expect(summary, contains('emphasisColor: coral'));
+    expect(summary, contains('emphasisColor: mint'));
+    expect(summary, contains('emphasisColor: softPink'));
+    expect(
+      summary,
+      contains('borderColor: accentColor.withValues(alpha: 0.10)'),
+    );
+    expect(
+      summary,
+      contains('borderColor: emphasisColor?.withValues(alpha: 0.14)'),
+    );
+    expect(summary, contains('fontWeight: FontWeight.w700'));
+  });
+
   test('favorite metadata survives SQLite round trip', () {
     final database = sqlite3.openInMemory();
     addTearDown(database.dispose);
