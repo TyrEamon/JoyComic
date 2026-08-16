@@ -101,6 +101,7 @@ void main() {
     await tester.tap(lockControl);
     await tester.pump();
     expect(wasUnlocked ? locked : unlocked, findsOneWidget);
+    await tester.pump(const Duration(seconds: 2));
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
