@@ -36,6 +36,7 @@ void main() {
     expect(workflow, contains('secrets.ANDROID_KEY_PASSWORD'));
     expect(workflow, contains('joycomic-release.jks'));
     expect(workflow, contains('storeType=JKS'));
+    expect(workflow, contains('Android signing secrets unavailable'));
     expect(
       workflow,
       contains('signingConfigs.getByName("release")'),

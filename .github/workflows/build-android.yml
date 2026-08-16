@@ -110,9 +110,9 @@ jobs:
           }
           missing = [name for name, value in signing_values.items() if not value]
           if missing:
-              raise SystemExit(
-                  "Missing required GitHub Actions secrets: " + ", ".join(missing)
-              )
+              message = "Missing required GitHub Actions secrets: " + ", ".join(missing)
+              print(f"::error title=Android signing secrets unavailable::{message}")
+              raise SystemExit(message)
 
           try:
               keystore_bytes = base64.b64decode(
@@ -120,7 +120,9 @@ jobs:
                   validate=True,
               )
           except ValueError as error:
-              raise SystemExit("ANDROID_KEYSTORE_BASE64 is not valid base64") from error
+              message = "ANDROID_KEYSTORE_BASE64 is not valid base64"
+              print(f"::error title=Invalid Android keystore::{message}")
+              raise SystemExit(message) from error
 
           keystore = Path("android/app/joycomic-release.jks")
           keystore.write_bytes(keystore_bytes)
@@ -149,10 +151,12 @@ jobs:
           ]
           missing_markers = [marker for marker in required_markers if marker not in source]
           if missing_markers:
-              raise SystemExit(
+              message = (
                   "Unexpected build.gradle.kts layout; missing: "
                   + ", ".join(missing_markers)
               )
+              print(f"::error title=Android signing configuration failed::{message}")
+              raise SystemExit(message)
 
           source = source.replace(
               "plugins {",
