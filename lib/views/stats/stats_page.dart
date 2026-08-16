@@ -125,6 +125,9 @@ class TagStatsPage extends StatelessWidget {
   Widget build(BuildContext context) => const _DistributionPage(isArtist: false);
 }
 
+const double _distributionPageDonutAspectRatio = 1.32;
+const double _distributionPageDonutRadiusFactor = 0.44;
+
 class _DistributionPage extends StatefulWidget {
   const _DistributionPage({required this.isArtist});
 
@@ -150,7 +153,12 @@ class _DistributionPageState extends State<_DistributionPage> {
     final title = widget.isArtist ? '画师收藏分布' : '标签偏好分布';
     return Scaffold(
       backgroundColor: context.pageBackground,
-      appBar: AppBar(title: Text(title)),
+      appBar: AppBar(
+        title: Text(
+          title,
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+        ),
+      ),
       body: ListenableBuilder(
         listenable: _controller,
         builder: (context, _) {
@@ -188,6 +196,7 @@ class _DistributionPageState extends State<_DistributionPage> {
                       value: widget.isArtist
                           ? '${stats.totalFavorites}'
                           : '${stats.tagCount}',
+                      compact: true,
                     ),
                   ),
                   const SizedBox(width: AppSpacing.sm),
@@ -198,12 +207,17 @@ class _DistributionPageState extends State<_DistributionPage> {
                           ? '${stats.artistCount}'
                           : '${stats.tagOccurrences}',
                       accent: true,
+                      compact: true,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: AppSpacing.md),
+              const SizedBox(height: AppSpacing.sm),
               _Panel(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
                 child: Column(
                   children: <Widget>[
                     DistributionDonut(
@@ -213,27 +227,30 @@ class _DistributionPageState extends State<_DistributionPage> {
                       unit: '本',
                       percentageTotal: total,
                       percentageLabel: '占全部收藏',
+                      aspectRatio: _distributionPageDonutAspectRatio,
+                      radiusFactor: _distributionPageDonutRadiusFactor,
                       onSelected: (value) =>
                           setState(() => _selectedName = value.name),
                     ),
-                    const SizedBox(height: AppSpacing.sm),
+                    const SizedBox(height: AppSpacing.xxs),
                     Text(
                       '圆环按全部${widget.isArtist ? '画师署名' : '标签出现'}次数分配，已展开所有${widget.isArtist ? '画师' : '标签'}；收藏占比仍以 $total 本总收藏为基数。',
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 11,
+                        height: 1.35,
                         color: context.tertiaryTextColor,
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: AppSpacing.lg),
+              const SizedBox(height: AppSpacing.md),
               Text(
                 widget.isArtist ? '画师分布详情' : '标签偏好详情',
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
               ),
-              const SizedBox(height: AppSpacing.sm),
+              const SizedBox(height: AppSpacing.xs),
               _Panel(
                 padding: EdgeInsets.zero,
                 child: Column(
@@ -279,6 +296,8 @@ class DistributionDonut extends StatelessWidget {
     required this.unit,
     this.percentageTotal,
     this.percentageLabel,
+    this.aspectRatio = 1.15,
+    this.radiusFactor = 0.34,
     required this.onSelected,
   });
 
@@ -288,6 +307,8 @@ class DistributionDonut extends StatelessWidget {
   final String unit;
   final int? percentageTotal;
   final String? percentageLabel;
+  final double aspectRatio;
+  final double radiusFactor;
   final ValueChanged<RankedStat> onSelected;
 
   @override
@@ -313,7 +334,7 @@ class DistributionDonut extends StatelessWidget {
       label: '${selected.name}，${selected.count}$unit，'
           '$semanticsPrefix${_percent(selected.count, displayTotal)}',
       child: AspectRatio(
-        aspectRatio: 1.15,
+        aspectRatio: aspectRatio,
         child: LayoutBuilder(
           builder: (context, constraints) => GestureDetector(
             behavior: HitTestBehavior.opaque,
@@ -322,6 +343,7 @@ class DistributionDonut extends StatelessWidget {
                 details.localPosition,
                 constraints.biggest,
                 values,
+                radiusFactor,
               );
               if (hit != null) onSelected(hit);
             },
@@ -331,6 +353,7 @@ class DistributionDonut extends StatelessWidget {
                 colors: colors,
                 selectedName: segmentSelected.name,
                 trackColor: context.borderColor.withValues(alpha: 0.55),
+                radiusFactor: radiusFactor,
               ),
               child: Center(
                 child: SizedBox(
@@ -345,26 +368,37 @@ class DistributionDonut extends StatelessWidget {
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: context.colorScheme.primary,
-                          fontSize: 18,
+                          fontSize: 17,
+                          height: 1.15,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                       const SizedBox(height: AppSpacing.xxs),
-                      Text('${selected.count} $unit'),
+                      Text(
+                        '${selected.count} $unit',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          height: 1.2,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                       Text(
                         externalTotal == null || externalLabel == null
                             ? _percent(selected.count, total)
                             : '$externalLabel ${_percent(selected.count, externalTotal)}',
                         style: TextStyle(
-                          color: context.secondaryTextColor,
-                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                          height: 1.25,
+                          color: context.tertiaryTextColor,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                       if (externalTotal != null && externalLabel != null)
                         Text(
                           '圆环份额 ${_percent(selected.count, total)}',
                           style: TextStyle(
-                            fontSize: 12,
+                            fontSize: 11,
+                            height: 1.25,
                             color: context.tertiaryTextColor,
                           ),
                         ),
@@ -386,17 +420,19 @@ class _DonutPainter extends CustomPainter {
     required this.colors,
     required this.selectedName,
     required this.trackColor,
+    required this.radiusFactor,
   });
 
   final List<RankedStat> values;
   final List<Color> colors;
   final String selectedName;
   final Color trackColor;
+  final double radiusFactor;
 
   @override
   void paint(Canvas canvas, Size size) {
     final center = size.center(Offset.zero);
-    final radius = math.min(size.width, size.height) * 0.34;
+    final radius = math.min(size.width, size.height) * radiusFactor;
     const width = 18.0;
     final rect = Rect.fromCircle(center: center, radius: radius);
     canvas.drawArc(
@@ -446,13 +482,19 @@ class _DonutPainter extends CustomPainter {
       oldDelegate.values != values ||
       oldDelegate.colors != colors ||
       oldDelegate.selectedName != selectedName ||
-      oldDelegate.trackColor != trackColor;
+      oldDelegate.trackColor != trackColor ||
+      oldDelegate.radiusFactor != radiusFactor;
 }
 
-RankedStat? _hitDonut(Offset position, Size size, List<RankedStat> values) {
+RankedStat? _hitDonut(
+  Offset position,
+  Size size,
+  List<RankedStat> values,
+  double radiusFactor,
+) {
   final center = size.center(Offset.zero);
   final delta = position - center;
-  final radius = math.min(size.width, size.height) * 0.34;
+  final radius = math.min(size.width, size.height) * radiusFactor;
   final distance = delta.distance;
   if (distance < radius - 26 || distance > radius + 26) return null;
   var angle = math.atan2(delta.dy, delta.dx) + math.pi / 2;
@@ -527,15 +569,23 @@ class _MetricCard extends StatelessWidget {
     required this.value,
     this.icon,
     this.accent = false,
+    this.compact = false,
   });
 
   final String label;
   final String value;
   final IconData? icon;
   final bool accent;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) => _Panel(
+    padding: compact
+        ? const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: AppSpacing.sm,
+          )
+        : const EdgeInsets.all(AppSpacing.md),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -551,13 +601,22 @@ class _MetricCard extends StatelessWidget {
               ),
               const SizedBox(width: AppSpacing.xs),
             ],
-            Text(label, style: TextStyle(color: context.secondaryTextColor)),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: compact ? 13 : null,
+                color: context.secondaryTextColor,
+              ),
+            ),
           ],
         ),
-        const SizedBox(height: AppSpacing.sm),
+        SizedBox(height: compact ? 6 : AppSpacing.sm),
         Text(
           value,
-          style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800),
+          style: TextStyle(
+            fontSize: compact ? 26 : 30,
+            fontWeight: compact ? FontWeight.w700 : FontWeight.w800,
+          ),
         ),
       ],
     ),
@@ -781,23 +840,53 @@ class _DistributionRow extends StatelessWidget {
       InkWell(
         onTap: onTap,
         child: Container(
-          constraints: const BoxConstraints(minHeight: 56),
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+          constraints: const BoxConstraints(minHeight: 48),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.xxs,
+          ),
           color: selected ? context.colorScheme.primaryContainer.withValues(alpha: 0.22) : null,
           child: Row(
             children: <Widget>[
-              Container(width: 10, height: 10, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+              Container(
+                width: 9,
+                height: 9,
+                decoration: BoxDecoration(
+                  color: color,
+                  shape: BoxShape.circle,
+                ),
+              ),
               const SizedBox(width: AppSpacing.sm),
-              Expanded(child: Text(value.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: selected ? FontWeight.w700 : FontWeight.w500))),
+              Expanded(
+                child: Text(
+                  value.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  ),
+                ),
+              ),
               const SizedBox(width: AppSpacing.sm),
-              Text('${value.count}$unit'),
+              Text(
+                '${value.count}$unit',
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
               const SizedBox(width: AppSpacing.sm),
               SizedBox(
-                width: 54,
+                width: 50,
                 child: Text(
                   _percent(value.count, total),
                   textAlign: TextAlign.end,
-                  style: TextStyle(color: context.secondaryTextColor, fontWeight: FontWeight.w600),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: context.secondaryTextColor,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
             ],

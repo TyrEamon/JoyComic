@@ -10,6 +10,12 @@ void main() {
 
     expect(workflow, contains('workflow_dispatch:'));
     expect(workflow, contains('flutter create . --empty --platforms=android'));
+    expect(
+      workflow,
+      contains(
+        '--org io.github.xiaoqi419 --project-name joycomic',
+      ),
+    );
     expect(workflow, contains('android.permission.INTERNET'));
     expect(workflow, contains('flutter_launcher_icons_android.yaml'));
     expect(workflow, contains('flutter analyze'));
@@ -23,7 +29,18 @@ void main() {
     expect(workflow, contains('test/reader_v2_route_test.dart'));
     expect(workflow, contains('test/collection_stats_test.dart'));
     expect(workflow, contains('continue-on-error: true'));
+    expect(workflow, contains('secrets.ANDROID_KEYSTORE_BASE64'));
+    expect(workflow, contains('secrets.ANDROID_KEYSTORE_PASSWORD'));
+    expect(workflow, contains('secrets.ANDROID_KEY_ALIAS'));
+    expect(workflow, contains('secrets.ANDROID_KEY_PASSWORD'));
+    expect(
+      workflow,
+      contains('signingConfigs.getByName("release")'),
+    );
     expect(workflow, contains('flutter build apk --release'));
+    expect(workflow, contains('github.run_number'));
+    expect(workflow, contains('apksigner'));
+    expect(workflow, contains('--print-certs'));
     expect(workflow, contains('actions/upload-artifact@v7'));
 
     final main = File('lib/main.dart').readAsStringSync();

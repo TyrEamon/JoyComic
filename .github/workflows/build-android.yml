@@ -66,6 +66,104 @@ jobs:
           source = source.replace('android:label="joycomic"', 'android:label="JoyComic"', 1)
           manifest.write_text(source, encoding="utf-8")
 
+      - name: Configure Android release signing
+        shell: python
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          import base64
+          import os
+          from pathlib import Path
+
+          signing_values = {
+              "ANDROID_KEYSTORE_BASE64": os.environ.get("ANDROID_KEYSTORE_BASE64", ""),
+              "ANDROID_KEYSTORE_PASSWORD": os.environ.get("ANDROID_KEYSTORE_PASSWORD", ""),
+              "ANDROID_KEY_ALIAS": os.environ.get("ANDROID_KEY_ALIAS", ""),
+              "ANDROID_KEY_PASSWORD": os.environ.get("ANDROID_KEY_PASSWORD", ""),
+          }
+          missing = [name for name, value in signing_values.items() if not value]
+          if missing:
+              raise SystemExit(
+                  "Missing required GitHub Actions secrets: " + ", ".join(missing)
+              )
+
+          try:
+              keystore_bytes = base64.b64decode(
+                  signing_values["ANDROID_KEYSTORE_BASE64"],
+                  validate=True,
+              )
+          except ValueError as error:
+              raise SystemExit("ANDROID_KEYSTORE_BASE64 is not valid base64") from error
+
+          keystore = Path("android/app/joycomic-release.p12")
+          keystore.write_bytes(keystore_bytes)
+          key_properties = Path("android/key.properties")
+          key_properties.write_text(
+              "\n".join(
+                  [
+                      f"storePassword={signing_values['ANDROID_KEYSTORE_PASSWORD']}",
+                      f"keyPassword={signing_values['ANDROID_KEY_PASSWORD']}",
+                      f"keyAlias={signing_values['ANDROID_KEY_ALIAS']}",
+                      f"storeFile={keystore.resolve().as_posix()}",
+                      "",
+                  ]
+              ),
+              encoding="utf-8",
+          )
+
+          gradle = Path("android/app/build.gradle.kts")
+          source = gradle.read_text(encoding="utf-8")
+          required_markers = [
+              "plugins {",
+              "android {",
+              "    buildTypes {",
+              "signingConfig = signingConfigs.getByName(\"debug\")",
+          ]
+          missing_markers = [marker for marker in required_markers if marker not in source]
+          if missing_markers:
+              raise SystemExit(
+                  "Unexpected build.gradle.kts layout; missing: "
+                  + ", ".join(missing_markers)
+              )
+
+          source = source.replace(
+              "plugins {",
+              "import java.io.FileInputStream\n"
+              "import java.util.Properties\n\n"
+              "plugins {",
+              1,
+          )
+          source = source.replace(
+              "android {",
+              "val keystoreProperties = Properties()\n"
+              "val keystorePropertiesFile = rootProject.file(\"key.properties\")\n"
+              "keystoreProperties.load(FileInputStream(keystorePropertiesFile))\n\n"
+              "android {",
+              1,
+          )
+          source = source.replace(
+              "    buildTypes {",
+              "    signingConfigs {\n"
+              "        create(\"release\") {\n"
+              "            keyAlias = keystoreProperties[\"keyAlias\"] as String\n"
+              "            keyPassword = keystoreProperties[\"keyPassword\"] as String\n"
+              "            storeFile = keystoreProperties[\"storeFile\"]?.let { file(it) }\n"
+              "            storePassword = keystoreProperties[\"storePassword\"] as String\n"
+              "        }\n"
+              "    }\n\n"
+              "    buildTypes {",
+              1,
+          )
+          source = source.replace(
+              "signingConfig = signingConfigs.getByName(\"debug\")",
+              "signingConfig = signingConfigs.getByName(\"release\")",
+              1,
+          )
+          gradle.write_text(source, encoding="utf-8")
+
       - name: Resolve dependencies and generate icons
         run: |
           flutter pub get
@@ -104,6 +202,13 @@ jobs:
           APK_NAME="joycomic-android-v${BUILD_NAME}-${SHORT_SHA}.apk"
           cp build/app/outputs/flutter-apk/app-release.apk "dist/$APK_NAME"
           sha256sum "dist/$APK_NAME" > "dist/$APK_NAME.sha256"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          if [ -z "$APKSIGNER" ]; then
+            echo "Android apksigner was not found" >&2
+            exit 1
+          fi
+          "$APKSIGNER" verify --verbose --print-certs "dist/$APK_NAME" \
+            > "dist/$APK_NAME.signing.txt"
 
       - name: Upload installable APK
         uses: actions/upload-artifact@v7

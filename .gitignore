@@ -19,8 +19,12 @@ ios/Podfile.lock
 # Android
 android/.gradle/
 android/local.properties
+android/key.properties
 *.apk
 *.aab
+*.jks
+*.keystore
+*.p12
 
 # macOS
 macos/Pods/

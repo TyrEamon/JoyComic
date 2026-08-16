@@ -116,6 +116,8 @@ void main() {
               unit: '本',
               percentageTotal: 450,
               percentageLabel: '占全部收藏',
+              aspectRatio: 1.32,
+              radiusFactor: 0.44,
               onSelected: (_) {},
             ),
           ),
@@ -124,6 +126,21 @@ void main() {
     );
 
     expect(tester.takeException(), isNull);
+    final donut = tester.widget<DistributionDonut>(
+      find.byType(DistributionDonut),
+    );
+    final donutLayout = tester.widget<AspectRatio>(find.byType(AspectRatio));
+    expect(donut.radiusFactor, 0.44);
+    expect(donutLayout.aspectRatio, 1.32);
+    expect(1.15 / donut.aspectRatio, inInclusiveRange(0.85, 0.90));
+    expect(
+      (donut.radiusFactor / donut.aspectRatio) / (0.34 / 1.15),
+      inInclusiveRange(1.10, 1.15),
+    );
+    expect(tester.widget<Text>(find.text('藤崎ひかり')).style?.fontSize, 17);
+    expect(tester.widget<Text>(find.text('2 本')).style?.fontSize, 14);
+    expect(tester.widget<Text>(find.text('占全部收藏 0.4%')).style?.fontSize, 12);
+    expect(tester.widget<Text>(find.text('圆环份额 0.6%')).style?.fontSize, 11);
     expect(find.text('占全部收藏 0.4%'), findsOneWidget);
     expect(find.text('圆环份额 0.6%'), findsOneWidget);
   });
